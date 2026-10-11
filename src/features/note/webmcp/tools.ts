@@ -12,7 +12,8 @@ import type * as S from './schemas'
  */
 
 const PAGE_SIZE = 10
-const READ_CHUNK = 1000
+// About 5k tokens: a typical note comes back in one call; only very long ones page with next_offset.
+const READ_CHUNK = 20000
 
 const state = () => useNoteStore.getState()
 

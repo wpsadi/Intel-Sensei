@@ -443,7 +443,7 @@
     },
     {
       "name": "read_block",
-      "description": "Returns one block's full text, settings, comments and children. Use when you need more than the list_blocks preview, such as a long paragraph, a table's cells or a block's URL.",
+      "description": "Returns blocks' full text, settings, comments and children. Use when you need more than the list_blocks preview, such as a long paragraph, a table's cells or a block's URL. To read several blocks, pass them all in `blocks` in one call instead of calling once per block; to read a whole note, use read_note.",
       "inputSchema": {
         "type": "object",
         "properties": {
@@ -453,14 +453,22 @@
             "minLength": 1
           },
           "block": {
+            "description": "One block to read",
             "type": "string",
-            "pattern": "^\\d+(\\.\\d+)*$",
-            "description": "Block address from list_blocks, e.g. \"3\" or \"3.1\" for the 2nd child of block 3"
+            "pattern": "^\\d+(\\.\\d+)*$"
+          },
+          "blocks": {
+            "description": "Several blocks to read in one call, e.g. [\"0\", \"2\", \"3.1\"]",
+            "minItems": 1,
+            "maxItems": 50,
+            "type": "array",
+            "items": {
+              "type": "string",
+              "pattern": "^\\d+(\\.\\d+)*$",
+              "description": "Block address from list_blocks, e.g. \"3\" or \"3.1\" for the 2nd child of block 3"
+            }
           }
-        },
-        "required": [
-          "block"
-        ]
+        }
       },
       "annotations": {
         "readOnlyHint": true,

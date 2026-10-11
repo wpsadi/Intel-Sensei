@@ -17,6 +17,11 @@ const modelContext = () =>
 async function respond(execute: (args: never) => unknown, args: unknown) {
   try {
     const value = await execute((args ?? {}) as never)
+    // Renders come back as an image the agent can look at, with any other fields as text.
+    if (value && typeof value === 'object' && 'image' in value && 'mediaType' in value) {
+      const { image, mediaType, ...rest } = value as { image: string; mediaType: string }
+      return { content: [{ type: 'image', data: image, mimeType: mediaType }, ...(Object.keys(rest).length ? [{ type: 'text', text: JSON.stringify(rest) }] : [])] }
+    }
     const text = typeof value === 'string' ? value : JSON.stringify(value ?? '')
     return { content: [{ type: 'text', text }] }
   } catch (error) {
@@ -29,7 +34,9 @@ function buildTools() {
     s3d_get_document: 'get_document', s3d_create_nodes: 'create_nodes', s3d_update_nodes: 'update_nodes', s3d_delete_nodes: 'delete_nodes',
     s3d_select: 'select_nodes', s3d_list_pages: 'list_pages', s3d_set_page: 'set_page', s3d_verify_design: 'verify_design',
     s3d_create_scene: 'create_scene', s3d_add_objects: 'add_objects', s3d_update_objects: 'update_objects', s3d_delete_objects: 'delete_objects',
-    s3d_set_scene: 'set_scene', s3d_get_scene: 'get_scene',
+    s3d_set_scene: 'set_scene', s3d_get_scene: 'get_scene', s3d_render_scene: 'render_scene', s3d_render_timeline: 'render_timeline',
+    s3d_add_character: 'add_character', s3d_animate_character: 'animate_character', s3d_set_keyframes: 'set_keyframes',
+    s3d_capture_image: 'capture_image', s3d_record_video: 'record_video',
   }
   const tools = Object.entries(map).map(([name, key]) => ({
     name,

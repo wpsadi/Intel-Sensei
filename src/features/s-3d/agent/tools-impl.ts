@@ -1,13 +1,16 @@
 import { z } from 'zod'
+import { toast } from 'sonner'
 import { useS3D } from '../store'
 import { uid } from '../db'
 import { FRAME_PRESETS, absRect, childrenOf, solid, stroke } from '../model'
 import * as THREE from 'three'
-import { DEFAULT_MATERIAL, GEOMETRY_PARAMS, MATERIAL_PRESETS, sceneOf, buildScene, emptyScene, fitCamera, makeCamera, objectBounds, renderScene } from '../render/scene3d'
+import { DEFAULT_MATERIAL, GEOMETRY_PARAMS, MATERIAL_PRESETS, sceneOf, measureScene, emptyScene, fitCamera, makeCamera, objectBounds, recordScene, renderScene, renderTimeline, sceneDuration } from '../render/scene3d'
+import { DEFAULT_LOOK, animateCharacter, buildCharacter } from './character'
+import { downloadBlob, storeFile } from '../files'
 import { type DiscoverItem, OWNING_UNITS, searchModels } from '../discover/smithsonian'
 import { importRemoteModel } from '../io'
 import { askUser } from './ask-user'
-import type { Effect, Fill, Geometry3D, Material3D, NodeType, Obj3D, SNode, Scene3D, Vec3 } from '../types'
+import type { Effect, Fill, Geometry3D, Keyframe3D, Material3D, NodeType, Obj3D, SNode, Scene3D, Vec3 } from '../types'
 
 const s = () => useS3D.getState()
 
@@ -112,7 +115,7 @@ const objProps = {
   src: z.string().optional().describe('model: s3d-file ref or URL of a GLB/GLTF (normalized to fit a 1-unit cube on the ground; use scale to size it)'),
   castShadow: z.boolean().optional(),
   visible: z.boolean().optional(),
-  animate: z.object({ kind: z.enum(['spin', 'float', 'pulse', 'orbit']), speed: z.number().optional() }).nullable().optional().describe('Play-mode motion; null removes it'),
+  animate: z.object({ kind: z.enum(['spin', 'float', 'pulse', 'orbit']), speed: z.number().optional().describe('Radians per second for spin'), axis: z.enum(['x', 'y', 'z']).optional().describe('Spin axis in the object\'s own frame (default y). Windmill/fan blades facing +z spin around z') }).nullable().optional().describe('Looping motion; null removes it'),
 }
 
 export type ObjSpec = { id?: string; kind?: Obj3D['kind']; children?: ObjSpec[] } & { [K in keyof typeof objProps]?: z.infer<(typeof objProps)[K]> }
@@ -133,6 +136,24 @@ const sceneSettings = {
   shadows: z.boolean().optional(),
 }
 const VIEWS = ['iso', 'front', 'side', 'top'] as const
+
+const keyframeSpec = z.object({
+  t: z.number().describe('Seconds'),
+  position: vec3.optional(), rotation: vec3.optional().describe('Degrees'), scale: vec3.optional(), visible: z.boolean().optional(),
+  ease: z.enum(['linear', 'ease-in-out']).optional(),
+})
+const xz = z.array(z.number()).length(2).describe('[x, z] on the ground')
+const actionSpec = z.discriminatedUnion('type', [
+  z.object({ type: z.literal('walk'), to: xz, speed: z.number().optional().describe('m/s, default 1.3') }),
+  z.object({ type: z.literal('run'), to: xz, speed: z.number().optional() }),
+  z.object({ type: z.literal('turn'), facing: z.number().optional().describe('Yaw degrees; 0 faces +z, 90 faces +x'), toward: xz.optional(), duration: z.number().optional() }),
+  z.object({ type: z.literal('sit'), seatHeight: z.number().describe('Height of the seat top (sofa cushion ~0.45, chair ~0.46, table top ~0.75)'), at: xz.optional().describe('Seat centre the pelvis ends over; the character turns its back to it'), facing: z.number().optional(), duration: z.number().optional() }),
+  z.object({ type: z.literal('stand'), to: xz.optional().describe('Walk here after standing'), duration: z.number().optional() }),
+  z.object({ type: z.literal('idle'), duration: z.number() }),
+  z.object({ type: z.literal('wave'), duration: z.number().optional(), side: z.enum(['l', 'r']).optional() }),
+  z.object({ type: z.literal('jump'), height: z.number().optional(), duration: z.number().optional() }),
+])
+const viewSpec = z.enum(['camera', ...VIEWS]).optional().describe('camera (default) = the scene camera, following its camera path')
 
 export const schemas = {
   get_document: z.object({}),
@@ -174,7 +195,43 @@ export const schemas = {
     frame: z.enum(VIEWS).optional().describe('Re-aim the camera to frame every object from this view'),
   }),
   get_scene: z.object({ sceneId: z.string() }),
-  render_scene: z.object({ sceneId: z.string(), view: z.enum(['camera', ...VIEWS]).optional().describe('camera (default) = what the user sees') }),
+  render_scene: z.object({ sceneId: z.string(), view: z.enum(['camera', ...VIEWS]).optional().describe('camera (default) = what the user sees'), time: z.number().optional().describe('Timeline seconds, default 0') }),
+
+  add_character: z.object({
+    sceneId: z.string(),
+    id: z.string().optional().describe('Readable id, e.g. "man"; part ids are prefixed with it'),
+    name: z.string().optional(),
+    position: xz.optional(),
+    facing: z.number().optional().describe('Yaw degrees; 0 faces +z (toward the default camera)'),
+    height: z.number().optional().describe('Metres, default 1.75'),
+    build: z.enum(['male', 'female']).optional(),
+    skin: z.string().optional(), shirt: z.string().optional(), pants: z.string().optional(), shoes: z.string().optional(), hair: z.string().optional(),
+  }),
+  animate_character: z.object({
+    sceneId: z.string(),
+    characterId: z.string(),
+    actions: z.array(actionSpec).describe('Performed in order'),
+    start: z.number().optional().describe('Start time in seconds; default continues after the character\'s last action'),
+    reset: z.boolean().optional().describe('Clear the character\'s existing motion first'),
+  }),
+  set_keyframes: z.object({
+    sceneId: z.string(),
+    tracks: z.array(z.object({ id: z.string().describe('Object id'), keyframes: z.array(keyframeSpec), append: z.boolean().optional().describe('Keep existing keys (default replaces them)') })).optional(),
+    camera: z.array(z.object({ t: z.number(), position: vec3, target: vec3, fov: z.number().optional() })).optional().describe('Camera path; [] removes it'),
+    duration: z.number().optional().describe('Timeline length in seconds'),
+  }),
+  render_timeline: z.object({ sceneId: z.string(), times: z.array(z.number()).max(9).optional().describe('Seconds to show; default 6 evenly spaced'), view: viewSpec }),
+  capture_image: z.object({
+    sceneId: z.string(), time: z.number().optional().describe('Timeline seconds, default 0'), view: viewSpec,
+    width: z.number().optional().describe('Pixels, default the scene size, max 4096'), height: z.number().optional(),
+    download: z.boolean().optional().describe('Also save to the user\'s downloads'),
+  }),
+  record_video: z.object({
+    sceneId: z.string(), duration: z.number().optional().describe('Seconds, default the timeline length (max 120)'),
+    fps: z.number().optional().describe('Default 30'), view: viewSpec,
+    width: z.number().optional().describe('Pixels, default the scene size up to 1280'), height: z.number().optional(),
+    download: z.boolean().optional(),
+  }),
 
   search_3d_models: z.object({
     query: z.string().describe('Short subject keywords, e.g. "triceratops", "space shuttle", "mask"'),
@@ -373,7 +430,7 @@ function addSpecs(scene: Scene3D, specs: ObjSpec[], parent: string | null, out: 
 /** Lifts or lowers objects so their lowest point touches the ground. */
 async function dropToGround(scene: Scene3D, ids: string[]) {
   if (!ids.length) return
-  const bounds = objectBounds(await buildScene(scene, { models: false }))
+  const bounds = await measureScene(scene, objectBounds)
   for (const id of ids) {
     const o = scene.objects.find((x) => x.id === id)
     const b = bounds.get(id)
@@ -408,8 +465,7 @@ async function sceneIssues(n: SNode, issues: Issue[], warnings: Issue[]) {
   const at = (o: Obj3D, problem: string) => ({ id: o.id, name: o.name, sceneId: n.id, problem })
   if (!scene.objects.some((o) => o.kind !== 'light')) issues.push({ id: n.id, name: n.name, problem: 'is an empty 3D scene' })
   if (!hasLight(scene)) issues.push({ id: n.id, name: n.name, problem: 'has no lights and no environment, so it renders black' })
-  const root = await buildScene(scene, { models: false })
-  const bounds = objectBounds(root)
+  const bounds = await measureScene(scene, objectBounds)
   const cam = makeCamera(scene, n.w / Math.max(n.h, 1))
   const frustum = new THREE.Frustum().setFromProjectionMatrix(new THREE.Matrix4().multiplyMatrices(cam.projectionMatrix, cam.matrixWorldInverse))
   const camPos = new THREE.Vector3(...scene.camera.position)
@@ -439,11 +495,23 @@ async function sceneIssues(n: SNode, issues: Issue[], warnings: Issue[]) {
       const corners = [0, 1, 2, 3, 4, 5, 6, 7].map((i) => new THREE.Vector3(i & 1 ? b.max.x : b.min.x, i & 2 ? b.max.y : b.min.y, i & 4 ? b.max.z : b.min.z))
       if (!corners.every((c) => frustum.containsPoint(c))) warnings.push(at(o, 'is partly cut off by the frame'))
     }
-    if (scene.ground.visible && !o.animate && b.min.y > scene.ground.y + 0.05) {
+    if (scene.ground.visible && !o.animate && !o.keyframes?.length && b.min.y > scene.ground.y + 0.05) {
       const near = b.clone().expandByScalar(0.03)
       if (!tops.some((x) => x !== o && near.intersectsBox(topBox(x)))) warnings.push(at(o, `floats ${round(b.min.y - scene.ground.y)} above the ground touching nothing`))
     }
   }
+}
+
+/** Stores a rendered image or video and places it on the canvas right of its scene. Returns the new node id. */
+async function placeOutput(sceneId: string, blob: Blob, name: string, type: 'image' | 'video') {
+  const scene = s().doc.nodes[sceneId]
+  const src = await storeFile(blob, name, s().doc.id)
+  const w = Math.min(scene.w, 800), h = Math.round((w * scene.h) / scene.w)
+  const taken = Object.values(s().doc.nodes).filter((x) => x.parentId === scene.parentId && x.x >= scene.x + scene.w && x.y < scene.y + h && x.y + x.h > scene.y)
+  const x = Math.max(scene.x + scene.w, ...taken.map((t) => t.x + t.w)) + 40
+  const node = s().addNode(type, { name, src, x, y: scene.y, w, h }, scene.parentId)
+  createdIds.push(node.id)
+  return node.id
 }
 
 /** Search results by id, so imports use the real download URL rather than one the model retyped. */
@@ -537,7 +605,7 @@ export const impl = {
     }
     await dropToGround(scene, out.ground)
     applySettings(scene, { camera })
-    if (!camera?.position) scene.camera = fitCamera(await buildScene(scene, { models: false }), w / h, camera?.fov ?? 40)
+    if (!camera?.position) scene.camera = await measureScene(scene, (r) => fitCamera(r, w / h, camera?.fov ?? 40))
     const node = s().addNode('shape3d', { name, x: x ?? right, y: y ?? 0, w, h, scene }, parent)
     createdIds.push(node.id)
     return { sceneId: node.id, objects: out.ids, camera: scene.camera }
@@ -578,17 +646,18 @@ export const impl = {
     if (frame) {
       const n = s().doc.nodes[sceneId]
       const dirs: Record<(typeof VIEWS)[number], Vec3> = { iso: [1, 0.75, 1.3], front: [0, 0.15, 1], side: [1, 0.15, 0], top: [0.001, 1, 0.001] }
-      scene.camera = fitCamera(await buildScene(scene, { models: false }), n.w / Math.max(n.h, 1), scene.camera.fov, dirs[frame])
+      scene.camera = await measureScene(scene, (r) => fitCamera(r, n.w / Math.max(n.h, 1), scene.camera.fov, dirs[frame]))
     }
     saveScene(sceneId, scene)
     return { camera: scene.camera }
   },
   async get_scene({ sceneId }: z.infer<typeof schemas.get_scene>) {
     const scene = sceneNode(sceneId)
-    const bounds = objectBounds(await buildScene(scene, { models: false }))
+    const bounds = await measureScene(scene, objectBounds)
     const { objects, ...settings } = scene
     return {
       ...settings,
+      duration: sceneDuration(scene),
       objects: objects.map((o) => {
         const b = bounds.get(o.id)
         return {
@@ -596,7 +665,7 @@ export const impl = {
           ...(o.geometry && { geometry: o.geometry, params: o.params }), position: o.position,
           ...(o.rotation.some(Boolean) && { rotation: o.rotation }), ...(o.scale.some((v) => v !== 1) && { scale: o.scale }),
           ...(o.material && { color: o.material.color, metalness: o.material.metalness, roughness: o.material.roughness }),
-          ...(o.light && { light: o.light }), ...(o.animate && { animate: o.animate }), ...(!o.visible && { visible: false }),
+          ...(o.light && { light: o.light }), ...(o.animate && { animate: o.animate }), ...(o.keyframes?.length && { keyframes: o.keyframes.length, keyframeSpan: [o.keyframes[0].t, o.keyframes.at(-1)!.t] }), ...(!o.visible && { visible: false }),
           ...(b && { worldMin: rv(b.min), worldMax: rv(b.max) }),
         }
       }),
@@ -617,10 +686,77 @@ export const impl = {
     if (res.sceneId) (sceneId ? touchedIds : createdIds).push(res.sceneId)
     return { ...res, title: item.title }
   },
-  async render_scene({ sceneId, view }: z.infer<typeof schemas.render_scene>) {
+  async render_scene({ sceneId, view, time }: z.infer<typeof schemas.render_scene>) {
     const n = s().doc.nodes[sceneId]
-    const image = await renderScene(sceneNode(sceneId), n.w, n.h, view ?? 'camera')
+    const image = await renderScene(sceneNode(sceneId), n.w, n.h, view ?? 'camera', time ?? 0)
     return { image, mediaType: 'image/png' }
+  },
+  add_character({ sceneId, id, name, position, facing, ...look }: z.infer<typeof schemas.add_character>) {
+    const scene = structuredClone(sceneNode(sceneId))
+    let cid = id?.trim() || `person-${uid().slice(0, 4)}`
+    while (scene.objects.some((o) => o.id === cid || o.id.startsWith(`${cid}-`))) cid = `${cid}-${uid().slice(0, 3)}`
+    const defined = Object.fromEntries(Object.entries(look).filter(([, v]) => v !== undefined))
+    const parts = buildCharacter(cid, name ?? cid, { ...DEFAULT_LOOK, ...defined }, [position?.[0] ?? 0, scene.ground.y, position?.[1] ?? 0], facing ?? 0)
+    scene.objects.push(...parts)
+    saveScene(sceneId, scene)
+    return { characterId: cid, parts: parts.length, joints: 'hips, spine, neck, shoulder-l/r, elbow-l/r, leg-l/r, knee-l/r (ids prefixed with the character id)' }
+  },
+  animate_character({ sceneId, characterId, actions, start, reset }: z.infer<typeof schemas.animate_character>) {
+    const scene = structuredClone(sceneNode(sceneId))
+    if (reset) for (const o of scene.objects) if (o.id === characterId || o.id.startsWith(`${characterId}-`)) delete o.keyframes
+    const end = animateCharacter(scene, characterId, actions as never, start)
+    scene.duration = Math.max(scene.duration ?? 0, end + 0.5)
+    saveScene(sceneId, scene)
+    const root = scene.objects.find((o) => o.id === characterId)!
+    const last = root.keyframes!.at(-1)!
+    return { ends: end, duration: scene.duration, finalPosition: last.position, finalFacing: last.rotation?.[1] }
+  },
+  set_keyframes({ sceneId, tracks, camera, duration }: z.infer<typeof schemas.set_keyframes>) {
+    const scene = structuredClone(sceneNode(sceneId))
+    for (const tr of tracks ?? []) {
+      const o = scene.objects.find((x) => x.id === tr.id)
+      if (!o) throw new Error(`No object ${tr.id} in this scene`)
+      const keys = [...(tr.append ? o.keyframes ?? [] : []), ...(tr.keyframes as Keyframe3D[])].sort((a, b) => a.t - b.t)
+      o.keyframes = keys.length ? keys : undefined
+    }
+    if (camera) scene.cameraKeys = camera.length ? [...camera].sort((a, b) => a.t - b.t) as Scene3D['cameraKeys'] : undefined
+    if (duration !== undefined) scene.duration = duration || undefined
+    saveScene(sceneId, scene)
+    return { duration: sceneDuration(scene) }
+  },
+  async render_timeline({ sceneId, times, view }: z.infer<typeof schemas.render_timeline>) {
+    const n = s().doc.nodes[sceneId]
+    const scene = sceneNode(sceneId)
+    const d = sceneDuration(scene)
+    const at = times?.length ? times : Array.from({ length: 6 }, (_, i) => round((d * i) / 5))
+    const image = await renderTimeline(scene, n.w, n.h, at, view ?? 'camera')
+    return { image, mediaType: 'image/png' }
+  },
+  async capture_image({ sceneId, time, view, width, height, download }: z.infer<typeof schemas.capture_image>) {
+    const n = s().doc.nodes[sceneId]
+    const w = width ?? (height ? Math.round((height * n.w) / n.h) : n.w), h = height ?? Math.round((w * n.h) / n.w)
+    const image = await renderScene(sceneNode(sceneId), w, h, view ?? 'camera', time ?? 0, 4096)
+    const blob = await (await fetch(`data:image/png;base64,${image}`)).blob()
+    const name = `${n.name} ${time ? `${time}s` : 'still'}.png`
+    const nodeId = await placeOutput(sceneId, blob, name, 'image')
+    if (download) downloadBlob(blob, name)
+    return { image, mediaType: 'image/png', imageNodeId: nodeId }
+  },
+  async record_video({ sceneId, duration, fps, view, width, height, download }: z.infer<typeof schemas.record_video>) {
+    const n = s().doc.nodes[sceneId]
+    const w = width ?? (height ? Math.round((height * n.w) / n.h) : n.w), h = height ?? Math.round((w * n.h) / n.w)
+    const toastId = toast.loading('Recording video…')
+    try {
+      const v = await recordScene(sceneNode(sceneId), w, h, { duration, fps, view: view ?? 'camera', max: 1920, onProgress: (f) => toast.loading(`Recording video… ${Math.round(f * 100)}%`, { id: toastId }) })
+      const name = `${n.name}.${v.ext}`
+      const nodeId = await placeOutput(sceneId, v.blob, name, 'video')
+      if (download) downloadBlob(v.blob, name)
+      toast.success('Video recorded', { id: toastId })
+      return { videoNodeId: nodeId, seconds: v.duration, fps: v.fps, size: `${v.width}x${v.height}`, format: v.ext, bytes: v.blob.size }
+    } catch (e) {
+      toast.error('Recording failed', { id: toastId })
+      throw e
+    }
   },
 }
 
@@ -635,7 +771,13 @@ export const DESCRIPTIONS: Record<keyof typeof impl, string> = {
   search_3d_models: 'Search the internet (Smithsonian open-access 3D collection) for real scanned 3D models. Returns ids, titles and thumbnail images.',
   ask_user: 'Open a large chooser in front of the user and WAIT for their decision. Use it to let them pick between search results (pass thumbs as images), design directions or variations. Returns { chosen: [option ids], message? } or { dismissed: true }.',
   import_3d_model: 'Download a model found with search_3d_models and add it to a scene (sceneId) or as a new scene.',
-  render_scene: 'Render the scene to an image and look at it. Use it to judge proportions, composition, colour and lighting from the camera or a preset view.',
+  render_scene: 'Render the scene to an image and look at it (optionally at a timeline time). Use it to judge proportions, composition, colour and lighting from the camera or a preset view.',
+  add_character: 'Add a rigged person (head, hair, torso, arms, legs, shoes with joint pivots) standing at [x, z]. Set shirt/pants/skin/hair colours, height and build. Returns the characterId for animate_character.',
+  animate_character: 'Make a character act over time: walk/run to a point, turn, sit on a seat of given height, stand up, idle, wave, jump. Actions play in order and chain after earlier ones; the timeline grows to fit.',
+  set_keyframes: 'Keyframe any object over time (position, rotation degrees, scale, visible at t seconds) — doors opening, cars driving, things appearing — plus an optional camera path and the timeline duration. For endless rotation use update_objects animate spin instead.',
+  render_timeline: 'Render several moments of the animation in one contact sheet image to check the motion (positions, poses, contact with seats, framing) before recording.',
+  capture_image: 'Capture a still image of the scene at a time and view (any size up to 4096 px), save it as an image on the canvas beside the scene, optionally download it. Returns the image to look at.',
+  record_video: 'Record the scene animation (looping motion, keyframes, characters, camera path) to a video file, placed as a video node beside the scene and optionally downloaded. Takes about as long as the clip to record.',
   get_document: 'Read the current page as a node tree (ids, types, names, positions relative to parent, sizes, fills, text) plus the selection.',
   create_nodes: 'Create nested nodes inside a parent (frame id) or on the page. Coordinates are relative to the parent. Children of auto-layout frames are positioned automatically.',
   update_nodes: 'Change properties of existing nodes by id.',
@@ -679,6 +821,13 @@ Workflow for 3D:
 - A page holds top-level nodes. Frames are screens/containers. Node types: frame, section, group, rect, ellipse, polygon, star, vector, text. x/y are RELATIVE to the parent, sizes in px.
 - Prefer autoLayout frames for stacks, rows, cards, buttons and lists; use sizing {h:'fill'} to stretch a child, {h:'hug',v:'hug'} for buttons/chips. Give text a w for wrapping paragraphs.
 - Use a clear type scale (12/14/16/20/24/32/48), 8px grid, generous padding, radius 8-16, accessible contrast. create_screen builds a whole screen in one call; a 3D scene can sit inside a frame via create_scene parentId.
+
+Animation, characters, images and video:
+- Looping motion: update_objects animate {kind:'spin', axis, speed} (windmill blades, fans, wheels: put the blades in a group whose centre is the hub and spin that group around the axis they face), float, pulse, orbit.
+- People: add_character for each person (colours from the request, e.g. shirt "#f97316" for orange), then animate_character with an action list, e.g. walk to the sofa front, sit (seatHeight = cushion top, at = cushion centre), idle, stand, walk to the table, sit. Get seat heights and positions from get_scene bounds. Several characters can act at once using start.
+- Other timed motion and camera moves: set_keyframes.
+- Before recording, check the motion with render_timeline and fix contacts or framing; make sure the camera frames the whole path of moving objects (set_scene frame, or a camera path).
+- When the user asks for a video/clip/recording, finish with record_video; for a picture/screenshot/render, capture_image. Both place the result on the canvas.
 
 Always:
 - Call get_document first when the user refers to "this"/the selection or to existing work.

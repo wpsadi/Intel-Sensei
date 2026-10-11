@@ -137,9 +137,10 @@ function ObjectInspector({ o }: { o: Obj3D }) {
         </Section>
       )}
       {o.kind !== 'light' && (
-        <Section title="Animation (play mode)">
+        <Section title="Animation">
           <Sel<string> value={o.animate?.kind ?? 'none'} options={['none', 'spin', 'float', 'pulse', 'orbit']} onChange={(k) => set((x) => { x.animate = k === 'none' ? undefined : { kind: k as NonNullable<Obj3D['animate']>['kind'], speed: x.animate?.speed ?? 1 } })} />
           {o.animate && <NumberField label="Spd" title="Speed" step={0.1} min={0} value={o.animate.speed} onChange={(speed) => set((x) => { x.animate = { ...x.animate!, speed } })} />}
+          {o.animate?.kind === 'spin' && <Sel<string> value={o.animate.axis ?? 'y'} options={['x', 'y', 'z']} onChange={(axis) => set((x) => { x.animate = { ...x.animate!, axis: axis as 'x' | 'y' | 'z' } })} />}
           {o.kind === 'mesh' && <Check label="Cast shadow" checked={o.castShadow ?? true} onChange={(castShadow) => set((x) => { x.castShadow = castShadow })} />}
         </Section>
       )}

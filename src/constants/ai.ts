@@ -7,11 +7,11 @@ export const OPENAI_KEY_STORAGE = 'sensei.openai_api_key'
 /** localStorage key for an optional OpenAI-compatible base URL (proxy, Azure, OpenRouter…). Stays in this browser only. */
 export const OPENAI_BASE_URL_STORAGE = 'sensei.openai_base_url'
 /** Writes text for the notes page. */
-export const GEMINI_MODEL = 'gemini-3.1-flash-lite'
+export const GEMINI_MODEL = 'gemini-3.5-flash-lite'
 export const TRANSCRIBE_MODEL = 'gemini-3.5-transcribe'
-export const TEST_MODEL = 'gemini-3.1-flash-lite'
+export const TEST_MODEL = 'gemini-3.5-flash-lite'
 /** Runs the chat. */
-export const CHAT_MODEL = 'gemini-3.1-flash-lite'
+export const CHAT_MODEL = 'gemini-3.5-flash-lite'
 export const MINI_STUFF_MODEL = 'gemma-4-26b-a4b-it'
 /** Runs the web search sub-agent with Google Search. */
 export const SEARCH_MODEL = 'antigravity-preview-09-2026'

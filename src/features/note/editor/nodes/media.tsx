@@ -1,4 +1,4 @@
-import { BlockFrame, atomBlock, useCloseOnOutsidePress } from './helpers'
+import { BlockFrame, Resizable, atomBlock, useCloseOnOutsidePress } from './helpers'
 import { FileIcon, ImageIcon, MusicIcon, VideoIcon } from 'lucide-react'
 import { type ReactNode, useEffect, useRef, useState } from 'react'
 import { cn } from '@/lib/utils'
@@ -137,49 +137,43 @@ function MediaView({ node, updateAttributes, selected }: NodeViewProps) {
 
   const embed = kind === 'video' ? videoEmbedUrl(src) : null
 
+  if (kind === 'file') {
+    return (
+      <BlockFrame selected={selected}>
+        <a
+          href={url}
+          download={name}
+          target="_blank"
+          rel="noreferrer"
+          className="flex items-center gap-2 rounded-md px-2 py-1.5 text-sm hover:bg-muted"
+        >
+          <FileIcon className="size-4 text-muted-foreground" />
+          <span className="truncate">{name}</span>
+          {size > 0 && <span className="text-xs text-muted-foreground">{formatSize(size)}</span>}
+        </a>
+      </BlockFrame>
+    )
+  }
+
   return (
     <BlockFrame selected={selected}>
-      <figure className="group/media relative" style={{ width: kind === 'image' || kind === 'video' ? `${width}%` : undefined }}>
-        {kind === 'image' && url && <img src={url} alt={caption || name} className="w-full rounded-md" draggable={false} />}
-        {kind === 'video' &&
-          (embed ? (
-            <iframe src={embed} className="aspect-video w-full rounded-md" allowFullScreen title={name} />
-          ) : (
-            url && <video src={url} controls className="w-full rounded-md" />
-          ))}
-        {kind === 'audio' && url && <audio src={url} controls className="w-full" />}
-        {kind === 'file' && (
-          <a
-            href={url}
-            download={name}
-            target="_blank"
-            rel="noreferrer"
-            className="flex items-center gap-2 rounded-md px-2 py-1.5 text-sm hover:bg-muted"
-          >
-            <FileIcon className="size-4 text-muted-foreground" />
-            <span className="truncate">{name}</span>
-            {size > 0 && <span className="text-xs text-muted-foreground">{formatSize(size)}</span>}
-          </a>
-        )}
-        {(kind === 'image' || kind === 'video') && (
-          <input
-            type="range"
-            min={20}
-            max={100}
-            value={width}
-            onChange={(event) => updateAttributes({ width: Number(event.target.value) })}
-            className="absolute top-2 right-2 w-24 opacity-0 transition group-hover/media:opacity-100"
-            title="Resize"
-          />
-        )}
-        {kind !== 'file' && (
-          <input
-            value={caption}
-            onChange={(event) => updateAttributes({ caption: event.target.value })}
-            placeholder="Write a caption…"
-            className="mt-1 w-full bg-transparent text-sm text-muted-foreground outline-none placeholder:opacity-0 focus:placeholder:opacity-100"
-          />
-        )}
+      <figure>
+        <Resizable width={width} onResize={(value) => updateAttributes({ width: value })}>
+          {kind === 'image' && url && <img src={url} alt={caption || name} className="w-full rounded-md" draggable={false} />}
+          {kind === 'video' &&
+            (embed ? (
+              <iframe src={embed} className="aspect-video w-full rounded-md" allowFullScreen title={name} />
+            ) : (
+              url && <video src={url} controls className="w-full rounded-md" />
+            ))}
+          {kind === 'audio' && url && <audio src={url} controls className="w-full" />}
+        </Resizable>
+        <input
+          value={caption}
+          onChange={(event) => updateAttributes({ caption: event.target.value })}
+          placeholder="Write a caption…"
+          className="mt-1 w-full bg-transparent text-sm text-muted-foreground outline-none placeholder:opacity-0 focus:placeholder:opacity-100"
+        />
       </figure>
     </BlockFrame>
   )

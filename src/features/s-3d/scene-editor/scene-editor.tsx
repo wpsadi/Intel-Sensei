@@ -8,7 +8,7 @@ import { Button } from '@/components/ui/button'
 import { DropdownMenu, DropdownMenuContent, DropdownMenuGroup, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
 import { cn } from '@/lib/utils'
 import { eventKey } from '../commands'
-import { GEOMETRY_PARAMS, applyLook, buildScene, disposeTree, fitCamera, sceneOf } from '../render/scene3d'
+import { GEOMETRY_PARAMS, animate, applyLook, buildScene, disposeTree, fitCamera, sceneOf } from '../render/scene3d'
 import { useS3D } from '../store'
 import { GLBoundary } from '../render/three-view'
 import type { Geometry3D, Light3D, Scene3D, Vec3 } from '../types'
@@ -80,7 +80,22 @@ function EditorScene({ scene, view, startTarget }: { scene: Scene3D; view: React
   }, [root, edit.selected])
 
   const outline = useMemo(() => (selectedObj ? new THREE.BoxHelper(selectedObj, '#3b82f6') : null), [selectedObj])
-  useFrame(() => outline?.update())
+  // Motion plays while editing; it pauses during a gizmo drag so the drag edits the saved pose.
+  const time = useRef(0)
+  useFrame((_, dt) => {
+    if (root && !dragging.current) {
+      time.current += dt
+      animate(root, time.current)
+    }
+    outline?.update()
+  })
+  const toBasePose = (o: THREE.Object3D) => {
+    const base = o.userData.base as { position: Vec3; rotation: Vec3; scale: Vec3 } | undefined
+    if (!base || (!o.userData.animate && !o.userData.keyframes)) return
+    o.position.set(...base.position)
+    o.rotation.set(...(base.rotation.map((d) => THREE.MathUtils.degToRad(d)) as Vec3))
+    o.scale.set(...base.scale)
+  }
 
   const onClick = (e: ThreeEvent<MouseEvent>) => {
     // A drag that orbited the camera is not a click.
@@ -115,7 +130,10 @@ function EditorScene({ scene, view, startTarget }: { scene: Scene3D; view: React
           object={selectedObj}
           mode={edit.gizmo}
           size={0.8}
-          onMouseDown={() => { dragging.current = true }}
+          onMouseDown={() => {
+            dragging.current = true
+            toBasePose(selectedObj)
+          }}
           onMouseUp={() => {
             commit()
             // The click that ends a drag must not change the selection.

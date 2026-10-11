@@ -1,6 +1,6 @@
 import { Node, mergeAttributes } from '@tiptap/core'
 import { NodeViewWrapper, ReactNodeViewRenderer } from '@tiptap/react'
-import { type ReactNode, type RefObject, createContext, useContext, useEffect } from 'react'
+import { type PointerEvent as ReactPointerEvent, type ReactNode, type RefObject, createContext, useContext, useEffect, useRef, useState } from 'react'
 import { cn } from '@/lib/utils'
 
 /** The page that hosts the editor. Node views use it to create children and render breadcrumbs. */
@@ -97,5 +97,76 @@ export function UrlForm({ placeholder, onSubmit, button = 'Embed' }: { placehold
         {button}
       </button>
     </form>
+  )
+}
+
+/**
+ * Centers its content at `width` percent of the block, with a drag handle on each side (like Notion's media blocks).
+ * The block grows from both edges, so a drag moves the edge by the pointer delta and the width by twice that.
+ */
+export function Resizable({
+  width,
+  onResize,
+  min = 20,
+  className,
+  children,
+}: {
+  width: number
+  onResize: (width: number) => void
+  min?: number
+  className?: string
+  children: ReactNode
+}) {
+  const ref = useRef<HTMLDivElement>(null)
+  const [draft, setDraft] = useState<number | null>(null)
+  const shown = draft ?? width
+
+  const start = (side: 1 | -1) => (event: ReactPointerEvent) => {
+    const box = ref.current
+    const parent = box?.parentElement
+    if (!box || !parent) return
+    event.preventDefault()
+    event.stopPropagation()
+    const startX = event.clientX
+    const startPx = box.getBoundingClientRect().width
+    const total = parent.getBoundingClientRect().width
+    let next = shown
+    const move = (e: PointerEvent) => {
+      next = Math.round(Math.min(100, Math.max(min, ((startPx + (e.clientX - startX) * side * 2) / total) * 100)))
+      setDraft(next)
+    }
+    const up = () => {
+      document.removeEventListener('pointermove', move)
+      document.removeEventListener('pointerup', up)
+      document.body.style.cursor = ''
+      setDraft(null)
+      if (next !== width) onResize(next)
+    }
+    document.body.style.cursor = 'ew-resize'
+    document.addEventListener('pointermove', move)
+    document.addEventListener('pointerup', up)
+  }
+
+  const handle = (side: 1 | -1) => (
+    <div
+      onPointerDown={start(side)}
+      className={cn(
+        'absolute inset-y-0 z-20 flex w-4 cursor-ew-resize items-center justify-center opacity-0 transition-opacity group-hover/resize:opacity-100',
+        draft !== null && 'opacity-100',
+        side === -1 ? 'left-0' : 'right-0',
+      )}
+    >
+      <div className="h-12 max-h-1/2 w-1.5 rounded-full border border-background/70 bg-foreground/60 shadow" />
+    </div>
+  )
+
+  return (
+    <div ref={ref} className={cn('group/resize relative mx-auto', className)} style={{ width: `${shown}%` }}>
+      {children}
+      {handle(-1)}
+      {handle(1)}
+      {/* Iframes swallow pointer events mid-drag; this shield keeps the drag alive over them. */}
+      {draft !== null && <div className="absolute inset-0 z-10" />}
+    </div>
   )
 }

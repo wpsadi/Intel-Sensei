@@ -70,7 +70,27 @@ export interface Obj3D {
   /** model objects: a `s3d-file:` ref or URL to a GLB/GLTF. */
   src?: string
   castShadow?: boolean
-  animate?: { kind: 'spin' | 'float' | 'pulse' | 'orbit'; speed: number }
+  /** Looping motion; spin turns around `axis` (default y). */
+  animate?: { kind: 'spin' | 'float' | 'pulse' | 'orbit'; speed: number; axis?: 'x' | 'y' | 'z' }
+  /** Timeline keyframes (local transform at time t seconds); channels left out of a key keep interpolating between the keys that set them. */
+  keyframes?: Keyframe3D[]
+}
+
+export interface Keyframe3D {
+  t: number
+  position?: Vec3
+  rotation?: Vec3
+  scale?: Vec3
+  visible?: boolean
+  /** Easing into this key from the previous one. Default ease-in-out. */
+  ease?: 'linear' | 'ease-in-out'
+}
+
+export interface CameraKey3D {
+  t: number
+  position: Vec3
+  target: Vec3
+  fov?: number
 }
 
 export interface Scene3D {
@@ -82,6 +102,10 @@ export interface Scene3D {
   camera: { position: Vec3; target: Vec3; fov: number }
   ground: { visible: boolean; color: string; y: number }
   shadows: boolean
+  /** Timeline length in seconds; defaults to the last keyframe. */
+  duration?: number
+  /** Camera moves over the timeline; the static camera is used when empty. */
+  cameraKeys?: CameraKey3D[]
 }
 
 export type BooleanOp = 'union' | 'subtract' | 'intersect' | 'exclude'

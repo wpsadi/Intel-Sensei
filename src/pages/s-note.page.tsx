@@ -13,7 +13,7 @@ import { TrashView } from '@/features/note/components/TrashView'
 import SNoteSidebar from '@/features/note/components/SNote.sidebar'
 import { Toaster } from '@/components/ui/sonner'
 import { cn } from '@/lib/utils'
-import { pageTitle } from '@/features/note/editor/nodes/pages'
+import { PageIcon, pageTitle } from '@/features/note/editor/nodes/pages'
 import { useNoteStore } from '@/features/note/note.store'
 import { NoteTools } from '@/features/note/webmcp/NoteTools'
 import { SenseiWidget } from '@/features/note/sensei-widget/SenseiWidget'
@@ -31,7 +31,7 @@ function PageHeader({ pageId }: { pageId?: string }) {
           <Fragment key={item.id}>
             {index > 0 && <ChevronRightIcon className="size-3 shrink-0 text-muted-foreground" />}
             <Link to={`/s-note/${item.id}`} className="flex min-w-0 items-center gap-1 rounded px-1 hover:bg-muted">
-              {item.icon && <span>{item.icon}</span>}
+              {item.icon && <PageIcon icon={item.icon} />}
               <span className="truncate">{pageTitle(item.title)}</span>
             </Link>
           </Fragment>

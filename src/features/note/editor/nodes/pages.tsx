@@ -113,7 +113,7 @@ function BreadcrumbView({ selected }: NodeViewProps) {
           <Fragment key={page.id}>
             {index > 0 && <ChevronRightIcon className="size-3" />}
             <Link to={`/s-note/${page.id}`} className="flex items-center gap-1 rounded px-1 hover:bg-muted hover:text-foreground">
-              {page.icon && <span>{page.icon}</span>}
+              {page.icon && <PageIcon icon={page.icon} />}
               {pageTitle(page.title)}
             </Link>
           </Fragment>

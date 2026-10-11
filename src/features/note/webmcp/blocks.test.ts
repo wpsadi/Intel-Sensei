@@ -45,8 +45,11 @@ describe('S-Note block tools', () => {
     forgetRead('p1')
     await expect(updateBlock({ block: '1', text: 'x' }, ctx)).rejects.toThrow(/Read "Launch" first/)
     listBlocks({ page: 1 }, ctx)
-    // The user types in the note after the agent looked at it.
+    // Typing does not move block addresses, so it does not force another read.
     editor.commands.insertContentAt(1, 'New ')
+    await expect(updateBlock({ block: '1', text: 'x' }, ctx)).resolves.toMatchObject({ status: 'updated' })
+    // The user adds a block after the agent looked at it.
+    editor.commands.insertContentAt(0, { type: 'paragraph', content: [{ type: 'text', text: 'Top' }] })
     await expect(updateBlock({ block: '1', text: 'x' }, ctx)).rejects.toThrow(/has changed since you last read it/)
     listBlocks({ page: 1 }, ctx)
     await expect(updateBlock({ block: '1', text: 'x' }, ctx)).resolves.toMatchObject({ status: 'updated' })
@@ -69,8 +72,11 @@ describe('S-Note block tools', () => {
     const kinds = listBlocks({ page: 1 }, ctx).blocks.map((b) => b.type)
     expect(kinds.slice(0, 6)).toEqual(['h1', 'todo', 'callout', 'code', 'table', 'h2'])
     expect(readBlock({ block: '1.1' }, ctx)).toMatchObject({ type: 'todo_item', checked: true, text: 'Pick date' })
-    expect(readBlock({ block: '2' }, ctx).attrs).toMatchObject({ icon: '💸' })
+    expect(readBlock({ block: '2' }, ctx)).toMatchObject({ attrs: { icon: '💸' } })
     expect(readBlock({ block: '3' }, ctx)).toMatchObject({ text: 'npm run build', attrs: { language: 'bash' } })
+    expect(readBlock({ blocks: ['1.1', '3', '99'] }, ctx)).toMatchObject({
+      blocks: [{ block: '1.1', text: 'Pick date' }, { block: '3', text: 'npm run build' }, { block: '99', error: expect.any(String) }],
+    })
   })
 
   it('edits, converts, ticks and comments on blocks', async () => {

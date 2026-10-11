@@ -92,7 +92,7 @@ async function execTool(name: keyof typeof impl, args: unknown, track: RunTrack)
 let toolSpecs: Promise<Record<string, ToolSpec>> | null = null
 const getToolSpecs = () =>
   (toolSpecs ??= Promise.all(
-    (Object.keys(impl) as (keyof typeof impl)[]).map(async (name) => [name, { description: DESCRIPTIONS[name], schema: await asSchema(schemas[name] as never).jsonSchema, imageOutput: name === 'render_scene' } satisfies ToolSpec] as const),
+    (Object.keys(impl) as (keyof typeof impl)[]).map(async (name) => [name, { description: DESCRIPTIONS[name], schema: await asSchema(schemas[name] as never).jsonSchema, imageOutput: name === 'render_scene' || name === 'render_timeline' || name === 'capture_image' } satisfies ToolSpec] as const),
   ).then(Object.fromEntries))
 
 /* ---------- run ---------- */

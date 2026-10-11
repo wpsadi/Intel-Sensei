@@ -1,5 +1,6 @@
 import { BlockFrame, atomBlock } from './helpers'
-import { CopyIcon, RefreshCwIcon } from 'lucide-react'
+import { CheckIcon, CopyIcon, RefreshCwIcon } from 'lucide-react'
+import { useCopy } from '@/hooks/use-copy'
 import { EMPTY_DOC, syncedRepo } from '../../db/repo'
 import { useNoteStore } from '../../note.store'
 import { useEffect, useRef, useState } from 'react'
@@ -15,6 +16,7 @@ function SyncedView({ node, selected }: NodeViewProps) {
   const [content, setContent] = useState<string>()
   const [revision, setRevision] = useState(0)
   const lastWrite = useRef('')
+  const { copied, copy } = useCopy()
 
   useEffect(() => {
     const load = () =>
@@ -36,11 +38,11 @@ function SyncedView({ node, selected }: NodeViewProps) {
           <RefreshCwIcon className="size-3" /> Synced
           <button
             type="button"
-            title="Copy synced block"
-            onClick={() => navigator.clipboard.writeText(`snote-synced:${syncId}`)}
-            className="ml-1"
+            title={copied ? 'Copied' : 'Copy synced block'}
+            onClick={() => void copy(`snote-synced:${syncId}`)}
+            className="ml-1 flex items-center gap-0.5"
           >
-            <CopyIcon className="size-3" />
+            {copied ? <><CheckIcon className="size-3" />Copied</> : <CopyIcon className="size-3" />}
           </button>
         </div>
         {content !== undefined && (

@@ -80,7 +80,7 @@ const LIST_BLOCKS = {
 }
 const READ_BLOCK = {
   name: 'read_block',
-  description: "Returns one block's full text, settings, comments and children. Use when you need more than the list_blocks preview, such as a long paragraph, a table's cells or a block's URL.",
+  description: "Returns blocks' full text, settings, comments and children. Use when you need more than the list_blocks preview, such as a long paragraph, a table's cells or a block's URL. To read several blocks, pass them all in `blocks` in one call instead of calling once per block; to read a whole note, use read_note.",
   inputSchema: S.jsonSchema(S.readBlock),
   annotations: READ,
 }

@@ -4,7 +4,7 @@ import { RoomEnvironment } from 'three/examples/jsm/environments/RoomEnvironment
 import { DRACOLoader } from 'three/examples/jsm/loaders/DRACOLoader.js'
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js'
 import { resolveFile } from '../files'
-import type { Geometry3D, Material3D, Obj3D, SNode, Scene3D, Vec3 } from '../types'
+import type { CameraKey3D, Geometry3D, Keyframe3D, Material3D, Obj3D, SNode, Scene3D, Vec3 } from '../types'
 
 /** Dimension keys and defaults per geometry, in scene units. Also documents the params the agent may set. */
 export const GEOMETRY_PARAMS: Record<Geometry3D, Record<string, number>> = {
@@ -85,33 +85,35 @@ const num = (p: Obj3D['params'], key: string, geo: Geometry3D) => {
 }
 const pts = (p: Obj3D['params'], key: string) => (Array.isArray(p?.[key]) ? (p[key] as number[][]) : [])
 
-export function makeGeometry(geo: Geometry3D, p: Obj3D['params']): THREE.BufferGeometry {
+/** `lite` builds low-poly geometry for measuring: the same extents at a fraction of the cost. */
+export function makeGeometry(geo: Geometry3D, p: Obj3D['params'], lite = false): THREE.BufferGeometry {
   const n = (k: string) => num(p, k, geo)
+  const seg = (full: number, low: number) => (lite ? low : full)
   switch (geo) {
     case 'box': return new THREE.BoxGeometry(n('width'), n('height'), n('depth'))
-    case 'roundedBox': return new RoundedBoxGeometry(n('width'), n('height'), n('depth'), 4, Math.min(n('radius'), n('width') / 2, n('height') / 2, n('depth') / 2))
-    case 'sphere': return new THREE.SphereGeometry(n('radius'), 48, 32)
-    case 'cylinder': return new THREE.CylinderGeometry(n('radiusTop'), n('radiusBottom'), n('height'), 48)
-    case 'cone': return new THREE.ConeGeometry(n('radius'), n('height'), 48)
-    case 'capsule': return new THREE.CapsuleGeometry(n('radius'), n('length'), 8, 24)
-    case 'torus': return new THREE.TorusGeometry(n('radius'), n('tube'), 24, 96, THREE.MathUtils.degToRad(n('arc')))
-    case 'torusKnot': return new THREE.TorusKnotGeometry(n('radius'), n('tube'), 160, 20, n('p'), n('q'))
+    case 'roundedBox': return new RoundedBoxGeometry(n('width'), n('height'), n('depth'), seg(4, 1), Math.min(n('radius'), n('width') / 2, n('height') / 2, n('depth') / 2))
+    case 'sphere': return new THREE.SphereGeometry(n('radius'), seg(48, 12), seg(32, 8))
+    case 'cylinder': return new THREE.CylinderGeometry(n('radiusTop'), n('radiusBottom'), n('height'), seg(48, 12))
+    case 'cone': return new THREE.ConeGeometry(n('radius'), n('height'), seg(48, 12))
+    case 'capsule': return new THREE.CapsuleGeometry(n('radius'), n('length'), seg(8, 2), seg(24, 8))
+    case 'torus': return new THREE.TorusGeometry(n('radius'), n('tube'), seg(24, 8), seg(96, 24), THREE.MathUtils.degToRad(n('arc')))
+    case 'torusKnot': return new THREE.TorusKnotGeometry(n('radius'), n('tube'), seg(160, 48), seg(20, 6), n('p'), n('q'))
     case 'plane': return new THREE.PlaneGeometry(n('width'), n('height'))
-    case 'circle': return new THREE.CircleGeometry(n('radius'), 48)
-    case 'ring': return new THREE.RingGeometry(n('innerRadius'), n('outerRadius'), 48)
+    case 'circle': return new THREE.CircleGeometry(n('radius'), seg(48, 12))
+    case 'ring': return new THREE.RingGeometry(n('innerRadius'), n('outerRadius'), seg(48, 12))
     case 'icosahedron': return new THREE.IcosahedronGeometry(n('radius'), n('detail'))
     case 'dodecahedron': return new THREE.DodecahedronGeometry(n('radius'), n('detail'))
     case 'octahedron': return new THREE.OctahedronGeometry(n('radius'), n('detail'))
     case 'tetrahedron': return new THREE.TetrahedronGeometry(n('radius'), n('detail'))
     case 'lathe': {
       const profile = pts(p, 'points').map(([x, y]) => new THREE.Vector2(x, y))
-      return new THREE.LatheGeometry(profile.length > 1 ? profile : [new THREE.Vector2(0, 0), new THREE.Vector2(0.5, 0), new THREE.Vector2(0, 1)], n('segments'))
+      return new THREE.LatheGeometry(profile.length > 1 ? profile : [new THREE.Vector2(0, 0), new THREE.Vector2(0.5, 0), new THREE.Vector2(0, 1)], lite ? Math.min(12, n('segments')) : n('segments'))
     }
     case 'extrude': {
       const outline = pts(p, 'points')
       const shape = new THREE.Shape((outline.length > 2 ? outline : [[0, 0], [1, 0], [0.5, 1]]).map(([x, y]) => new THREE.Vector2(x, y)))
       const bevel = n('bevel')
-      const g = new THREE.ExtrudeGeometry(shape, { depth: n('depth'), bevelEnabled: bevel > 0, bevelSize: bevel, bevelThickness: bevel, bevelSegments: 3 })
+      const g = new THREE.ExtrudeGeometry(shape, { depth: n('depth'), bevelEnabled: bevel > 0, curveSegments: seg(12, 4), bevelSize: bevel, bevelThickness: bevel, bevelSegments: 3 })
       g.center()
       return g
     }
@@ -191,17 +193,18 @@ const rad = (v: Vec3) => v.map((d) => THREE.MathUtils.degToRad(d)) as Vec3
  * Builds the three.js graph for a scene. Every object carries `userData.id`, and animated ones `userData.animate`.
  * Models load asynchronously; pass `models: false` to skip them (bounds then treat a model as a unit cube).
  */
-export async function buildScene(scene: Scene3D, { models = true } = {}) {
+export async function buildScene(scene: Scene3D, { models = true, lite = false } = {}) {
+  const liteMat = lite ? new THREE.MeshBasicMaterial() : null
   const root = new THREE.Group()
   const made = new Map<string, THREE.Object3D>()
   for (const o of scene.objects) {
     let obj: THREE.Object3D
     if (o.kind === 'mesh') {
-      const mesh = new THREE.Mesh(makeGeometry(o.geometry ?? 'box', o.params), makeMaterial(o.material))
+      const mesh = new THREE.Mesh(makeGeometry(o.geometry ?? 'box', o.params, lite), liteMat ?? makeMaterial(o.material))
       mesh.castShadow = o.castShadow ?? true
       mesh.receiveShadow = true
       obj = mesh
-    } else if (o.kind === 'light') obj = makeLight(o, scene.shadows)
+    } else if (o.kind === 'light') obj = lite ? new THREE.Object3D() : makeLight(o, scene.shadows)
     else if (o.kind === 'model') {
       const loaded = models && o.src ? await loadModel(o.src) : null
       obj = loaded ? normalizeModel(loaded) : new THREE.Mesh(new THREE.BoxGeometry(1, 1, 1).translate(0, 0.5, 0), makeMaterial({ color: '#c4b5fd', wireframe: true }))
@@ -212,7 +215,7 @@ export async function buildScene(scene: Scene3D, { models = true } = {}) {
       })
     } else obj = new THREE.Group()
     obj.name = o.name
-    obj.userData = { id: o.id, kind: o.kind, animate: o.animate, base: o.position }
+    obj.userData = { id: o.id, kind: o.kind, animate: o.animate, keyframes: o.keyframes?.length ? o.keyframes : undefined, base: { position: o.position, rotation: o.rotation, scale: o.scale, visible: o.visible } }
     obj.position.set(...o.position)
     obj.rotation.set(...rad(o.rotation))
     obj.scale.set(...o.scale)
@@ -220,7 +223,7 @@ export async function buildScene(scene: Scene3D, { models = true } = {}) {
     made.set(o.id, obj)
   }
   for (const o of scene.objects) (made.get(o.parent ?? '') ?? root).add(made.get(o.id)!)
-  if (scene.ground.visible) {
+  if (scene.ground.visible && !lite) {
     const ground = new THREE.Mesh(new THREE.CircleGeometry(groundRadius(root), 64).rotateX(-Math.PI / 2), new THREE.MeshStandardMaterial({ color: scene.ground.color, roughness: 0.95, alphaMap: groundFade(), transparent: true, depthWrite: false }))
     ground.position.y = scene.ground.y
     ground.receiveShadow = true
@@ -229,6 +232,19 @@ export async function buildScene(scene: Scene3D, { models = true } = {}) {
   }
   root.updateMatrixWorld(true)
   return root
+}
+
+/**
+ * Runs `fn` on a cheap, model-less, low-poly build of the scene (for bounds, framing and checks) and frees it after.
+ * Models count as unit cubes.
+ */
+export async function measureScene<T>(scene: Scene3D, fn: (root: THREE.Group) => T): Promise<T> {
+  const root = await buildScene(scene, { models: false, lite: true })
+  try {
+    return fn(root)
+  } finally {
+    disposeTree(root)
+  }
 }
 
 /** Ground size follows the scene so it reads as a soft stage, not a disc with a visible rim. */
@@ -256,18 +272,71 @@ function groundFade() {
   return fade
 }
 
-/** Moves animated objects for time `t` seconds. */
-export function animate(root: THREE.Object3D, t: number, dt: number) {
+const smooth = (k: number) => k * k * (3 - 2 * k)
+
+/** A channel's value at time t, interpolated between the keys that set it. */
+function sampleChannel(keys: Keyframe3D[], ch: 'position' | 'rotation' | 'scale', t: number, base: Vec3): Vec3 {
+  let prev: Keyframe3D | undefined
+  for (const k of keys) {
+    const v = k[ch]
+    if (!v) continue
+    if (k.t >= t) {
+      if (!prev) return v
+      const a = prev[ch]!
+      const span = k.t - prev.t
+      const raw = span > 0 ? (t - prev.t) / span : 1
+      const e = k.ease === 'linear' ? raw : smooth(raw)
+      return [a[0] + (v[0] - a[0]) * e, a[1] + (v[1] - a[1]) * e, a[2] + (v[2] - a[2]) * e]
+    }
+    prev = k
+  }
+  return prev?.[ch] ?? base
+}
+
+function sampleVisible(keys: Keyframe3D[], t: number, base: boolean) {
+  let v = base
+  for (const k of keys) if (k.visible !== undefined && k.t <= t) v = k.visible
+  return v
+}
+
+/** Timeline length: the scene's duration, else the last keyframe or camera key, else 5 s of looping motion. */
+export function sceneDuration(scene: Scene3D) {
+  if (scene.duration) return scene.duration
+  const last = Math.max(0, ...scene.objects.flatMap((o) => o.keyframes?.map((k) => k.t) ?? []), ...(scene.cameraKeys?.map((k) => k.t) ?? []))
+  return last > 0 ? last : 5
+}
+
+/** The camera at time t, following camera keys when the scene has them. */
+export function cameraAt(scene: Scene3D, t: number): Scene3D['camera'] {
+  const keys = [...(scene.cameraKeys ?? [])].sort((a, b) => a.t - b.t)
+  if (!keys.length) return scene.camera
+  const asKey = (k: CameraKey3D): Keyframe3D => ({ t: k.t, position: k.position, rotation: k.target })
+  const kf = keys.map(asKey)
+  const fovKeys = keys.map((k) => ({ t: k.t, scale: [k.fov ?? scene.camera.fov, 0, 0] as Vec3 }))
+  return { position: sampleChannel(kf, 'position', t, scene.camera.position), target: sampleChannel(kf, 'rotation', t, scene.camera.target), fov: sampleChannel(fovKeys, 'scale', t, [scene.camera.fov, 0, 0])[0] }
+}
+
+/** Poses every animated object for time `t` seconds. Absolute in t, so any frame can be rendered on its own. */
+export function animate(root: THREE.Object3D, t: number) {
   root.traverse((o) => {
     const a = o.userData.animate as Obj3D['animate']
+    const keys = o.userData.keyframes as Keyframe3D[] | undefined
+    if (!a && !keys) return
+    const base = o.userData.base as { position: Vec3; rotation: Vec3; scale: Vec3; visible: boolean }
+    const pos = keys ? sampleChannel(keys, 'position', t, base.position) : base.position
+    const rot = keys ? sampleChannel(keys, 'rotation', t, base.rotation) : base.rotation
+    const scl = keys ? sampleChannel(keys, 'scale', t, base.scale) : base.scale
+    o.position.set(...pos)
+    o.rotation.set(...rad(rot))
+    o.scale.set(...scl)
+    if (keys) o.visible = sampleVisible(keys, t, base.visible)
     if (!a) return
-    const base = o.userData.base as Vec3
     const s = a.speed || 1
-    if (a.kind === 'spin') o.rotation.y += dt * s
-    else if (a.kind === 'float') o.position.y = base[1] + Math.sin(t * s * 2) * 0.1
-    else if (a.kind === 'pulse') o.scale.setScalar(1 + Math.sin(t * s * 3) * 0.05)
+    if (a.kind === 'spin') o.rotation[a.axis ?? 'y'] += t * s
+    else if (a.kind === 'float') o.position.y = pos[1] + Math.sin(t * s * 2) * 0.1
+    else if (a.kind === 'pulse') o.scale.multiplyScalar(1 + Math.sin(t * s * 3) * 0.05)
     else if (a.kind === 'orbit') {
-      const r = Math.hypot(base[0], base[2])
+      const r = Math.hypot(pos[0], pos[2])
       o.position.x = Math.cos(t * s) * r
       o.position.z = Math.sin(t * s) * r
     }
@@ -323,8 +392,7 @@ export function fitCamera(root: THREE.Object3D, aspect: number, fov = 40, dir: V
 }
 
 let offscreen: THREE.WebGLRenderer | null = null
-/** Renders a scene to a PNG (base64, no data: prefix), optionally from a preset view instead of the scene camera. */
-export async function renderScene(scene: Scene3D, w: number, h: number, view: 'camera' | 'front' | 'side' | 'top' | 'iso' = 'camera') {
+function offscreenRenderer() {
   if (!offscreen) {
     try {
       offscreen = new THREE.WebGLRenderer({ antialias: true, preserveDrawingBuffer: true, alpha: true })
@@ -336,19 +404,128 @@ export async function renderScene(scene: Scene3D, w: number, h: number, view: 'c
     offscreen.toneMapping = THREE.ACESFilmicToneMapping
     offscreen.outputColorSpace = THREE.SRGBColorSpace
   }
-  const k = Math.min(1, 768 / Math.max(w, h))
-  const width = Math.max(64, Math.round(w * k)), height = Math.max(64, Math.round(h * k))
-  offscreen.setSize(width, height, false)
+  return offscreen
+}
+
+export type SceneView = 'camera' | 'front' | 'side' | 'top' | 'iso'
+const VIEW_DIRS: Record<Exclude<SceneView, 'camera'>, Vec3> = { front: [0, 0.15, 1], side: [1, 0.15, 0], top: [0.001, 1, 0.001], iso: [1, 0.75, 1.3] }
+
+/** Output size for a node of w×h, longest side capped at `max`. */
+export function fitSize(w: number, h: number, max: number) {
+  const k = Math.min(1, max / Math.max(w, h))
+  const even = (v: number) => Math.max(64, Math.round(v * k / 2) * 2)
+  return { width: even(w), height: even(h) }
+}
+
+/**
+ * Builds a scene once and renders it at any time on the timeline. `frame(t)` poses objects and the camera for t
+ * and draws into `canvas`; call `dispose` when done.
+ */
+export async function sceneRenderer(scene: Scene3D, width: number, height: number, view: SceneView = 'camera') {
+  const gl = offscreenRenderer()
+  gl.setSize(width, height, false)
   const target = new THREE.Scene()
   const root = await buildScene(scene)
   target.add(root)
-  applyLook(target, { ...scene, background: scene.background ?? '#ffffff' }, offscreen)
-  const dirs: Record<string, Vec3> = { front: [0, 0.15, 1], side: [1, 0.15, 0], top: [0.001, 1, 0.001], iso: [1, 0.75, 1.3] }
-  const cam = view === 'camera' ? scene.camera : fitCamera(root, width / height, scene.camera.fov, dirs[view])
-  offscreen.render(target, makeCamera({ ...scene, camera: cam }, width / height))
-  const url = offscreen.domElement.toDataURL('image/png')
-  disposeTree(root)
+  applyLook(target, { ...scene, background: scene.background ?? '#ffffff' }, gl)
+  const fixed = view === 'camera' ? null : fitCamera(root, width / height, scene.camera.fov, VIEW_DIRS[view])
+  return {
+    canvas: gl.domElement,
+    frame(t: number) {
+      animate(root, t)
+      root.updateMatrixWorld(true)
+      gl.render(target, makeCamera({ ...scene, camera: fixed ?? cameraAt(scene, t) }, width / height))
+    },
+    dispose: () => disposeTree(root),
+  }
+}
+
+/** Renders a scene to a PNG (base64, no data: prefix) at time t, optionally from a preset view instead of the scene camera. */
+export async function renderScene(scene: Scene3D, w: number, h: number, view: SceneView = 'camera', t = 0, max = 768) {
+  const { width, height } = fitSize(w, h, max)
+  const r = await sceneRenderer(scene, width, height, view)
+  r.frame(t)
+  const url = r.canvas.toDataURL('image/png')
+  r.dispose()
   return url.slice(url.indexOf(',') + 1)
+}
+
+/** Several frames of the timeline in one contact sheet, so the agent can check motion in a single look. */
+export async function renderTimeline(scene: Scene3D, w: number, h: number, times: number[], view: SceneView = 'camera') {
+  const cols = Math.min(times.length, 3)
+  const rows = Math.ceil(times.length / cols)
+  const cell = fitSize(w, h, 400)
+  const r = await sceneRenderer(scene, cell.width, cell.height, view)
+  const sheet = document.createElement('canvas')
+  sheet.width = cell.width * cols
+  sheet.height = cell.height * rows
+  const g = sheet.getContext('2d')!
+  g.font = '600 16px system-ui, sans-serif'
+  times.forEach((t, i) => {
+    r.frame(t)
+    const x = (i % cols) * cell.width, y = Math.floor(i / cols) * cell.height
+    g.drawImage(r.canvas, x, y)
+    g.fillStyle = '#000a'
+    g.fillRect(x + 6, y + 6, 70, 24)
+    g.fillStyle = '#fff'
+    g.fillText(`t=${Math.round(t * 10) / 10}s`, x + 12, y + 24)
+  })
+  r.dispose()
+  const url = sheet.toDataURL('image/png')
+  return url.slice(url.indexOf(',') + 1)
+}
+
+function videoMime() {
+  const types = ['video/mp4;codecs=avc1', 'video/webm;codecs=vp9', 'video/webm;codecs=vp8', 'video/webm']
+  return types.find((t) => typeof MediaRecorder !== 'undefined' && MediaRecorder.isTypeSupported(t))
+}
+
+/**
+ * Records the scene timeline to a video. Frames are posed by time so motion is exact, but MediaRecorder stamps
+ * frames by wall clock, so recording takes about as long as the clip.
+ */
+export async function recordScene(scene: Scene3D, w: number, h: number, opts: { duration?: number; fps?: number; view?: SceneView; max?: number; onProgress?: (f: number) => void } = {}) {
+  const mime = videoMime()
+  if (!mime) throw new Error('This browser cannot record video (no MediaRecorder).')
+  const duration = Math.min(120, opts.duration ?? sceneDuration(scene))
+  const fps = Math.min(60, Math.max(10, opts.fps ?? 30))
+  const { width, height } = fitSize(w, h, opts.max ?? 1280)
+  const r = await sceneRenderer(scene, width, height, opts.view)
+  // Recording reads from a 2D canvas copy, so the shared WebGL canvas can be resized by other renders meanwhile.
+  const out = document.createElement('canvas')
+  out.width = width
+  out.height = height
+  const g = out.getContext('2d')!
+  const stream = out.captureStream(0)
+  const track = stream.getVideoTracks()[0] as CanvasCaptureMediaStreamTrack
+  const rec = new MediaRecorder(stream, { mimeType: mime, videoBitsPerSecond: 8_000_000 })
+  const chunks: Blob[] = []
+  rec.ondataavailable = (e) => e.data.size && chunks.push(e.data)
+  const done = new Promise<void>((res) => (rec.onstop = () => res()))
+  const frames = Math.max(1, Math.round(duration * fps))
+  const draw = (t: number) => {
+    r.frame(t)
+    g.drawImage(r.canvas, 0, 0, width, height)
+    track.requestFrame()
+  }
+  try {
+    draw(0)
+    rec.start()
+    const start = performance.now()
+    for (let i = 0; i <= frames; i++) {
+      draw(i / fps)
+      opts.onProgress?.(i / frames)
+      const wait = start + ((i + 1) * 1000) / fps - performance.now()
+      await new Promise((res) => setTimeout(res, Math.max(0, wait)))
+    }
+  } finally {
+    if (rec.state !== 'inactive') rec.stop()
+    await done
+    stream.getTracks().forEach((t) => t.stop())
+    r.dispose()
+  }
+  const type = mime.split(';')[0]
+  return { blob: new Blob(chunks, { type }), ext: type === 'video/mp4' ? 'mp4' : 'webm', width, height, duration, fps }
 }
 
 export function disposeTree(root: THREE.Object3D) {

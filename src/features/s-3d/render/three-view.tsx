@@ -6,7 +6,7 @@ import * as THREE from 'three'
 import type { Group } from 'three'
 import type { Scene3D, Shape3D } from '../types'
 import { useFileUrl } from './use-file-url'
-import { animate, applyLook, buildScene, disposeTree } from './scene3d'
+import { animate, applyLook, buildScene, cameraAt, disposeTree, sceneDuration } from './scene3d'
 
 function Primitive({ kind, color }: { kind: Shape3D; color: string }) {
   return (
@@ -39,7 +39,7 @@ function Spinner({ spin, children }: { spin: boolean; children: React.ReactNode 
   return <group ref={ref}>{children}</group>
 }
 
-/** A composed scene: rebuilt whenever the scene data changes, animated only in play mode. */
+/** A composed scene: rebuilt whenever the scene data changes, and always animated so motion is visible while designing. */
 function SceneContent({ scene, play, interactive }: { scene: Scene3D; play: boolean; interactive: boolean }) {
   const { gl, scene: target, camera } = useThree()
   const [root, setRoot] = useState<THREE.Group | null>(null)
@@ -67,8 +67,18 @@ function SceneContent({ scene, play, interactive }: { scene: Scene3D; play: bool
   }, [scene, gl, target, camera])
   useFrame((_, dt) => {
     if (!play || !root) return
-    t.current += dt
-    animate(root, t.current, dt)
+    // Keyframed scenes loop over their timeline; pure looping motion just keeps running.
+    const timed = scene.cameraKeys?.length || scene.objects.some((o) => o.keyframes?.length)
+    t.current = timed ? (t.current + dt) % (sceneDuration(scene) + 1) : t.current + dt
+    animate(root, t.current)
+    if (scene.cameraKeys?.length && !interactive) {
+      const c = cameraAt(scene, t.current)
+      const cam = camera as THREE.PerspectiveCamera
+      cam.position.set(...c.position)
+      cam.fov = c.fov
+      cam.lookAt(...c.target)
+      cam.updateProjectionMatrix()
+    }
   })
   return (
     <>
@@ -135,7 +145,7 @@ export default function ThreeView({ kind, color, src, interactive, spin, rotatio
           resize={{ offsetSize: true }}
           dpr={[1, 2]}
         >
-          <SceneContent scene={scene} play={interactive} interactive={interactive} />
+          <SceneContent scene={scene} play interactive={interactive} />
         </Canvas>
       </GLBoundary>
     )

@@ -25,7 +25,7 @@ import {
 import type { Page, PageFont } from '../db/types'
 import { useEffect, useState } from 'react'
 import { displaySettings } from '../lib/display'
-import { pageTitle } from '../editor/nodes/pages'
+import { PageIcon, pageTitle } from '../editor/nodes/pages'
 import { pageToMarkdown } from '../lib/markdown'
 
 import { selectAncestry, useNoteStore } from '../note.store'
@@ -81,7 +81,7 @@ function MovePageDialog({ page, open, onOpenChange }: { page: Page; open: boolea
           </button>
           {targets.map((target) => (
             <button key={target.id} type="button" onClick={() => move(target.id)} className={row}>
-              {target.icon ? <span>{target.icon}</span> : <FileTextIcon className="size-4 text-muted-foreground" />}
+              {target.icon ? <PageIcon icon={target.icon} /> : <FileTextIcon className="size-4 text-muted-foreground" />}
               <span className="truncate">{pageTitle(target.title)}</span>
             </button>
           ))}

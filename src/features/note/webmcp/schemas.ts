@@ -114,7 +114,13 @@ export const listBlocks = z.object({
   page,
 })
 
-export const readBlock = z.object({ note: openNote_, block: blockPath })
+export const readBlock = z
+  .object({
+    note: openNote_,
+    block: blockPath.optional().describe('One block to read'),
+    blocks: z.array(blockPath).min(1).max(50).optional().describe('Several blocks to read in one call, e.g. ["0", "2", "3.1"]'),
+  })
+  .refine((a) => a.block || a.blocks, 'Pass block, or blocks to read several at once')
 
 export const insertBlocks = z.object({
   note: openNote_,

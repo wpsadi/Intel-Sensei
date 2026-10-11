@@ -61,6 +61,9 @@ function hoveredNode(editor: Editor | null, start: number) {
   return editor && start < editor.state.doc.content.size ? editor.state.doc.nodeAt(start) : null
 }
 
+/** Pasted HTML that carries real formatting, which Tiptap's own paste keeps. */
+const RICH_HTML = /<(strong|b|em|i|u|s|del|h[1-6]|ul|ol|li|table|a|code|pre|blockquote|img|hr)\b/i
+
 export function NoteEditor({ content, pageId = '', nested = false, editable = true, onChange }: NoteEditorProps) {
   const onChangeRef = useRef(onChange)
   onChangeRef.current = onChange
@@ -97,8 +100,10 @@ export function NoteEditor({ content, pageId = '', nested = false, editable = tr
             return true
           }
           const text = event.clipboardData?.getData('text/plain')?.trim() ?? ''
-          // Rich HTML pastes keep Tiptap's own handling; plain text that is Markdown becomes blocks.
-          const html = text && !event.clipboardData?.getData('text/html') ? markdownToHtml(text) : null
+          // Rich HTML pastes keep Tiptap's own handling; plain text that is Markdown becomes blocks. Editors, terminals
+          // and chat apps often copy unformatted HTML too (the raw **asterisks** inside it), which counts as plain.
+          const pastedHtml = event.clipboardData?.getData('text/html') ?? ''
+          const html = text && !RICH_HTML.test(pastedHtml) ? markdownToHtml(text) : null
           if (html) {
             current.chain().focus().insertContent(html).run()
             return true

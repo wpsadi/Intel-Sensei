@@ -1,13 +1,28 @@
 import type { JSONContent } from '@tiptap/react'
 
 /*
- * Edits must be based on what the agent last read. Reading a note records the exact document it saw;
- * an edit is refused when the note has changed since (the user typed, or an earlier edit shifted block
- * addresses), so the agent never writes into a stale picture of the note.
+ * Edits must be based on what the agent last read. Reading a note records the shape of the document it saw;
+ * an edit is refused when that shape has changed since (blocks were added, removed or moved), so the agent
+ * never writes to a stale block address. Text and attribute changes do not move addresses, so they are
+ * ignored: comparing the exact JSON made every edit fail after the user typed, an editor opened and filled
+ * in default attributes, or a node view updated itself, and the agent re-read the note in a loop.
  */
 
 const seen = new Map<string, string>()
-const key = (doc: JSONContent) => JSON.stringify(doc)
+
+/** Block types and nesting only, e.g. `heading,paragraph,bulletList(listItem(paragraph))`. */
+function shape(node: JSONContent): string {
+  const blocks = (node.content ?? []).filter((child) => child.type !== 'text' && child.type !== 'hardBreak' && !child.marks)
+  return blocks.map((child) => (child.content?.some((c) => c.type !== 'text') ? `${child.type}(${shape(child)})` : child.type)).join(',')
+}
+
+/** The editor keeps an empty paragraph at the end for typing; a saved copy may not have it yet. */
+function key(doc: JSONContent) {
+  const content = [...(doc.content ?? [])]
+  const last = content.at(-1)
+  if (last?.type === 'paragraph' && !last.content?.length) content.pop()
+  return shape({ ...doc, content })
+}
 
 export function markRead(pageId: string, doc: JSONContent) {
   seen.set(pageId, key(doc))

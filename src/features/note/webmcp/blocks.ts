@@ -6,6 +6,7 @@ import { getLiveEditor, waitForLiveEditor } from '../editor/live-editors'
 import { useNoteStore } from '../note.store'
 import { pageTitle } from '../editor/nodes/pages'
 import { markdownToDoc } from './markdown'
+import { inlineMarkdown } from '../lib/markdown-import'
 import { findDatabase, findPage, isoDay, parseDate } from './tools'
 import { assertRead, forgetRead, markRead } from './read-guard'
 import type * as S from './schemas'
@@ -30,7 +31,7 @@ const EMBED_KEYS: Record<string, string> = { embed: 'embed', bookmark: 'bookmark
 
 const state = () => useNoteStore.getState()
 const clip = (text: string, max: number) => (text.length > max ? `${text.slice(0, max - 1)}…` : text)
-const para = (text: string): JSONContent => ({ type: 'paragraph', content: text ? [{ type: 'text', text }] : [] })
+const para = (text: string): JSONContent => ({ type: 'paragraph', content: text ? inlineMarkdown(text) : [] })
 
 /* ------------------------------ describing ------------------------------ */
 
@@ -277,7 +278,8 @@ async function fill(json: JSONContent, { text, items, rows, attrs }: Content) {
       default: {
         const target = firstTextblock(json)
         if (!target) throw new Error(`A ${kindOf(json)} block has no text of its own. Use items, rows or attrs instead.`)
-        target.content = text ? [{ type: 'text', text }] : []
+        // Code keeps its characters as written; other text turns its inline Markdown into formatting.
+        target.content = !text ? [] : target.type === 'codeBlock' ? [{ type: 'text', text }] : inlineMarkdown(text)
       }
     }
   }
@@ -386,9 +388,24 @@ export function listBlocks({ note, inside, page }: z.output<typeof S.listBlocks>
   }
 }
 
-export function readBlock({ note, block }: z.output<typeof S.readBlock>, ctx: BlockContext) {
+/** One block in full, or several at once as `{ blocks }` with an `error` in place of any address that does not exist. */
+export function readBlock({ note, block, blocks }: z.output<typeof S.readBlock>, ctx: BlockContext) {
   const { page, doc } = documentOf(note, ctx)
   markRead(page.id, doc)
+  if (!blocks) return readOne(doc, block!)
+  const all = block ? [block, ...blocks.filter((b) => b !== block)] : blocks
+  return {
+    blocks: all.map((b) => {
+      try {
+        return readOne(doc, b)
+      } catch (error) {
+        return { block: b, error: error instanceof Error ? error.message : String(error) }
+      }
+    }),
+  }
+}
+
+function readOne(doc: JSONContent, block: string) {
   const node = jsonAt(doc, block)
   const { comments, ...attrs } = node.attrs ?? {}
   const children = childBlocks(node)
