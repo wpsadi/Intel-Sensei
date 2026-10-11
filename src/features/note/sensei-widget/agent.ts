@@ -1,10 +1,14 @@
-import { type ModelMessage, type ToolSet, ToolLoopAgent, jsonSchema, tool } from 'ai'
-import { type GoogleLanguageModelOptions, createGoogle } from '@ai-sdk/google'
+import { type ModelMessage, asSchema } from 'ai'
+import { create } from 'zustand'
+import type { GoogleLanguageModelOptions } from '@ai-sdk/google'
 import { CHAT_MODEL } from '@/constants/ai'
 import { currentTimePrompt } from '@/ai/utils/current-time'
 import { thinkingOnly } from '@/ai/utils/thinking'
 import { createSearchTool, upsertSearch } from '@/ai/tools/search'
-import type { ChatSearch, ChatToolStep } from '../db/types'
+import { GEMINI_KEY } from '@/ai/utils/gemini-key'
+import { type ToolSpec, streamInWorker } from '@/ai/worker/client'
+import { widgetChatsRepo } from '../db/repo'
+import type { ChatSearch, ChatToolStep, WidgetChat, WidgetMessage } from '../db/types'
 import { type NoteToolContext, buildNoteTools } from '../webmcp/note-tools'
 
 const LOG = '[Sensei widget]'
@@ -33,7 +37,7 @@ interface ModelContextTesting {
 }
 
 const asText = (value: unknown) => (typeof value === 'string' ? value : JSON.stringify(value ?? ''))
-const asSchema = (value: unknown): object => (typeof value === 'string' ? JSON.parse(value || '{}') : ((value as object) ?? {}))
+const parseSchema = (value: unknown): object => (typeof value === 'string' ? JSON.parse(value || '{}') : ((value as object) ?? {}))
 
 /**
  * The S-Note tools as the agent sees them. When Chrome exposes its WebMCP testing API the agent goes through
@@ -49,7 +53,7 @@ async function loadTools(ctx: () => NoteToolContext): Promise<ToolInfo[]> {
         return listed.map((t) => ({
           name: t.name,
           description: t.description ?? '',
-          inputSchema: asSchema(t.inputSchema),
+          inputSchema: parseSchema(t.inputSchema),
           call: async (args) => asText(await testing.executeTool(t.name, JSON.stringify(args ?? {}))),
         }))
       }
@@ -81,13 +85,95 @@ const instructions = (noteTitle: string | undefined) =>
   ].join('\n\n')
 
 /**
- * Runs one chat turn with the S-Note tools. Streams the reply into `onText` and each tool call into `onSteps`.
- * Resolves with the reply text.
+ * Widget chats run here, outside the widget, with the model calls in a worker. Each chat runs on its own, so several
+ * can generate at once, and they keep going when the widget closes until the user stops them. `live` holds the chats
+ * generating by id, `viewedId` the chat on screen (null for a new one), and `saved` bumps on every save.
  */
-export async function runSensei({
+export const useSenseiRuns = create<{ live: Record<string, WidgetChat>; viewedId: string | null; saved: number }>()(() => ({ live: {}, viewedId: null, saved: 0 }))
+
+const aborts = new Map<string, () => void>()
+export const stopSensei = (chatId: string) => aborts.get(chatId)?.()
+
+/** Tools read the latest route when they run, so a reply that opens another note keeps working on it. */
+let noteCtx: NoteToolContext = { go: () => {} }
+export const setNoteContext = (ctx: NoteToolContext) => {
+  noteCtx = ctx
+}
+
+const without = (live: Record<string, WidgetChat>, id: string) => {
+  const { [id]: _, ...rest } = live
+  return rest
+}
+
+async function save(c: WidgetChat) {
+  await widgetChatsRepo.put(c)
+  useSenseiRuns.setState((s) => ({ saved: s.saved + 1 }))
+}
+
+/** Starts a reply in `base` (a new chat when null) and shows it. */
+export async function sendSensei(text: string, base: WidgetChat | null, noteTitle: string | undefined) {
+  const question = text.trim()
+  if (!question || (base && useSenseiRuns.getState().live[base.id])) return
+  const apiKey = GEMINI_KEY.value
+  const assistantId = crypto.randomUUID()
+  const current = base ?? { id: crypto.randomUUID(), title: question.slice(0, 40), messages: [], updatedAt: Date.now() }
+  const history: WidgetMessage[] = [...current.messages, { id: crypto.randomUUID(), role: 'user', content: question }]
+  let c: WidgetChat = { ...current, messages: [...history, { id: assistantId, role: 'assistant', content: '' }], updatedAt: Date.now() }
+  const patch = (p: Partial<WidgetMessage>) => {
+    c = { ...c, messages: c.messages.map((m) => (m.id === assistantId ? { ...m, ...p } : m)) }
+    useSenseiRuns.setState((s) => ({ live: { ...s.live, [c.id]: c } }))
+  }
+  useSenseiRuns.setState({ viewedId: c.id })
+  if (!apiKey) {
+    patch({ error: 'Add your Gemini API key in Settings first.' })
+    await save(c)
+    useSenseiRuns.setState((s) => ({ live: without(s.live, c.id) }))
+    return
+  }
+  useSenseiRuns.setState((s) => ({ live: { ...s.live, [c.id]: c } }))
+  // Saved now so the chat shows in the history while it generates.
+  await save(c)
+
+  const controller = new AbortController()
+  aborts.set(c.id, () => controller.abort())
+  const started = Date.now()
+  let thinking = true
+  void runSensei({
+    apiKey,
+    messages: history.filter((m) => m.content).map((m) => ({ role: m.role, content: m.content })),
+    noteTitle,
+    onText: (soFar) => {
+      // Thinking is over once the first words arrive.
+      if (thinking) {
+        thinking = false
+        patch({ reasoningSeconds: Math.max(1, Math.round((Date.now() - started) / 1000)) })
+      }
+      patch({ content: soFar })
+    },
+    onReasoning: (reasoning) => patch({ reasoning }),
+    onSteps: (steps) => patch({ steps }),
+    onSearches: (searches) => patch({ searches }),
+    signal: controller.signal,
+  })
+    .then((reply) => patch({ content: reply || (controller.signal.aborted ? 'Stopped.' : 'Done.') }))
+    .catch((error) => {
+      if (!controller.signal.aborted) patch({ error: error instanceof Error ? error.message : String(error) })
+      else patch({ content: c.messages.find((m) => m.id === assistantId)?.content || 'Stopped.' })
+    })
+    .finally(async () => {
+      aborts.delete(c.id)
+      await save(c)
+      useSenseiRuns.setState((s) => ({ live: without(s.live, c.id) }))
+    })
+}
+
+/**
+ * Runs one chat turn with the S-Note tools, the model in the worker and the tools here. Streams the reply into
+ * `onText` and each tool call into `onSteps`. Resolves with the reply text.
+ */
+async function runSensei({
   apiKey,
   messages,
-  ctx,
   noteTitle,
   onText,
   onReasoning,
@@ -97,37 +183,30 @@ export async function runSensei({
 }: {
   apiKey: string
   messages: ModelMessage[]
-  ctx: () => NoteToolContext
   noteTitle?: string
   onText: (soFar: string) => void
   onReasoning: (soFar: string) => void
   onSteps: (steps: ChatToolStep[]) => void
   onSearches: (searches: ChatSearch[]) => void
-  signal?: AbortSignal
+  signal: AbortSignal
 }) {
   let searches: ChatSearch[] = []
-  const tools: ToolSet = {
-    webSearch: createSearchTool((search) => {
-      searches = upsertSearch(searches, search)
-      onSearches(searches)
-    }),
-  }
-  for (const t of await loadTools(ctx)) {
-    tools[t.name] = tool({ description: t.description, inputSchema: jsonSchema(t.inputSchema as Parameters<typeof jsonSchema>[0]), execute: (args) => t.call(args) })
-  }
-
-  const agent = new ToolLoopAgent({
-    model: createGoogle({ apiKey })(CHAT_MODEL),
-    instructions: instructions(noteTitle),
-    tools,
-    // Gemini leaves out its thought summaries unless asked for them.
-    providerOptions: { google: { thinkingConfig: { thinkingLevel: 'high', includeThoughts: true } } satisfies GoogleLanguageModelOptions },
+  const webSearch = createSearchTool((search) => {
+    searches = upsertSearch(searches, search)
+    onSearches(searches)
   })
-  const result = await agent.stream({ messages, abortSignal: signal })
+  const calls: Record<string, (args: unknown) => unknown> = {
+    webSearch: (args) => webSearch.execute!(args as never, { abortSignal: signal, toolCallId: crypto.randomUUID(), messages: [] } as never),
+  }
+  const tools: Record<string, ToolSpec> = { webSearch: { description: (webSearch.description as string) ?? '', schema: await asSchema(webSearch.inputSchema).jsonSchema } }
+  for (const t of await loadTools(() => noteCtx)) {
+    calls[t.name] = t.call
+    tools[t.name] = { description: t.description, schema: t.inputSchema }
+  }
 
   let reply = ''
   let thoughts = ''
-  let streamError: unknown
+  let streamError: string | undefined
   let steps: ChatToolStep[] = []
   // Web searches show in their own list, so they are not repeated as steps.
   const setStep = (step: ChatToolStep) => {
@@ -135,29 +214,50 @@ export async function runSensei({
     steps = steps.some((s) => s.id === step.id) ? steps.map((s) => (s.id === step.id ? step : s)) : [...steps, step]
     onSteps(steps)
   }
-  for await (const part of result.fullStream) {
-    if (part.type === 'text-delta') {
-      reply += part.text
-      onText(reply)
-    } else if (part.type === 'reasoning-delta') {
-      thoughts += part.text
-      onReasoning(thinkingOnly(thoughts))
-    } else if (part.type === 'tool-call') {
-      console.log(LOG, 'tool call', part.toolName, part.input)
-      setStep({ id: part.toolCallId, name: part.toolName, label: stepLabel(part.toolName), detail: stepDetail(part.input), status: 'running' })
-    } else if (part.type === 'tool-result') {
-      // WebMCP results carry isError inside the payload instead of throwing.
-      const failed = /"isError":\s*true/.test(asText(part.output))
-      console.log(LOG, 'tool result', part.toolName, part.output)
-      const previous = steps.find((x) => x.id === part.toolCallId)
-      setStep({ id: part.toolCallId, name: part.toolName, label: stepLabel(part.toolName), detail: failed ? 'Failed' : previous?.detail, status: failed ? 'failed' : 'done' })
-    } else if (part.type === 'tool-error') {
-      console.warn(LOG, 'tool error', part.toolName, part.error)
-      setStep({ id: part.toolCallId, name: part.toolName, label: stepLabel(part.toolName), detail: String(part.error), status: 'failed' })
-    } else if (part.type === 'error' && !signal?.aborted) {
-      streamError = part.error
-    }
-  }
-  if (streamError) throw streamError
+  const result = await streamInWorker(
+    {
+      provider: 'google',
+      key: apiKey,
+      model: CHAT_MODEL,
+      instructions: instructions(noteTitle),
+      tools,
+      messages,
+      // Gemini leaves out its thought summaries unless asked for them.
+      providerOptions: { google: { thinkingConfig: { thinkingLevel: 'high', includeThoughts: true } } satisfies GoogleLanguageModelOptions },
+    },
+    {
+      signal,
+      execTool: (name, args) => {
+        const call = calls[name]
+        if (!call) throw new Error(`Unknown tool ${name}`)
+        return call(args)
+      },
+      onPart: (part) => {
+        if (part.type === 'text-delta') {
+          reply += part.text
+          onText(reply)
+        } else if (part.type === 'reasoning-start') {
+          // Each step thinks afresh; keep its thoughts as their own paragraph.
+          if (thoughts) thoughts += '\n\n'
+        } else if (part.type === 'reasoning-delta') {
+          thoughts += part.text
+          onReasoning(thinkingOnly(thoughts))
+        } else if (part.type === 'tool-call') {
+          console.log(LOG, 'tool call', part.toolName, part.input)
+          setStep({ id: part.toolCallId, name: part.toolName, label: stepLabel(part.toolName), detail: stepDetail(part.input), status: 'running' })
+        } else if (part.type === 'tool-result') {
+          // WebMCP results carry isError inside the payload instead of throwing.
+          const failed = /"isError":\s*true/.test(asText(part.output))
+          console.log(LOG, 'tool result', part.toolName, part.output)
+          const previous = steps.find((x) => x.id === part.toolCallId)
+          setStep({ id: part.toolCallId, name: part.toolName, label: stepLabel(part.toolName), detail: failed ? 'Failed' : previous?.detail, status: failed ? 'failed' : 'done' })
+        } else if (part.type === 'tool-error') {
+          console.warn(LOG, 'tool error', part.toolName, part.error)
+          setStep({ id: part.toolCallId, name: part.toolName, label: stepLabel(part.toolName), detail: part.error, status: 'failed' })
+        } else if (part.type === 'error') streamError = part.error
+      },
+    },
+  )
+  if (streamError ?? result.error) throw new Error(streamError ?? result.error)
   return reply.trim()
 }

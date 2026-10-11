@@ -9,10 +9,9 @@ import { ComposerAttachmentChip } from '@/components/assistant-ui/elements/compo
 import { resolveMedia } from '@/features/note/db/media'
 import { useMediaUrl } from '@/features/note/db/hooks'
 import { Button } from '@/components/ui/button'
-import { Reasoning, ReasoningContent, ReasoningTrigger } from '@/components/ai-elements/reasoning'
+import { ChatReasoning } from '@/features/ask-sensei/components/chat-reasoning'
 import { ChatPlanCard } from '@/features/ask-sensei/components/chat-plan'
 import { ChatQuestionsCard } from '@/features/ask-sensei/components/chat-questions'
-import { ChatToolSteps } from '@/features/ask-sensei/components/chat-tool-steps'
 import { ChatSearches } from '@/features/ask-sensei/components/chat-searches'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { Markdown } from '@/features/ask-sensei/components/markdown'
@@ -186,12 +185,16 @@ export function Conversation({
                     variant={isReply ? 'default' : 'muted'}
                     className={isReply ? 'self-start bg-transparent px-1 text-foreground' : 'self-end'}
                   >
-                    {isReply && message.reasoning && (
+                    {isReply && (
                       // Thinking is over once the reply's first words arrive; the saved time shows after a reload too.
-                      <Reasoning isStreaming={isStreaming && !message.content} duration={message.reasoningSeconds} className="mb-3">
-                        <ReasoningTrigger />
-                        <ReasoningContent>{message.reasoning}</ReasoningContent>
-                      </Reasoning>
+                      // Tool calls show inside the thinking block rather than between the reply's paragraphs.
+                      <ChatReasoning
+                        reasoning={message.reasoning}
+                        steps={message.parts?.flatMap((part) => (part.type === 'steps' ? part.steps : []))}
+                        isStreaming={isStreaming && !message.content}
+                        duration={message.reasoningSeconds}
+                        className="mb-3"
+                      />
                     )}
                     {isReply && message.parts?.length ? (
                       // A live-call reply: speech, searches and tool calls in the order they happened, in one message.
@@ -200,9 +203,7 @@ export function Conversation({
                           <Markdown key={index}>{part.text}</Markdown>
                         ) : part.type === 'searches' ? (
                           <ChatSearches key={index} searches={part.searches} />
-                        ) : part.type === 'steps' ? (
-                          <ChatToolSteps key={index} steps={part.steps} />
-                        ) : part.type === 'answer' ? (
+                        ) : part.type === 'steps' ? null : part.type === 'answer' ? (
                           <div key={index} className="my-2 rounded-lg border bg-muted/30 px-4 py-3">
                             <Markdown>{part.text}</Markdown>
                           </div>

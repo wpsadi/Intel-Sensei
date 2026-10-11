@@ -1,4 +1,4 @@
-import { type KeyboardEvent, useEffect, useRef, useState } from 'react'
+import { type KeyboardEvent, type ReactNode, useEffect, useRef, useState } from 'react'
 import { X } from 'lucide-react'
 import { Composer, ComposerActions, ComposerBar, ComposerSend, ComposerToolbar, ComposerVoice, ComposerVoiceButton } from '@/components/assistant-ui/elements/composer'
 import { mono } from '@/components/assistant-ui/elements/surfaces'
@@ -10,7 +10,24 @@ import { cn } from '@/lib/utils'
  * The widget's message box, styled like the Ask Sensei composer: type or dictate (Gemini transcribes the voice note
  * into the draft), Enter sends, and the send button turns into stop while Sensei replies.
  */
-export function WidgetComposer({ onSend, streaming, onStop, autoFocus }: { onSend: (text: string) => void; streaming: boolean; onStop: () => void; autoFocus?: boolean }) {
+export function WidgetComposer({
+  onSend,
+  streaming,
+  onStop,
+  autoFocus,
+  placeholder = 'Ask Sensei about your notes…',
+  toolbarStart,
+  disabled,
+}: {
+  onSend: (text: string) => void
+  streaming: boolean
+  onStop: () => void
+  autoFocus?: boolean
+  placeholder?: string
+  /** Extra controls at the left of the toolbar, such as an attach button. */
+  toolbarStart?: ReactNode
+  disabled?: boolean
+}) {
   const [draft, setDraft] = useState('')
   const { mode, seconds, levels, startVoice, finishVoice, cancelVoice } = useVoiceNote(draft, setDraft)
   const inputRef = useRef<HTMLTextAreaElement>(null)
@@ -21,7 +38,7 @@ export function WidgetComposer({ onSend, streaming, onStop, autoFocus }: { onSen
 
   const send = () => {
     const text = draft.trim()
-    if (!text || streaming) return
+    if (!text || streaming || disabled) return
     onSend(text)
     setDraft('')
   }
@@ -72,16 +89,18 @@ export function WidgetComposer({ onSend, streaming, onStop, autoFocus }: { onSen
           value={draft}
           onChange={(event) => setDraft(event.target.value)}
           onKeyDown={onKeyDown}
-          placeholder="Ask Sensei about your notes…"
+          placeholder={placeholder}
+          disabled={disabled}
           aria-label="Message Sensei"
           // An empty box passes Ctrl+Z to the note, so agent edits can be undone without leaving the chat.
           data-undo-passthrough
           className="field-sizing-content max-h-36 min-h-11 w-full resize-none bg-transparent px-3 pt-2.5 text-sm outline-none placeholder:text-muted-foreground"
         />
         <ComposerToolbar className="h-9 justify-end">
+          {toolbarStart}
           <ComposerActions>
             <ComposerVoiceButton active={false} aria-label="Start voice input" onClick={() => void startVoice()} />
-            <ComposerSend streaming={streaming} idle={!hasText && !streaming} onClick={streaming ? onStop : send} disabled={!hasText && !streaming} />
+            <ComposerSend streaming={streaming} idle={!hasText && !streaming} onClick={streaming ? onStop : send} disabled={(!hasText || !!disabled) && !streaming} />
           </ComposerActions>
         </ComposerToolbar>
       </ComposerBar>

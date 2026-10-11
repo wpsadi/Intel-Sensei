@@ -267,3 +267,24 @@ export interface ChatMessage {
   interrupted?: boolean
   createdAt: number
 }
+
+/** A message in the floating Sensei widget's chat. */
+export interface WidgetMessage {
+  id: string
+  role: 'user' | 'assistant'
+  content: string
+  reasoning?: string
+  /** Seconds Sensei thought before its first words. */
+  reasoningSeconds?: number
+  steps?: ChatToolStep[]
+  searches?: ChatSearch[]
+  error?: string
+}
+
+/** A saved chat from the floating Sensei widget, listed in its history. */
+export interface WidgetChat {
+  id: string
+  title: string
+  messages: WidgetMessage[]
+  updatedAt: number
+}

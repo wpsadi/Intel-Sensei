@@ -157,3 +157,9 @@
   color: transparent;
   animation: shimmer 1.6s linear infinite;
 }
+
+/* S3D color picker (react-colorful) sized and rounded to match the inspector popover. */
+.s3d-color-picker .react-colorful { width: 100%; height: 9rem; gap: 0.5rem; }
+.s3d-color-picker .react-colorful__saturation { border-radius: var(--radius-md); border-bottom: none; }
+.s3d-color-picker .react-colorful__hue { height: 0.75rem; border-radius: 9999px; }
+.s3d-color-picker .react-colorful__pointer { width: 0.875rem; height: 0.875rem; border-width: 2px; }

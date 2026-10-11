@@ -1,4 +1,4 @@
-import type { Chat, ChatMessage, Database, Page, ParentType, Person, PropertyDef, PropertyValue, SyncedBlock, View, ViewType } from './types'
+import type { Chat, ChatMessage, Database, Page, ParentType, Person, PropertyDef, PropertyValue, SyncedBlock, View, ViewType, WidgetChat } from './types'
 import { getDb, notify, uid } from './idb'
 
 export const EMPTY_DOC = JSON.stringify({ type: 'doc', content: [{ type: 'paragraph' }] })
@@ -342,5 +342,20 @@ export const chatMessagesRepo = {
 
   async remove(id: string) {
     await (await getDb()).delete('chatMessages', id)
+  },
+}
+
+/** Chats from the floating Sensei widget, newest first. */
+export const widgetChatsRepo = {
+  async all() {
+    return (await (await getDb()).getAll('widgetChats')).sort((a, b) => b.updatedAt - a.updatedAt)
+  },
+
+  async put(chat: WidgetChat) {
+    await (await getDb()).put('widgetChats', chat)
+  },
+
+  async remove(id: string) {
+    await (await getDb()).delete('widgetChats', id)
   },
 }

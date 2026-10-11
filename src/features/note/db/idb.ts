@@ -1,4 +1,4 @@
-import type { Chat, ChatMessage, Database, Page, Person, Setting, SyncedBlock, View } from './types'
+import type { Chat, ChatMessage, WidgetChat, Database, Page, Person, Setting, SyncedBlock, View } from './types'
 import { type DBSchema, type IDBPDatabase, openDB } from 'idb'
 
 interface SNoteSchema extends DBSchema {
@@ -10,12 +10,13 @@ interface SNoteSchema extends DBSchema {
   settings: { key: string; value: Setting }
   chats: { key: string; value: Chat }
   chatMessages: { key: string; value: ChatMessage; indexes: { byChat: string } }
+  widgetChats: { key: string; value: WidgetChat }
 }
 
-export type StoreName = 'pages' | 'databases' | 'views' | 'synced' | 'people' | 'settings' | 'chats' | 'chatMessages'
+export type StoreName = 'pages' | 'databases' | 'views' | 'synced' | 'people' | 'settings' | 'chats' | 'chatMessages' | 'widgetChats'
 
 const DB_NAME = 'snote'
-const DB_VERSION = 2
+const DB_VERSION = 3
 
 let dbPromise: Promise<IDBPDatabase<SNoteSchema>> | null = null
 
@@ -38,6 +39,7 @@ export function getDb() {
         const messages = db.createObjectStore('chatMessages', { keyPath: 'id' })
         messages.createIndex('byChat', 'chatId')
       }
+      if (oldVersion < 3) db.createObjectStore('widgetChats', { keyPath: 'id' })
     },
   })
   return dbPromise

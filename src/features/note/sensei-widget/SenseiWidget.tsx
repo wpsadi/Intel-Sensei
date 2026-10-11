@@ -1,38 +1,27 @@
-import { LoaderIcon, Trash2Icon, XIcon } from 'lucide-react'
+import { HistoryIcon, PlusIcon, Trash2Icon, XIcon } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
 import { matchPath, useLocation, useNavigate } from 'react-router-dom'
 import senseiLogo from '@/assets/sensei.svg'
 import { Button } from '@/components/ui/button'
 import { ScrollArea } from '@/components/ui/scroll-area'
-import { Reasoning, ReasoningContent, ReasoningTrigger } from '@/components/ai-elements/reasoning'
 import { ChatSearches } from '@/features/ask-sensei/components/chat-searches'
-import { ChatToolSteps } from '@/features/ask-sensei/components/chat-tool-steps'
+import { ChatReasoning } from '@/features/ask-sensei/components/chat-reasoning'
 import { Markdown } from '@/features/ask-sensei/components/markdown'
-import { GEMINI_KEY } from '@/ai/utils/gemini-key'
+import { TypingDots } from '@/components/typing-dots'
+import { DropdownMenu, DropdownMenuContent, DropdownMenuGroup, DropdownMenuItem, DropdownMenuLabel, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
 import { pageTitle } from '../editor/nodes/pages'
 import { useNoteStore } from '../note.store'
-import type { ChatSearch, ChatToolStep } from '../db/types'
-import type { NoteToolContext } from '../webmcp/note-tools'
-import { runSensei } from './agent'
+import { widgetChatsRepo } from '../db/repo'
+import type { WidgetChat } from '../db/types'
+import { sendSensei, setNoteContext, stopSensei, useSenseiRuns } from './agent'
 import { WidgetComposer } from './WidgetComposer'
-
-interface WidgetMessage {
-  id: string
-  role: 'user' | 'assistant'
-  content: string
-  reasoning?: string
-  /** Seconds Sensei thought before its first words. */
-  reasoningSeconds?: number
-  steps?: ChatToolStep[]
-  searches?: ChatSearch[]
-  error?: string
-}
 
 const SUGGESTIONS = ['Summarize this note', 'How many blocks are on this page?', 'Add a to-do list of next steps']
 
 /**
  * Floating Sensei chat in the bottom-right of S-Note. Sensei works on the user's notes through the WebMCP
- * tools, so the chat is also a live test of them. The conversation lasts until the page reloads.
+ * tools, so the chat is also a live test of them. Chats are saved and listed in the history; replies run in a worker
+ * and keep going while the widget is closed.
  */
 export function SenseiWidget() {
   const navigate = useNavigate()
@@ -41,66 +30,29 @@ export function SenseiWidget() {
   const noteTitle = useNoteStore((s) => (currentPageId && s.pages[currentPageId] ? pageTitle(s.pages[currentPageId].title) : undefined))
 
   const [open, setOpen] = useState(false)
-  const [messages, setMessages] = useState<WidgetMessage[]>([])
-  const [busy, setBusy] = useState(false)
-  const abortRef = useRef<AbortController | null>(null)
+  const live = useSenseiRuns((s) => s.live)
+  const viewedId = useSenseiRuns((s) => s.viewedId)
+  const saved = useSenseiRuns((s) => s.saved)
+  const [chats, setChats] = useState<WidgetChat[]>([])
   const endRef = useRef<HTMLDivElement>(null)
+  const chat = (viewedId && live[viewedId]) || (chats.find((c) => c.id === viewedId) ?? null)
+  const messages = chat?.messages ?? []
+  const busy = !!chat && !!live[chat.id]
+  const anyBusy = Object.keys(live).length > 0
+  const setViewed = (id: string | null) => useSenseiRuns.setState({ viewedId: id })
 
-  // Tools read the latest route when they run, so a reply that opens another note keeps working on it.
-  const ctx = useRef<NoteToolContext>({ go: navigate })
-  ctx.current = { currentPageId, go: navigate }
+  setNoteContext({ currentPageId, go: navigate })
+
+  useEffect(() => {
+    void widgetChatsRepo.all().then(setChats)
+  }, [saved])
 
   // Braces matter: Chrome's scrollIntoView returns a promise, and an effect may only return a cleanup function.
   useEffect(() => {
     endRef.current?.scrollIntoView({ block: 'end' })
   }, [messages, open])
 
-  const patchLast = (patch: Partial<WidgetMessage>) =>
-    setMessages((list) => list.map((m, i) => (i === list.length - 1 ? { ...m, ...patch } : m)))
-
-  async function send(text: string) {
-    const question = text.trim()
-    if (!question || busy) return
-    const apiKey = GEMINI_KEY.value
-    const history = [...messages, { id: crypto.randomUUID(), role: 'user' as const, content: question }]
-    setMessages([...history, { id: crypto.randomUUID(), role: 'assistant', content: '' }])
-    if (!apiKey) {
-      patchLast({ error: 'Add your Gemini API key in Settings first.' })
-      return
-    }
-
-    setBusy(true)
-    const controller = new AbortController()
-    abortRef.current = controller
-    const started = Date.now()
-    let thinking = true
-    try {
-      const reply = await runSensei({
-        apiKey,
-        messages: history.filter((m) => m.content).map((m) => ({ role: m.role, content: m.content })),
-        ctx: () => ctx.current,
-        noteTitle,
-        onText: (soFar) => {
-          // Thinking is over once the first words arrive.
-          if (thinking) {
-            thinking = false
-            patchLast({ reasoningSeconds: Math.max(1, Math.round((Date.now() - started) / 1000)) })
-          }
-          patchLast({ content: soFar })
-        },
-        onReasoning: (reasoning) => patchLast({ reasoning }),
-        onSteps: (steps) => patchLast({ steps }),
-        onSearches: (searches) => patchLast({ searches }),
-        signal: controller.signal,
-      })
-      patchLast({ content: reply || (controller.signal.aborted ? 'Stopped.' : 'Done.') })
-    } catch (error) {
-      if (!controller.signal.aborted) patchLast({ error: error instanceof Error ? error.message : String(error) })
-    } finally {
-      setBusy(false)
-      abortRef.current = null
-    }
-  }
+  const send = (text: string) => void sendSensei(text, chat, noteTitle)
 
   return (
     <div className="fixed right-4 bottom-4 z-50 flex flex-col items-end gap-3">
@@ -114,9 +66,38 @@ export function SenseiWidget() {
               <span className="text-sm font-medium">Sensei</span>
               <span className="truncate text-xs text-muted-foreground">{noteTitle ? `On “${noteTitle}”` : 'S-Note assistant'}</span>
             </div>
-            <Button variant="ghost" size="icon-xs" title="Clear chat" disabled={busy || !messages.length} onClick={() => setMessages([])}>
-              <Trash2Icon />
+            <Button variant="ghost" size="icon-xs" title="New chat" onClick={() => setViewed(null)}>
+              <PlusIcon />
             </Button>
+            <DropdownMenu>
+              <DropdownMenuTrigger render={<Button variant="ghost" size="icon-xs" title="Chat history" />}><HistoryIcon /></DropdownMenuTrigger>
+              <DropdownMenuContent className="z-[60] w-60">
+                <DropdownMenuGroup>
+                  <DropdownMenuLabel>History</DropdownMenuLabel>
+                  {chats.length === 0 && <div className="px-3 py-2 text-xs text-muted-foreground">No chats yet</div>}
+                  {chats.map((c) => (
+                    <DropdownMenuItem key={c.id} className="normal-case tracking-normal" onClick={() => setViewed(c.id)}>
+                      <span className="flex-1 truncate">{c.title || 'Untitled'}</span>
+                      {live[c.id] && <TypingDots className="mb-1" />}
+                      <button
+                        type="button"
+                        aria-label="Delete chat"
+                        className="text-muted-foreground hover:text-destructive disabled:opacity-40"
+                        disabled={!!live[c.id]}
+                        onClick={async (e) => {
+                          e.stopPropagation()
+                          await widgetChatsRepo.remove(c.id)
+                          setChats(await widgetChatsRepo.all())
+                          if (viewedId === c.id) setViewed(null)
+                        }}
+                      >
+                        <Trash2Icon className="size-3" />
+                      </button>
+                    </DropdownMenuItem>
+                  ))}
+                </DropdownMenuGroup>
+              </DropdownMenuContent>
+            </DropdownMenu>
             <Button variant="ghost" size="icon-xs" title="Close" onClick={() => setOpen(false)}>
               <XIcon />
             </Button>
@@ -130,7 +111,7 @@ export function SenseiWidget() {
                   <p className="text-sm text-muted-foreground">Ask me to read, write or organize your notes.</p>
                   <div className="flex flex-wrap justify-center gap-1.5">
                     {SUGGESTIONS.map((s) => (
-                      <button key={s} type="button" onClick={() => void send(s)} className="rounded-full border px-3 py-1 text-xs hover:bg-muted">
+                      <button key={s} type="button" onClick={() => send(s)} className="rounded-full border px-3 py-1 text-xs hover:bg-muted">
                         {s}
                       </button>
                     ))}
@@ -144,15 +125,9 @@ export function SenseiWidget() {
                   </div>
                 ) : (
                   <div key={m.id} className="mr-4 flex flex-col text-sm">
-                    {m.reasoning && (
-                      <Reasoning isStreaming={busy && m === messages.at(-1) && !m.content} duration={m.reasoningSeconds} defaultOpen={false} className="mb-0">
-                        <ReasoningTrigger />
-                        <ReasoningContent>{m.reasoning}</ReasoningContent>
-                      </Reasoning>
-                    )}
+                    <ChatReasoning reasoning={m.reasoning} steps={m.steps} isStreaming={busy && m === messages.at(-1) && !m.content} duration={m.reasoningSeconds} defaultOpen={false} className="mb-0" />
                     {!!m.searches?.length && <ChatSearches searches={m.searches} defaultOpen={false} className="mb-0" />}
-                    {!!m.steps?.length && <ChatToolSteps steps={m.steps} defaultOpen={false} className="mb-0" />}
-                    {m.content ? <Markdown>{m.content}</Markdown> : !m.error && busy && <LoaderIcon className="size-4 animate-spin text-muted-foreground" />}
+                    {m.content ? <Markdown>{m.content}</Markdown> : !m.error && busy && m === messages.at(-1) && !m.reasoning && !m.steps?.length && !m.searches?.length && <TypingDots className="h-3" />}
                     {m.error && <p className="rounded-md bg-destructive/10 px-2 py-1 text-xs text-destructive">{m.error}</p>}
                   </div>
                 ),
@@ -162,7 +137,7 @@ export function SenseiWidget() {
           </ScrollArea>
 
           <div className="border-t p-2">
-            <WidgetComposer onSend={(text) => void send(text)} streaming={busy} onStop={() => abortRef.current?.abort()} autoFocus={open} />
+            <WidgetComposer onSend={send} streaming={busy} onStop={() => chat && stopSensei(chat.id)} autoFocus={open} />
           </div>
         </section>
       )}
@@ -171,9 +146,11 @@ export function SenseiWidget() {
         type="button"
         title={open ? 'Close Sensei' : 'Ask Sensei'}
         onClick={() => setOpen((v) => !v)}
-        className="flex size-14 items-center justify-center rounded-full border bg-background shadow-lg transition-transform hover:scale-105 focus-visible:ring-[3px] focus-visible:ring-ring/50 focus-visible:outline-none"
+        className="relative flex size-14 items-center justify-center rounded-full border bg-background shadow-lg transition-transform hover:scale-105 focus-visible:ring-[3px] focus-visible:ring-ring/50 focus-visible:outline-none"
       >
         {open ? <XIcon className="size-6 text-foreground" /> : <img src={senseiLogo} alt="Sensei" className="size-8 brightness-0 dark:invert" />}
+        {/* Replies keep going while the widget is closed. */}
+        {!open && anyBusy && <TypingDots className="absolute -top-1 -right-1 h-4 rounded-full border bg-background px-1 pb-0.5" />}
       </button>
     </div>
   )
