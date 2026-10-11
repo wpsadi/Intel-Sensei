@@ -1,0 +1,407 @@
+[
+  {
+    "name": "Search by content",
+    "messages": [
+      {
+        "role": "user",
+        "type": "message",
+        "content": "Which of my notes mention the launch plan?"
+      }
+    ],
+    "expectedCall": [
+      {
+        "functionName": "search_notes",
+        "arguments": {
+          "query": {
+            "$pattern": "(?i)launch"
+          }
+        }
+      }
+    ]
+  },
+  {
+    "name": "Create a note with Markdown",
+    "messages": [
+      {
+        "role": "user",
+        "type": "message",
+        "content": "Make a new note called Grocery list with milk, eggs and bread as checkboxes."
+      }
+    ],
+    "expectedCall": [
+      {
+        "functionName": "create_note",
+        "arguments": {
+          "title": "Grocery list",
+          "content": {
+            "$pattern": "(?is)\\[ \\].*milk.*eggs.*bread"
+          }
+        }
+      }
+    ]
+  },
+  {
+    "name": "Append to a named note (search first, then edit)",
+    "messages": [
+      {
+        "role": "user",
+        "type": "message",
+        "content": "Add 'call the vendor' to my meeting notes."
+      }
+    ],
+    "expectedCall": [
+      {
+        "ordered": [
+          {
+            "functionName": "search_notes",
+            "arguments": {
+              "query": {
+                "$pattern": "(?i)meeting"
+              }
+            },
+            "mockOutput": {
+              "total_count": 1,
+              "page": 1,
+              "page_size": 10,
+              "has_more": false,
+              "notes": [
+                {
+                  "id": "a1",
+                  "title": "Meeting notes"
+                }
+              ]
+            }
+          },
+          {
+            "functionName": "edit_note",
+            "arguments": {
+              "note": "a1",
+              "content": {
+                "$pattern": "(?i)call the vendor"
+              },
+              "mode": "append"
+            }
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "name": "Delete means trash, not erase",
+    "messages": [
+      {
+        "role": "user",
+        "type": "message",
+        "content": "Delete the Old ideas note."
+      }
+    ],
+    "expectedCall": [
+      {
+        "functionName": "trash_notes",
+        "arguments": {
+          "notes": [
+            "Old ideas"
+          ]
+        }
+      }
+    ]
+  },
+  {
+    "name": "Database status update with relative date",
+    "messages": [
+      {
+        "role": "user",
+        "type": "message",
+        "content": "In my Tasks database, mark 'Write report' as Done and set its date to tomorrow."
+      }
+    ],
+    "expectedCall": [
+      {
+        "functionName": "update_database_rows",
+        "arguments": {
+          "database": "Tasks",
+          "rows": [
+            {
+              "row": "Write report",
+              "values": {
+                "Status": "Done",
+                "Date": {
+                  "$pattern": "(?i)tomorrow"
+                }
+              }
+            }
+          ]
+        }
+      }
+    ]
+  },
+  {
+    "name": "Add rows in one call",
+    "messages": [
+      {
+        "role": "user",
+        "type": "message",
+        "content": "Add two tasks to Tasks: 'Book venue' and 'Send invites'."
+      }
+    ],
+    "expectedCall": [
+      {
+        "functionName": "update_database_rows",
+        "arguments": {
+          "database": "Tasks",
+          "rows": {
+            "unordered": [
+              {
+                "values": {
+                  "Name": "Book venue"
+                }
+              },
+              {
+                "values": {
+                  "Name": "Send invites"
+                }
+              }
+            ]
+          }
+        }
+      }
+    ]
+  },
+  {
+    "name": "Open the trash",
+    "messages": [
+      {
+        "role": "user",
+        "type": "message",
+        "content": "Show me the trash."
+      }
+    ],
+    "expectedCall": [
+      {
+        "functionName": "open_note",
+        "arguments": {
+          "note": "trash"
+        }
+      }
+    ]
+  },
+  {
+    "name": "Ambiguous note: ask, don't guess",
+    "messages": [
+      {
+        "role": "user",
+        "type": "message",
+        "content": "Rename Ideas to Brainstorm."
+      },
+      {
+        "role": "model",
+        "type": "functioncall",
+        "name": "edit_note",
+        "arguments": {
+          "note": "Ideas",
+          "title": "Brainstorm"
+        }
+      },
+      {
+        "role": "user",
+        "type": "functionresponse",
+        "name": "edit_note",
+        "response": {
+          "error": "\"Ideas\" matches 2 notes: \"Ideas\" (id b1, in Meeting notes); \"Ideas\" (id b2, in Work). Ask the user which one, then pass its id."
+        }
+      }
+    ],
+    "expectedCall": []
+  },
+  {
+    "name": "Count blocks on the open note",
+    "messages": [
+      {
+        "role": "user",
+        "type": "message",
+        "content": "How many blocks does this page have?"
+      }
+    ],
+    "expectedCall": [
+      {
+        "functionName": "list_blocks",
+        "arguments": {}
+      }
+    ]
+  },
+  {
+    "name": "Add a to-do list with items",
+    "messages": [
+      {
+        "role": "user",
+        "type": "message",
+        "content": "Add a checklist at the end: buy tickets, pack bags."
+      }
+    ],
+    "expectedCall": [
+      {
+        "functionName": "insert_blocks",
+        "arguments": {
+          "blocks": [
+            {
+              "type": "todo",
+              "items": {
+                "$pattern": "(?i)tickets.*bags|bags.*tickets"
+              }
+            }
+          ]
+        }
+      }
+    ]
+  },
+  {
+    "name": "Insert after a located block",
+    "messages": [
+      {
+        "role": "user",
+        "type": "message",
+        "content": "Put a warning callout right after the Budget heading saying costs are estimates."
+      }
+    ],
+    "expectedCall": [
+      {
+        "ordered": [
+          {
+            "functionName": "list_blocks",
+            "arguments": {},
+            "mockOutput": {
+              "note": "Trip",
+              "total_count": 3,
+              "page": 1,
+              "page_size": 15,
+              "has_more": false,
+              "blocks": [
+                {
+                  "block": "0",
+                  "type": "h1",
+                  "text": "Trip"
+                },
+                {
+                  "block": "1",
+                  "type": "h2",
+                  "text": "Budget"
+                },
+                {
+                  "block": "2",
+                  "type": "text",
+                  "text": "Flights 400"
+                }
+              ]
+            }
+          },
+          {
+            "functionName": "insert_blocks",
+            "arguments": {
+              "position": {
+                "where": "after",
+                "block": "1"
+              },
+              "blocks": [
+                {
+                  "type": "callout",
+                  "text": {
+                    "$pattern": "(?i)estimate"
+                  }
+                }
+              ]
+            }
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "name": "Tick a to-do item",
+    "messages": [
+      {
+        "role": "user",
+        "type": "message",
+        "content": "Mark 'pack bags' as done."
+      }
+    ],
+    "expectedCall": [
+      {
+        "ordered": [
+          {
+            "functionName": "list_blocks",
+            "arguments": {},
+            "mockOutput": {
+              "total_count": 1,
+              "page": 1,
+              "page_size": 15,
+              "has_more": false,
+              "blocks": [
+                {
+                  "block": "0",
+                  "type": "todo",
+                  "children": 2
+                }
+              ]
+            }
+          },
+          {
+            "functionName": "list_blocks",
+            "arguments": {
+              "inside": "0"
+            },
+            "mockOutput": {
+              "total_count": 2,
+              "page": 1,
+              "page_size": 15,
+              "has_more": false,
+              "blocks": [
+                {
+                  "block": "0.0",
+                  "type": "todo_item",
+                  "text": "buy tickets",
+                  "checked": false
+                },
+                {
+                  "block": "0.1",
+                  "type": "todo_item",
+                  "text": "pack bags",
+                  "checked": false
+                }
+              ]
+            }
+          },
+          {
+            "functionName": "update_block",
+            "arguments": {
+              "block": "0.1",
+              "checked": true
+            }
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "name": "Embed a YouTube video",
+    "messages": [
+      {
+        "role": "user",
+        "type": "message",
+        "content": "Add this video to the page: https://youtu.be/dQw4w9WgXcQ"
+      }
+    ],
+    "expectedCall": [
+      {
+        "functionName": "insert_blocks",
+        "arguments": {
+          "blocks": [
+            {
+              "type": "video",
+              "text": "https://youtu.be/dQw4w9WgXcQ"
+            }
+          ]
+        }
+      }
+    ]
+  }
+]

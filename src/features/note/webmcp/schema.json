@@ -1,0 +1,841 @@
+{
+  "tools": [
+    {
+      "name": "search_notes",
+      "description": "Finds notes in S-Note by words in their title or text, or lists notes under a parent, starred notes or the trash. Use first whenever the user refers to a note you have no id for, or asks what notes they have.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "query": {
+            "description": "Words to find in titles and text. Omit to list notes",
+            "type": "string"
+          },
+          "inside": {
+            "description": "Only notes under this note (title or id)",
+            "type": "string",
+            "minLength": 1
+          },
+          "favorites_only": {
+            "description": "Only starred notes",
+            "type": "boolean"
+          },
+          "in_trash": {
+            "description": "Search the trash instead of live notes",
+            "type": "boolean"
+          },
+          "page": {
+            "default": 1,
+            "description": "Result page, starting at 1",
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 9007199254740991
+          }
+        }
+      },
+      "annotations": {
+        "readOnlyHint": true,
+        "untrustedContentHint": true
+      }
+    },
+    {
+      "name": "read_note",
+      "description": "Returns a note's text, sub-notes and settings, or a database's columns. Use to answer questions about a note's contents or before editing it, so you know what is already there.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "note": {
+            "type": "string",
+            "minLength": 1,
+            "description": "Note title as the user said it, or its id from search_notes"
+          },
+          "offset": {
+            "default": 0,
+            "description": "Character offset to continue a long note from next_offset",
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          }
+        },
+        "required": [
+          "note"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": true,
+        "untrustedContentHint": true
+      }
+    },
+    {
+      "name": "open_note",
+      "description": "Shows a note or the trash on screen. Use when the user asks to open, go to or see a note.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "note": {
+            "type": "string",
+            "minLength": 1,
+            "description": "Note title or id, or \"trash\" to show the trash"
+          }
+        },
+        "required": [
+          "note"
+        ]
+      }
+    },
+    {
+      "name": "create_note",
+      "description": "Creates a new text note, optionally with Markdown content, or a new table database, at the top level or under another note, and opens it. Use when the user asks to write, start or make a new note, page, list or database.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "title": {
+            "type": "string",
+            "description": "Title for the new note"
+          },
+          "content": {
+            "description": "Body as Markdown (headings, lists, - [ ] tasks, tables, code)",
+            "type": "string"
+          },
+          "inside": {
+            "description": "Parent note (title or id). Omit for the workspace top level",
+            "type": "string",
+            "minLength": 1
+          },
+          "icon": {
+            "description": "One emoji",
+            "type": "string",
+            "maxLength": 8
+          },
+          "as_database": {
+            "description": "Make it a table database instead of a text note",
+            "type": "boolean"
+          },
+          "open": {
+            "default": true,
+            "description": "Show the new note to the user",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "title"
+        ]
+      }
+    },
+    {
+      "name": "edit_note",
+      "description": "Changes a note as a whole: adds Markdown at the start or end of its body, renames it, sets its emoji, stars it, locks it or changes how it displays. Use it to title an untitled note instead of adding a heading. To change one part of a note, use update_block on that block instead; this tool never edits individual blocks.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "note": {
+            "type": "string",
+            "minLength": 1,
+            "description": "Note title as the user said it, or its id from search_notes"
+          },
+          "content": {
+            "description": "Markdown to write into the body",
+            "type": "string"
+          },
+          "mode": {
+            "default": "append",
+            "description": "Add content at the end or the start of the body",
+            "type": "string",
+            "enum": [
+              "append",
+              "prepend"
+            ]
+          },
+          "rewrite_whole_note": {
+            "description": "Erase the whole body and write content instead. Only when the user explicitly asks to rewrite the entire note",
+            "type": "boolean"
+          },
+          "title": {
+            "type": "string"
+          },
+          "icon": {
+            "description": "One emoji, or \"\" to remove",
+            "type": "string",
+            "maxLength": 8
+          },
+          "favorite": {
+            "description": "Star or unstar",
+            "type": "boolean"
+          },
+          "locked": {
+            "description": "Lock against edits, or unlock",
+            "type": "boolean"
+          },
+          "full_width": {
+            "type": "boolean"
+          },
+          "small_text": {
+            "type": "boolean"
+          },
+          "font": {
+            "type": "string",
+            "enum": [
+              "default",
+              "serif",
+              "mono"
+            ]
+          }
+        },
+        "required": [
+          "note"
+        ]
+      },
+      "annotations": {
+        "untrustedContentHint": true
+      }
+    },
+    {
+      "name": "duplicate_note",
+      "description": "Copies a text note (its body and settings, not its sub-notes) next to the original. Use when the user asks to copy or duplicate a note.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "note": {
+            "type": "string",
+            "minLength": 1,
+            "description": "Note title as the user said it, or its id from search_notes"
+          }
+        },
+        "required": [
+          "note"
+        ]
+      },
+      "annotations": {
+        "untrustedContentHint": true
+      }
+    },
+    {
+      "name": "move_notes",
+      "description": "Moves one or more notes, with their sub-notes, under another note or to the top level. Use when the user asks to move, file or reorganize notes.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "notes": {
+            "minItems": 1,
+            "maxItems": 25,
+            "type": "array",
+            "items": {
+              "type": "string",
+              "minLength": 1,
+              "description": "Note title as the user said it, or its id from search_notes"
+            },
+            "description": "Notes by title or id"
+          },
+          "inside": {
+            "anyOf": [
+              {
+                "type": "string",
+                "minLength": 1,
+                "description": "Note title as the user said it, or its id from search_notes"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "New parent note (title or id), or null for the workspace top level"
+          }
+        },
+        "required": [
+          "notes",
+          "inside"
+        ]
+      },
+      "annotations": {
+        "untrustedContentHint": true
+      }
+    },
+    {
+      "name": "trash_notes",
+      "description": "Moves notes and their sub-notes to the trash, where they can be restored, or restores them. Use when the user asks to delete, remove or restore notes.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "notes": {
+            "minItems": 1,
+            "maxItems": 25,
+            "type": "array",
+            "items": {
+              "type": "string",
+              "minLength": 1,
+              "description": "Note title as the user said it, or its id from search_notes"
+            },
+            "description": "Notes by title or id"
+          },
+          "restore": {
+            "description": "true takes the notes back out of the trash",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "notes"
+        ]
+      },
+      "annotations": {
+        "untrustedContentHint": true
+      }
+    },
+    {
+      "name": "delete_notes_forever",
+      "description": "Permanently erases notes that are already in the trash, with their sub-notes and databases. This cannot be undone. Use only when the user explicitly asks to delete forever or empty the trash, after confirming which notes.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "notes": {
+            "minItems": 1,
+            "maxItems": 25,
+            "type": "array",
+            "items": {
+              "type": "string",
+              "minLength": 1,
+              "description": "Note title as the user said it, or its id from search_notes"
+            },
+            "description": "Notes already in the trash, by title or id"
+          }
+        },
+        "required": [
+          "notes"
+        ]
+      },
+      "annotations": {
+        "consequentialHint": true,
+        "untrustedContentHint": true
+      }
+    },
+    {
+      "name": "query_database",
+      "description": "Lists a database's rows with their column values, optionally only rows whose columns contain given text. Use to answer questions about a table, tracker or list database, or to find a row before updating it.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "database": {
+            "type": "string",
+            "minLength": 1,
+            "description": "Database title or id"
+          },
+          "where": {
+            "description": "Column name → text the cell must contain, e.g. {\"Status\":\"Done\"}",
+            "type": "object",
+            "propertyNames": {
+              "type": "string"
+            },
+            "additionalProperties": {
+              "type": "string"
+            }
+          },
+          "page": {
+            "default": 1,
+            "description": "Result page, starting at 1",
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 9007199254740991
+          }
+        },
+        "required": [
+          "database"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": true,
+        "untrustedContentHint": true
+      }
+    },
+    {
+      "name": "update_database_rows",
+      "description": "Adds new rows to a database or changes values in existing rows, several at once. Use when the user asks to add entries or tasks to a table, or to change a status, date, tag or other column.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "database": {
+            "type": "string",
+            "minLength": 1,
+            "description": "Database title or id"
+          },
+          "rows": {
+            "minItems": 1,
+            "maxItems": 25,
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "row": {
+                  "description": "Existing row by name or id. Omit to add a new row",
+                  "type": "string"
+                },
+                "values": {
+                  "type": "object",
+                  "propertyNames": {
+                    "type": "string"
+                  },
+                  "additionalProperties": {
+                    "anyOf": [
+                      {
+                        "type": "string"
+                      },
+                      {
+                        "type": "number"
+                      },
+                      {
+                        "type": "boolean"
+                      },
+                      {
+                        "type": "array",
+                        "items": {
+                          "type": "string"
+                        }
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ],
+                    "description": "Option name(s), text, number, true/false, a date like \"2026-10-20\" or \"tomorrow\", or null to clear"
+                  },
+                  "description": "Column name → value. Use \"Name\" for the row title"
+                }
+              },
+              "required": [
+                "values"
+              ]
+            }
+          }
+        },
+        "required": [
+          "database",
+          "rows"
+        ]
+      },
+      "annotations": {
+        "untrustedContentHint": true
+      }
+    },
+    {
+      "name": "list_blocks",
+      "description": "Lists a note's blocks in order with their address, kind, a text preview and child count, plus counts by kind. Use to see a note's structure, count its blocks, or find the address of a block before reading, editing, moving or deleting it.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "note": {
+            "description": "Note title or id. Omit for the note on screen",
+            "type": "string",
+            "minLength": 1
+          },
+          "inside": {
+            "description": "List the children of this block instead of the top level",
+            "type": "string",
+            "pattern": "^\\d+(\\.\\d+)*$"
+          },
+          "page": {
+            "default": 1,
+            "description": "Result page, starting at 1",
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 9007199254740991
+          }
+        }
+      },
+      "annotations": {
+        "readOnlyHint": true,
+        "untrustedContentHint": true
+      }
+    },
+    {
+      "name": "read_block",
+      "description": "Returns one block's full text, settings, comments and children. Use when you need more than the list_blocks preview, such as a long paragraph, a table's cells or a block's URL.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "note": {
+            "description": "Note title or id. Omit for the note on screen",
+            "type": "string",
+            "minLength": 1
+          },
+          "block": {
+            "type": "string",
+            "pattern": "^\\d+(\\.\\d+)*$",
+            "description": "Block address from list_blocks, e.g. \"3\" or \"3.1\" for the 2nd child of block 3"
+          }
+        },
+        "required": [
+          "block"
+        ]
+      },
+      "annotations": {
+        "readOnlyHint": true,
+        "untrustedContentHint": true
+      }
+    },
+    {
+      "name": "insert_blocks",
+      "description": "Adds one or more blocks of any kind the \"/\" menu offers (text, headings, lists, to-dos, toggles, callouts, code, tables, columns, tabs, images, embeds, databases, charts, sub-pages, equations, mentions…) at a position in a note. Use when the user asks to add content of a specific kind. For plain prose, type \"markdown\" is simplest.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "note": {
+            "description": "Note title or id. Omit for the note on screen",
+            "type": "string",
+            "minLength": 1
+          },
+          "position": {
+            "type": "object",
+            "properties": {
+              "where": {
+                "type": "string",
+                "enum": [
+                  "end",
+                  "start",
+                  "after",
+                  "before",
+                  "inside"
+                ],
+                "description": "inside = at the end of a container block such as a callout, toggle or column"
+              },
+              "block": {
+                "description": "Needed for after, before and inside",
+                "type": "string",
+                "pattern": "^\\d+(\\.\\d+)*$"
+              }
+            },
+            "required": [
+              "where"
+            ],
+            "description": "Where in the note. Defaults to the end"
+          },
+          "blocks": {
+            "minItems": 1,
+            "maxItems": 20,
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "type": {
+                  "type": "string",
+                  "enum": [
+                    "text",
+                    "h1",
+                    "h2",
+                    "h3",
+                    "h4",
+                    "bullet",
+                    "numbered",
+                    "todo",
+                    "toggle",
+                    "divider",
+                    "link-page",
+                    "callout",
+                    "quote",
+                    "code",
+                    "page",
+                    "table",
+                    "image",
+                    "video",
+                    "audio",
+                    "file",
+                    "bookmark",
+                    "embed",
+                    "html",
+                    "drive",
+                    "tweet",
+                    "gist",
+                    "db-table",
+                    "db-board",
+                    "db-gallery",
+                    "db-list",
+                    "db-feed",
+                    "db-dashboard",
+                    "db-calendar",
+                    "db-timeline",
+                    "db-map",
+                    "db-vbar",
+                    "db-hbar",
+                    "db-line",
+                    "db-donut",
+                    "db-number",
+                    "db-form",
+                    "db-inline",
+                    "db-full",
+                    "db-linked",
+                    "toc",
+                    "equation",
+                    "inline-equation",
+                    "button",
+                    "breadcrumb",
+                    "tabs",
+                    "synced",
+                    "th1",
+                    "th2",
+                    "th3",
+                    "col2",
+                    "col3",
+                    "col4",
+                    "col5",
+                    "mermaid",
+                    "ai",
+                    "mention-person",
+                    "mention-page",
+                    "date",
+                    "emoji",
+                    "markdown"
+                  ],
+                  "description": "Block kind as in the \"/\" menu"
+                },
+                "text": {
+                  "description": "Text of the block; note title for page/link-page; name for mentions; LaTeX for equations; Markdown for markdown",
+                  "type": "string"
+                },
+                "items": {
+                  "description": "List items (\"[x] \" prefix = checked), toggle lines, column texts or tab titles",
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                },
+                "rows": {
+                  "description": "Table cells row by row; the first row is the header",
+                  "type": "array",
+                  "items": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  }
+                },
+                "attrs": {
+                  "description": "Block settings, e.g. {\"language\":\"ts\"}, {\"src\":url}, {\"url\":url}, {\"icon\":\"🔥\"}",
+                  "type": "object",
+                  "propertyNames": {
+                    "type": "string"
+                  },
+                  "additionalProperties": {}
+                }
+              },
+              "required": [
+                "type"
+              ]
+            }
+          }
+        },
+        "required": [
+          "blocks"
+        ]
+      }
+    },
+    {
+      "name": "update_block",
+      "description": "Changes one block anywhere in a note: its text, list items, table cells or settings, ticks a to-do, changes it into another kind of block (e.g. a paragraph into a callout or a list into to-dos), or adds a comment. Use when the user asks to edit, fix, convert, check off or comment on a specific part of a note.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "note": {
+            "description": "Note title or id. Omit for the note on screen",
+            "type": "string",
+            "minLength": 1
+          },
+          "block": {
+            "type": "string",
+            "pattern": "^\\d+(\\.\\d+)*$",
+            "description": "Block address from list_blocks, e.g. \"3\" or \"3.1\" for the 2nd child of block 3"
+          },
+          "text": {
+            "description": "Text of the block; note title for page/link-page; name for mentions; LaTeX for equations; Markdown for markdown",
+            "type": "string"
+          },
+          "items": {
+            "description": "List items (\"[x] \" prefix = checked), toggle lines, column texts or tab titles",
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "rows": {
+            "description": "Table cells row by row; the first row is the header",
+            "type": "array",
+            "items": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            }
+          },
+          "attrs": {
+            "description": "Block settings, e.g. {\"language\":\"ts\"}, {\"src\":url}, {\"url\":url}, {\"icon\":\"🔥\"}",
+            "type": "object",
+            "propertyNames": {
+              "type": "string"
+            },
+            "additionalProperties": {}
+          },
+          "convert_to": {
+            "description": "Change the block into another kind in place, keeping its content, e.g. \"callout\", \"todo\", \"h2\", \"toggle\"",
+            "type": "string",
+            "enum": [
+              "text",
+              "h1",
+              "h2",
+              "h3",
+              "h4",
+              "bullet",
+              "numbered",
+              "todo",
+              "toggle",
+              "divider",
+              "link-page",
+              "callout",
+              "quote",
+              "code",
+              "page",
+              "table",
+              "image",
+              "video",
+              "audio",
+              "file",
+              "bookmark",
+              "embed",
+              "html",
+              "drive",
+              "tweet",
+              "gist",
+              "db-table",
+              "db-board",
+              "db-gallery",
+              "db-list",
+              "db-feed",
+              "db-dashboard",
+              "db-calendar",
+              "db-timeline",
+              "db-map",
+              "db-vbar",
+              "db-hbar",
+              "db-line",
+              "db-donut",
+              "db-number",
+              "db-form",
+              "db-inline",
+              "db-full",
+              "db-linked",
+              "toc",
+              "equation",
+              "inline-equation",
+              "button",
+              "breadcrumb",
+              "tabs",
+              "synced",
+              "th1",
+              "th2",
+              "th3",
+              "col2",
+              "col3",
+              "col4",
+              "col5",
+              "mermaid",
+              "ai",
+              "mention-person",
+              "mention-page",
+              "date",
+              "emoji",
+              "markdown"
+            ]
+          },
+          "checked": {
+            "description": "Tick or untick a to-do item",
+            "type": "boolean"
+          },
+          "comment": {
+            "description": "Add a comment to the block",
+            "type": "string"
+          }
+        },
+        "required": [
+          "block"
+        ]
+      },
+      "annotations": {
+        "untrustedContentHint": true
+      }
+    },
+    {
+      "name": "move_block",
+      "description": "Moves a block, with everything inside it, to another place in the same note, including into or out of callouts, toggles and columns. Use when the user asks to reorder or move part of a note.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "note": {
+            "description": "Note title or id. Omit for the note on screen",
+            "type": "string",
+            "minLength": 1
+          },
+          "block": {
+            "type": "string",
+            "pattern": "^\\d+(\\.\\d+)*$",
+            "description": "Block address from list_blocks, e.g. \"3\" or \"3.1\" for the 2nd child of block 3"
+          },
+          "position": {
+            "type": "object",
+            "properties": {
+              "where": {
+                "type": "string",
+                "enum": [
+                  "end",
+                  "start",
+                  "after",
+                  "before",
+                  "inside"
+                ],
+                "description": "inside = at the end of a container block such as a callout, toggle or column"
+              },
+              "block": {
+                "description": "Needed for after, before and inside",
+                "type": "string",
+                "pattern": "^\\d+(\\.\\d+)*$"
+              }
+            },
+            "required": [
+              "where"
+            ],
+            "description": "Where in the note. Defaults to the end"
+          }
+        },
+        "required": [
+          "block",
+          "position"
+        ]
+      }
+    },
+    {
+      "name": "delete_blocks",
+      "description": "Removes one or more blocks from a note. Use when the user asks to delete or clear specific parts of a note; to remove a whole note use trash_notes.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "note": {
+            "description": "Note title or id. Omit for the note on screen",
+            "type": "string",
+            "minLength": 1
+          },
+          "blocks": {
+            "minItems": 1,
+            "maxItems": 50,
+            "type": "array",
+            "items": {
+              "type": "string",
+              "pattern": "^\\d+(\\.\\d+)*$",
+              "description": "Block address from list_blocks, e.g. \"3\" or \"3.1\" for the 2nd child of block 3"
+            }
+          },
+          "empty_note": {
+            "description": "Needed to remove every block of the note. Only when the user asked to clear the whole note",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "blocks"
+        ]
+      },
+      "annotations": {
+        "untrustedContentHint": true
+      }
+    }
+  ]
+}

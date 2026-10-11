@@ -1,0 +1,170 @@
+/* SNote editor typography and block styles. Tailwind handles component chrome; this file styles ProseMirror output. */
+
+.snote-editor {
+  font-size: 16px;
+  line-height: 1.6;
+  caret-color: currentColor;
+}
+
+.snote-editor > * + *,
+.snote-editor [data-node-view-content-react] > * + * {
+  margin-top: 2px;
+}
+
+.snote-editor p { min-height: 1.6em; padding: 3px 2px; }
+.snote-editor h1 { font-size: 1.875rem; font-weight: 700; margin-top: 1.4em; line-height: 1.3; }
+.snote-editor h2 { font-size: 1.5rem; font-weight: 600; margin-top: 1.1em; line-height: 1.3; }
+.snote-editor h3 { font-size: 1.25rem; font-weight: 600; margin-top: 1em; line-height: 1.3; }
+.snote-editor h4 { font-size: 1.075rem; font-weight: 600; margin-top: 0.8em; }
+
+.snote-editor ul:not([data-type='taskList']) { list-style: disc; padding-left: 1.6em; }
+.snote-editor ul ul:not([data-type='taskList']) { list-style: circle; }
+.snote-editor ul ul ul:not([data-type='taskList']) { list-style: square; }
+.snote-editor ol { list-style: decimal; padding-left: 1.6em; }
+.snote-editor ol ol { list-style: lower-alpha; }
+.snote-editor li > p { padding: 1px 2px; }
+
+.snote-editor ul[data-type='taskList'] { padding-left: 0.2em; }
+.snote-editor ul[data-type='taskList'] li { display: flex; gap: 0.5em; align-items: flex-start; }
+.snote-editor ul[data-type='taskList'] li > label { margin-top: 0.42em; user-select: none; }
+.snote-editor ul[data-type='taskList'] li > label input { width: 1em; height: 1em; accent-color: #2383e2; cursor: pointer; }
+.snote-editor ul[data-type='taskList'] li > div { flex: 1; }
+.snote-editor ul[data-type='taskList'] li[data-checked='true'] > div { text-decoration: line-through; opacity: 0.55; }
+
+.snote-editor blockquote { border-left: 3px solid currentColor; padding-left: 0.9em; margin: 4px 0; font-size: 1.05em; }
+.snote-editor hr { border: none; border-top: 1px solid var(--border); margin: 14px 0; }
+.snote-editor hr.ProseMirror-selectednode { border-top-color: #60a5fa; }
+
+.snote-editor code:not(pre code) {
+  background: color-mix(in oklab, var(--muted-foreground) 15%, transparent);
+  color: #eb5757;
+  border-radius: 4px;
+  padding: 0.15em 0.35em;
+  font-size: 0.85em;
+}
+
+.snote-editor mark { border-radius: 3px; padding: 0 2px; color: inherit; }
+.snote-editor .snote-link { color: inherit; text-decoration: underline; text-decoration-color: color-mix(in oklab, currentColor 40%, transparent); cursor: pointer; }
+
+/* Placeholder */
+.snote-editor .is-empty::before { content: none; }
+.snote-editor.ProseMirror-focused .is-empty::before {
+  content: attr(data-placeholder);
+  float: left;
+  height: 0;
+  pointer-events: none;
+  color: var(--muted-foreground);
+  opacity: 0.55;
+}
+
+/* Code highlighting (lowlight / highlight.js classes) */
+.snote-code pre { white-space: pre; }
+.hljs-comment, .hljs-quote { color: #8b949e; font-style: italic; }
+.hljs-keyword, .hljs-selector-tag, .hljs-built_in { color: #d73a49; }
+.hljs-string, .hljs-attr, .hljs-template-variable { color: #22863a; }
+.hljs-number, .hljs-literal { color: #005cc5; }
+.hljs-title, .hljs-section, .hljs-function { color: #6f42c1; }
+.hljs-variable, .hljs-type, .hljs-params { color: #e36209; }
+.dark .hljs-keyword, .dark .hljs-selector-tag, .dark .hljs-built_in { color: #ff7b72; }
+.dark .hljs-string, .dark .hljs-attr { color: #a5d6ff; }
+.dark .hljs-number, .dark .hljs-literal { color: #79c0ff; }
+.dark .hljs-title, .dark .hljs-function { color: #d2a8ff; }
+.dark .hljs-variable, .dark .hljs-type, .dark .hljs-params { color: #ffa657; }
+
+/* Tables */
+.snote-editor .tableWrapper { overflow-x: auto; margin: 8px 0; }
+.snote-editor table { border-collapse: collapse; table-layout: fixed; width: 100%; }
+.snote-editor td, .snote-editor th { border: 1px solid var(--border); padding: 4px 8px; vertical-align: top; position: relative; min-width: 80px; }
+.snote-editor th { background: var(--muted); font-weight: 600; text-align: left; }
+.snote-editor .selectedCell::after { content: ''; position: absolute; inset: 0; background: rgb(35 131 226 / 0.14); pointer-events: none; }
+.snote-editor .column-resize-handle { position: absolute; right: -2px; top: 0; bottom: 0; width: 4px; background: #2383e2; pointer-events: none; }
+.snote-editor.resize-cursor { cursor: col-resize; }
+
+/* Toggle list & toggle headings (Details) */
+.snote-editor .snote-toggle { display: flex; gap: 0.25em; }
+.snote-editor .snote-toggle > button {
+  flex-shrink: 0;
+  width: 1.5em;
+  height: 1.6em;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 4px;
+  cursor: pointer;
+}
+.snote-editor .snote-toggle > button:hover { background: var(--muted); }
+.snote-editor .snote-toggle > button::before { content: '▸'; transition: transform 0.15s; font-size: 0.9em; }
+.snote-editor .snote-toggle.is-open > button::before { transform: rotate(90deg); }
+.snote-editor .snote-toggle > div { flex: 1; min-width: 0; }
+.snote-editor .snote-toggle summary { list-style: none; padding: 3px 2px; }
+.snote-editor .snote-toggle summary::-webkit-details-marker { display: none; }
+.snote-editor .snote-toggle[data-level='1'] summary { font-size: 1.875rem; font-weight: 700; line-height: 1.3; }
+.snote-editor .snote-toggle[data-level='2'] summary { font-size: 1.5rem; font-weight: 600; line-height: 1.3; }
+.snote-editor .snote-toggle[data-level='3'] summary { font-size: 1.25rem; font-weight: 600; line-height: 1.3; }
+.snote-editor .snote-toggle[data-level='1'] > button { height: 2.4em; }
+.snote-editor .snote-toggle[data-level='2'] > button { height: 2em; }
+.snote-editor .snote-toggle[data-level='3'] > button { height: 1.8em; }
+.snote-editor [data-type='detailsContent'][hidden] { display: none; }
+
+/* Columns */
+.snote-editor .snote-columns { display: grid; gap: 24px; margin: 4px 0; }
+.snote-editor .snote-column { min-width: 0; }
+
+/* Tabs: only the active panel is visible */
+.snote-tabs .snote-tab-panel { display: none; }
+.snote-tabs[data-active='0'] .snote-tab-panels > div > .snote-tab-panel:nth-child(1),
+.snote-tabs[data-active='1'] .snote-tab-panels > div > .snote-tab-panel:nth-child(2),
+.snote-tabs[data-active='2'] .snote-tab-panels > div > .snote-tab-panel:nth-child(3),
+.snote-tabs[data-active='3'] .snote-tab-panels > div > .snote-tab-panel:nth-child(4),
+.snote-tabs[data-active='4'] .snote-tab-panels > div > .snote-tab-panel:nth-child(5),
+.snote-tabs[data-active='5'] .snote-tab-panels > div > .snote-tab-panel:nth-child(6),
+.snote-tabs[data-active='6'] .snote-tab-panels > div > .snote-tab-panel:nth-child(7),
+.snote-tabs[data-active='7'] .snote-tab-panels > div > .snote-tab-panel:nth-child(8),
+.snote-tabs[data-active='8'] .snote-tab-panels > div > .snote-tab-panel:nth-child(9),
+.snote-tabs[data-active='9'] .snote-tab-panels > div > .snote-tab-panel:nth-child(10) { display: block; }
+
+/* Math */
+.snote-editor .tiptap-mathematics-render { cursor: pointer; border-radius: 4px; padding: 0 2px; }
+.snote-editor .tiptap-mathematics-render:hover { background: var(--muted); }
+.snote-editor [data-type='block-math'] { display: block; text-align: center; padding: 12px 8px; margin: 4px 0; border-radius: 6px; }
+.snote-editor [data-type='block-math']:hover { background: var(--muted); }
+/* An empty equation shows a hint, like Notion's "Add a TeX equation". */
+.snote-editor [data-type='block-math'][data-latex='']::before { content: 'Σ   Add a TeX equation'; display: block; text-align: left; color: var(--muted-foreground); }
+.snote-editor [data-type='block-math'][data-latex=''] { background: var(--muted); }
+.snote-editor span.tiptap-mathematics-render[data-latex='']::before { content: 'New equation'; color: var(--muted-foreground); }
+
+/* Selection of atom blocks */
+.snote-editor .ProseMirror-selectednode { outline: none; }
+.snote-editor .ProseMirror-gapcursor::after { border-top-color: currentColor; }
+
+.snote-menu {
+  border-radius: 10px;
+  border: 1px solid var(--border);
+  background: var(--popover);
+  color: var(--popover-foreground);
+  box-shadow: 0 10px 38px -10px rgb(0 0 0 / 0.35), 0 10px 20px -15px rgb(0 0 0 / 0.2);
+}
+
+/* Notion-like color palette: tags and callout backgrounds */
+.snote-tag-gray, .snote-bg-gray { background: rgb(135 131 120 / 0.15); }
+.snote-tag-brown, .snote-bg-brown { background: rgb(140 46 0 / 0.12); }
+.snote-tag-orange, .snote-bg-orange { background: rgb(245 93 0 / 0.14); }
+.snote-tag-yellow, .snote-bg-yellow { background: rgb(233 168 0 / 0.18); }
+.snote-tag-green, .snote-bg-green { background: rgb(0 135 107 / 0.14); }
+.snote-tag-blue, .snote-bg-blue { background: rgb(0 120 223 / 0.13); }
+.snote-tag-purple, .snote-bg-purple { background: rgb(103 36 222 / 0.12); }
+.snote-tag-pink, .snote-bg-pink { background: rgb(221 0 129 / 0.12); }
+.snote-tag-red, .snote-bg-red { background: rgb(255 0 26 / 0.12); }
+
+.snote-database-block { margin: 12px 0; }
+.leaflet-container { font: inherit; }
+
+/* Page menu: font family, small text. Full width is handled by the page container. */
+.snote-font-serif { font-family: ui-serif, Georgia, Cambria, 'Times New Roman', serif; }
+.snote-font-mono { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+.snote-small .snote-editor { font-size: 14px; }
+
+/* Blocks with comments get a soft marker on the right edge. */
+.snote-editor [data-comments] {
+  box-shadow: inset -2px 0 0 #f59e0b;
+}
