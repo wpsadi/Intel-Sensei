@@ -208,7 +208,7 @@ export function useLiveCall(chatId: string | null, onChatOpened: (id: string) =>
           }),
         ),
         ...createTodoTools(
-          (todos) => changeReply((turn) => void (turn.todos = todos)),
+          (todos) => changeReply((turn) => void (turn.todos = todos ?? undefined)),
           currentTodos(useAskSenseiStore.getState().messages[chat] ?? []),
         ),
         deepAnswer: createDeepAnswerTool({
@@ -225,7 +225,7 @@ export function useLiveCall(chatId: string | null, onChatOpened: (id: string) =>
                 ? turn.parts.map((part) => (part.type === 'answer' && part.id === id ? { ...part, text: soFar } : part))
                 : [...turn.parts, { type: 'answer', id, text: soFar }]
             }),
-          onTodos: (todos) => changeReply((turn) => void (turn.todos = todos)),
+          onTodos: (todos) => changeReply((turn) => void (turn.todos = todos ?? undefined)),
           todos: () => currentTodos(useAskSenseiStore.getState().messages[chat] ?? []),
           // The deep model's own web searches show as one group of searches before its answer.
           onSearches: (searches) =>
