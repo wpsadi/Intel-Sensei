@@ -4,13 +4,17 @@ import { useS3D } from '../store'
 import { uid } from '../db'
 import { FRAME_PRESETS, absRect, childrenOf, solid, stroke } from '../model'
 import * as THREE from 'three'
-import { DEFAULT_MATERIAL, GEOMETRY_PARAMS, MATERIAL_PRESETS, sceneOf, measureScene, emptyScene, fitCamera, makeCamera, objectBounds, recordScene, renderScene, renderTimeline, sceneDuration } from '../render/scene3d'
+import { type PaintOp, cleanMesh, joinPieces, paintMesh, sculptMesh, subdivideMesh, piecesOf, signedVolume, smoothMesh, voxelMesh } from '../render/mesh-ops'
+import { exportScene } from '../scene-editor/scene-export'
+import { openSceneEditor } from '../scene-editor/edit'
+import { clearSnapshot, compareImages, getSnapshot, setSnapshot } from '../render/snapshots'
+import { ALL_ANGLES, VIEW_DIRS, buildScene, disposeTree, renderViews, DEFAULT_MATERIAL, GEOMETRY_PARAMS, MATERIAL_PRESETS, sceneOf, measureScene, emptyScene, fitCamera, makeCamera, objectBounds, recordScene, renderScene, renderTimeline, sceneDuration } from '../render/scene3d'
 import { DEFAULT_LOOK, animateCharacter, buildCharacter } from './character'
 import { downloadBlob, storeFile } from '../files'
 import { type DiscoverItem, OWNING_UNITS, searchModels } from '../discover/smithsonian'
 import { importRemoteModel } from '../io'
 import { askUser } from './ask-user'
-import type { Effect, Fill, Geometry3D, Keyframe3D, Material3D, NodeType, Obj3D, SNode, Scene3D, Vec3 } from '../types'
+import type { Effect, Fill, Geometry3D, Keyframe3D, Light3D, Material3D, MeshData3D, NodeType, Obj3D, SNode, Scene3D, Vec3 } from '../types'
 
 const s = () => useS3D.getState()
 
@@ -66,7 +70,8 @@ const nodeSpec: z.ZodType<NodeSpec> = z.lazy(() =>
 
 /* ---------- 3D schemas ---------- */
 
-const GEOMETRIES = Object.keys(GEOMETRY_PARAMS) as [Geometry3D, ...Geometry3D[]]
+// 'mesh' is made by the mesh tools from existing objects; it cannot be created from parameters.
+const GEOMETRIES = Object.keys(GEOMETRY_PARAMS).filter((g) => g !== 'mesh') as [Geometry3D, ...Geometry3D[]]
 const vec3 = z.array(z.number()).length(3)
 
 
@@ -82,6 +87,18 @@ const materialSpec = z.object({
   clearcoat: z.number().optional(),
   wireframe: z.boolean().optional(),
   flatShading: z.boolean().optional().describe('Faceted low-poly look'),
+  vertexColors: z.boolean().optional().describe('Use the colours stored on a joined/fused mesh instead of `color`'),
+  sheen: z.number().optional().describe('0..1 soft grazing-angle highlight: fur, fabric, velvet, soft skin'),
+  sheenColor: z.string().optional(),
+  specularIntensity: z.number().optional().describe('0..1 strength of reflections; lower for fur and skin, 1 for gloss'),
+  normalImage: z.string().optional().describe('Normal map (s3d-file: ref or URL), tiled with patternScale'),
+  roughnessImage: z.string().optional().describe('Roughness map: dark = shiny, light = matte'),
+  aoImage: z.string().optional().describe('Ambient-occlusion map'),
+  normalScale: z.number().optional().describe('Normal map strength, default 1'),
+  pattern: z.enum(['checker', 'stripes', 'ridges', 'dots', 'grid', 'bricks', 'noise', 'wood', 'waves', 'weave', 'fur', 'pores', 'hide']).optional().describe('Procedural surface texture tinted by color; combine with bump for relief'),
+  image: z.string().optional().describe('Image texture: an s3d-file: ref or URL (ignored when pattern is set)'),
+  patternScale: z.number().optional().describe('Texture repeats across the surface, default 1'),
+  bump: z.number().optional().describe('0..1 relief depth of the pattern/image: ridges, grooves, bumps'),
 })
 
 const paramsSpec = z.object({
@@ -89,9 +106,9 @@ const paramsSpec = z.object({
   radius: z.number().optional(), radiusTop: z.number().optional(), radiusBottom: z.number().optional(), length: z.number().optional(),
   tube: z.number().optional(), arc: z.number().optional().describe('Torus arc in degrees'), p: z.number().optional(), q: z.number().optional(),
   innerRadius: z.number().optional(), outerRadius: z.number().optional(), detail: z.number().optional(), segments: z.number().optional(),
-  bevel: z.number().optional(),
-  points: z.array(z.array(z.number()).length(2)).optional().describe('lathe: [radius, y] profile revolved around Y (vases, bottles, cups). extrude: [x, y] outline extruded along Z by depth'),
-}).describe(`Geometry dimensions in scene units. Keys per geometry: ${Object.entries(GEOMETRY_PARAMS).map(([g, p]) => `${g}(${Object.keys(p).join(',')}${g === 'lathe' || g === 'extrude' ? ',points' : ''})`).join('; ')}`)
+  bevel: z.number().optional(), turns: z.number().optional(), amplitude: z.number().optional(), frequency: z.number().optional(), closed: z.number().optional().describe('tube: 1 closes the curve into a loop'),
+  points: z.array(z.array(z.number()).min(2).max(3)).optional().describe('lathe: [radius, y] profile revolved around Y (vases, bottles, cups). extrude: [x, y] outline extruded along Z by depth. tube: [x, y, z] path points; a smooth curve is swept with a round pipe of `radius` (cables, rails, handles). helix: coil/spring. wave: rippled surface'),
+}).describe(`Geometry dimensions in scene units. Keys per geometry: ${Object.entries(GEOMETRY_PARAMS).filter(([g]) => g !== 'mesh').map(([g, p]) => `${g}(${Object.keys(p).join(',')}${g === 'lathe' || g === 'extrude' || g === 'tube' ? ',points' : ''})`).join('; ')}`)
 
 const lightSpec = z.object({
   type: z.enum(['ambient', 'hemisphere', 'directional', 'point', 'spot']),
@@ -100,6 +117,7 @@ const lightSpec = z.object({
   groundColor: z.string().optional(),
   angle: z.number().optional().describe('Spot cone angle in degrees'),
   castShadow: z.boolean().optional(),
+  size: z.number().optional().describe('0..10 softness of the shadow edge, like a bigger light: ~4-8 for a soft key light'),
 })
 
 const objProps = {
@@ -134,8 +152,14 @@ const sceneSettings = {
   environment: z.enum(['studio', 'none']).optional().describe('studio = soft reflections and fill light (default)'),
   ground: z.object({ visible: z.boolean().optional(), color: z.string().optional(), y: z.number().optional() }).optional(),
   shadows: z.boolean().optional(),
+  shadowQuality: z.enum(['normal', 'high', 'ultra']).optional().describe('Shadow map detail: sharper contact shadows under feet and belly'),
+  exposure: z.number().optional().describe('Overall brightness, default 1'),
+  envIntensity: z.number().optional().describe('Strength of environment light and reflections, default 0.6'),
+  envRotation: z.number().optional().describe('Turn the environment lighting around, degrees'),
+  toneMapping: z.enum(['aces', 'neutral', 'linear', 'none']).optional().describe('aces (default, filmic contrast), neutral (truer colours), linear, none'),
+  post: z.object({ contrast: z.number().optional(), saturation: z.number().optional(), sharpen: z.number().optional().describe('0..1') }).optional().describe('Applied to still renders and captures: contrast/saturation 1 = unchanged'),
 }
-const VIEWS = ['iso', 'front', 'side', 'top'] as const
+const VIEWS = ['iso', 'front', 'side', 'top', 'back', 'left', 'iso-back'] as const
 
 const keyframeSpec = z.object({
   t: z.number().describe('Seconds'),
@@ -195,7 +219,16 @@ export const schemas = {
     frame: z.enum(VIEWS).optional().describe('Re-aim the camera to frame every object from this view'),
   }),
   get_scene: z.object({ sceneId: z.string() }),
-  render_scene: z.object({ sceneId: z.string(), view: z.enum(['camera', ...VIEWS]).optional().describe('camera (default) = what the user sees'), time: z.number().optional().describe('Timeline seconds, default 0') }),
+  render_scene: z.object({
+    sceneId: z.string(),
+    view: z.enum(['camera', ...VIEWS]).optional().describe('camera (default) = what the user sees'),
+    time: z.number().optional().describe('Timeline seconds, default 0'),
+    width: z.number().optional().describe('Output width in px, up to 4096 (default 768): use a large one to inspect fine detail'),
+    supersample: z.number().optional().describe('1..3: render bigger and shrink for smoother, sharper edges'),
+    wireframe: z.boolean().optional().describe('Show mesh edges to inspect topology and faceting'),
+    only: z.array(z.string()).optional().describe('Isolate: show only these object ids'),
+    projection: z.enum(['perspective', 'orthographic']).optional().describe('orthographic removes perspective, for judging proportions'),
+  }),
 
   add_character: z.object({
     sceneId: z.string(),
@@ -219,6 +252,95 @@ export const schemas = {
     tracks: z.array(z.object({ id: z.string().describe('Object id'), keyframes: z.array(keyframeSpec), append: z.boolean().optional().describe('Keep existing keys (default replaces them)') })).optional(),
     camera: z.array(z.object({ t: z.number(), position: vec3, target: vec3, fov: z.number().optional() })).optional().describe('Camera path; [] removes it'),
     duration: z.number().optional().describe('Timeline length in seconds'),
+  }),
+  render_views: z.object({ sceneId: z.string(), views: z.array(z.enum(VIEWS)).min(1).max(9).optional().describe('Angles to show; default front, side, back, left, top, iso'), time: z.number().optional().describe('Timeline seconds, default 0') }),
+  snapshot_view: z.object({
+    sceneId: z.string(),
+    label: z.string().describe('Name of this viewpoint, e.g. "front-door" or "seat-closeup". Taking another picture with the same label compares it with the last one.'),
+    camera: z.object({ position: vec3, target: vec3, fov: z.number().optional() }).optional().describe('An exact camera. Omit to reuse the last camera of this label, or to use `look`'),
+    look: z.object({
+      object: z.string().optional().describe('Object id to frame; omit for the whole scene'),
+      azimuth: z.number().optional().describe('Degrees around the subject: 0 = from the front (+z), 90 = from the right (+x), 180 = behind, 270 = left. Default 35'),
+      elevation: z.number().optional().describe('Degrees above the horizon, -80..89. Default 20'),
+      zoom: z.number().optional().describe('Distance multiplier: below 1 closer, above 1 farther. Default 1'),
+    }).optional().describe('Aim at an object from an angle; the app works out the camera'),
+    time: z.number().optional().describe('Timeline seconds, default 0'),
+    reset: z.boolean().optional().describe('Forget the earlier picture of this label and start a new baseline'),
+  }),
+  join_meshes: z.object({
+    sceneId: z.string(),
+    ids: z.array(z.string()).min(1).describe('Objects or groups to combine; groups bring all their meshes'),
+    name: z.string().optional(),
+    removeOriginals: z.boolean().optional().describe('Delete the originals (default hides them, so you can still go back)'),
+  }),
+  fuse_objects: z.object({
+    sceneId: z.string(),
+    ids: z.array(z.string()).min(1).describe('Objects or groups, in order. Where pieces overlap, later ones decide the colour'),
+    operation: z.enum(['union', 'subtract', 'intersect']).optional().describe('union (default) fuses everything into one continuous surface; subtract cuts the other objects out of the first; intersect keeps only the overlap of all'),
+    resolution: z.number().optional().describe('Voxels along the longest side, 16..128, default 64. Higher keeps finer detail and costs more triangles'),
+    smooth: z.number().optional().describe('Smoothing passes on the voxels, 0..4, default 1; higher rounds joints and blends parts more'),
+    name: z.string().optional(),
+    removeOriginals: z.boolean().optional().describe('Delete the originals (default hides them, so you can still go back)'),
+  }),
+  smooth_mesh: z.object({
+    sceneId: z.string(),
+    id: z.string().describe('A mesh object made by join_meshes or fuse_objects'),
+    iterations: z.number().optional().describe('1..20, default 3'),
+    strength: z.number().optional().describe('0..1, default 0.5'),
+  }),
+  clean_mesh: z.object({
+    sceneId: z.string(),
+    id: z.string().describe('A mesh object made by join_meshes or fuse_objects'),
+    weldDistance: z.number().optional().describe('Vertices closer than this are merged; default 0.001 of the mesh size'),
+  }),
+  export_mesh: z.object({
+    sceneId: z.string(),
+    format: z.enum(['glb', 'obj', 'stl']).describe('glb keeps colours, materials and lights; obj and stl are geometry only (stl for 3D printing)'),
+  }),
+  render_turntable: z.object({
+    sceneId: z.string(),
+    count: z.number().optional().describe('Angles around the subject, 4..12, default 8'),
+    object: z.string().optional().describe('Object id to circle; omit for the whole scene'),
+    elevation: z.number().optional().describe('Degrees above the horizon, default 15'),
+    zoom: z.number().optional(),
+    time: z.number().optional(),
+    only: z.array(z.string()).optional(),
+  }),
+  subdivide_mesh: z.object({
+    sceneId: z.string(), id: z.string().describe('A mesh object made by join_meshes or fuse_objects'),
+    levels: z.number().optional().describe('1..3, default 1; each level makes four times the triangles and rounds the surface'),
+  }),
+  sculpt_mesh: z.object({
+    sceneId: z.string(), id: z.string().describe('A mesh object'),
+    strokes: z.array(z.object({
+      brush: z.enum(['inflate', 'deflate', 'smooth', 'pinch', 'crease']).describe('inflate/deflate push out/in; smooth relaxes; pinch draws the surface together; crease cuts a groove'),
+      at: vec3.describe('World position of the stroke, on or near the surface'),
+      radius: z.number().describe('World units'),
+      strength: z.number().optional().describe('0..1, default 0.5'),
+    })).min(1).max(40),
+  }),
+  paint_mesh: z.object({
+    sceneId: z.string(), id: z.string().describe('A mesh object; use fuse_objects/join_meshes first. Subdivide first for crisp patch edges'),
+    ops: z.array(z.discriminatedUnion('kind', [
+      z.object({ kind: z.literal('brush'), at: vec3, radius: z.number(), color: z.string(), strength: z.number().optional().describe('0..1'), noise: z.number().optional().describe('0..1 grain so the stroke is not flat') }),
+      z.object({ kind: z.literal('patches'), color: z.string(), coverage: z.number().optional().describe('0..1 share of the surface covered, default 0.4'), scale: z.number().optional().describe('Patch size in world units, default 0.3'), seed: z.number().optional().describe('Change for a different pattern'), softness: z.number().optional().describe('Edge softness 0.005..0.3, default 0.04'), region: z.object({ at: vec3, radius: z.number() }).optional().describe('Only inside this sphere'), yRange: z.array(z.number()).length(2).optional().describe('Only between these world heights [min, max]') }),
+      z.object({ kind: z.literal('variation'), amount: z.number().optional().describe('0..0.3 brightness variation, default 0.08: dirt, natural imperfections'), scale: z.number().optional(), seed: z.number().optional() }),
+    ])).min(1).max(30),
+  }),
+  set_fur: z.object({
+    sceneId: z.string(), id: z.string().describe('A mesh object (any geometry, best on a fused mesh)'),
+    remove: z.boolean().optional(),
+    length: z.number().optional().describe('Strand length in scene units, default 0.015 for short fur'),
+    layers: z.number().optional().describe('4..16 shells, default 10'),
+    density: z.number().optional().describe('Strands per unit: higher is finer, default 40'),
+    tipColor: z.string().optional().describe('Colour at the strand tips (defaults to the base colour)'),
+  }),
+  set_lighting: z.object({
+    sceneId: z.string(),
+    preset: z.enum(['three-point', 'soft-studio', 'dramatic', 'product']).describe('three-point: warm soft key, cool fill, rim light. soft-studio: very large soft key. dramatic: hard side key, strong rim, dark ambient. product: big top softbox plus side fills and rim'),
+    subject: z.string().optional().describe('Object id to light; omit for the whole scene'),
+    intensity: z.number().optional().describe('Multiplier for all lights, default 1'),
+    replace: z.boolean().optional().describe('Remove the existing lights first (default true)'),
   }),
   render_timeline: z.object({ sceneId: z.string(), times: z.array(z.number()).max(9).optional().describe('Seconds to show; default 6 evenly spaced'), view: viewSpec }),
   capture_image: z.object({
@@ -380,9 +502,96 @@ function sceneNode(id: string) {
   return sceneOf(n)
 }
 
+/** A camera aimed at an object (or everything) from an angle: azimuth 0 = from +z, 90 = from +x. */
+async function lookCamera(scene: Scene3D, aspect: number, look?: { object?: string; azimuth?: number; elevation?: number; zoom?: number }): Promise<Scene3D['camera']> {
+  const az = THREE.MathUtils.degToRad(look?.azimuth ?? 35), el = THREE.MathUtils.degToRad(Math.max(-80, Math.min(89, look?.elevation ?? 20)))
+  const dir: Vec3 = [Math.sin(az) * Math.cos(el), Math.sin(el), Math.cos(az) * Math.cos(el)]
+  return measureScene(scene, (root) => {
+    const all = new THREE.Box3()
+    const map = objectBounds(root)
+    if (look?.object) {
+      const box = map.get(look.object)
+      if (!box) throw new Error(`No object ${look.object} in this scene`)
+      all.copy(box)
+    } else for (const b of map.values()) all.union(b)
+    if (all.isEmpty()) all.set(new THREE.Vector3(-1, 0, -1), new THREE.Vector3(1, 1, 1))
+    const sphere = all.getBoundingSphere(new THREE.Sphere())
+    const vfov = THREE.MathUtils.degToRad(scene.camera.fov)
+    const hfov = 2 * Math.atan(Math.tan(vfov / 2) * aspect)
+    const dist = ((sphere.radius * 1.2) / Math.sin(Math.min(vfov, hfov) / 2)) * (look?.zoom ?? 1)
+    const p = new THREE.Vector3(...dir).multiplyScalar(dist).add(sphere.center)
+    const r = (v: number) => Math.round(v * 100) / 100
+    return { position: [r(p.x), r(p.y), r(p.z)] as Vec3, target: [r(sphere.center.x), r(sphere.center.y), r(sphere.center.z)] as Vec3, fov: scene.camera.fov }
+  })
+}
+
+/** An object's local-to-scene transform, through its parent groups. */
+function worldMatrix(scene: Scene3D, o: Obj3D): THREE.Matrix4 {
+  const local = new THREE.Matrix4().compose(
+    new THREE.Vector3(...o.position),
+    new THREE.Quaternion().setFromEuler(new THREE.Euler(...(o.rotation.map((d) => THREE.MathUtils.degToRad(d)) as Vec3))),
+    new THREE.Vector3(...o.scale),
+  )
+  const parent = o.parent ? scene.objects.find((x) => x.id === o.parent) : undefined
+  return parent ? worldMatrix(scene, parent).multiply(local) : local
+}
+
+/** The world-space pieces of these objects, as they stand in `scene`. */
+async function piecesFor(scene: Scene3D, ids: string[]) {
+  for (const id of ids) {
+    const o = scene.objects.find((x) => x.id === id)
+    if (!o) throw new Error(`No object ${id} in this scene`)
+    if (o.kind === 'light') throw new Error(`${id} is a light; mesh tools work on meshes, groups and models`)
+  }
+  const root = await buildScene(scene)
+  try {
+    root.updateMatrixWorld(true)
+    const pieces = ids.flatMap((id) => piecesOf(root, id))
+    if (!pieces.length) throw new Error('Those objects have no visible mesh')
+    return pieces
+  } finally {
+    disposeTree(root)
+  }
+}
+
+function addMeshObject(scene: Scene3D, mesh: MeshData3D, name: string, color: THREE.Color) {
+  const id = `mesh-${uid().slice(0, 6)}`
+  scene.objects.push({
+    id, name, kind: 'mesh', parent: null, position: [0, 0, 0], rotation: [0, 0, 0], scale: [1, 1, 1], visible: true,
+    geometry: 'mesh', mesh, castShadow: true,
+    material: { ...DEFAULT_MATERIAL, color: `#${color.getHexString()}`, roughness: 0.6, vertexColors: !!mesh.colors },
+  })
+  return id
+}
+
+/** Hides the originals a mesh tool replaced (or removes them), so the result is what shows. */
+function retire(scene: Scene3D, ids: string[], remove?: boolean) {
+  if (remove) {
+    const gone = descendantsOf(scene, ids)
+    for (const id of ids) gone.add(id)
+    scene.objects = scene.objects.filter((o) => !gone.has(o.id))
+  } else for (const o of scene.objects) if (ids.includes(o.id)) o.visible = false
+}
+
+function meshObject(scene: Scene3D, id: string) {
+  const o = scene.objects.find((x) => x.id === id)
+  if (!o) throw new Error(`No object ${id} in this scene`)
+  if (!o.mesh) throw new Error(`${id} is not a mesh object. Make one with join_meshes or fuse_objects first.`)
+  return o
+}
+
+const meshStats = (m: MeshData3D) => ({ vertices: m.positions.length / 3, triangles: m.indices.length / 3, coloured: !!m.colors, closedVolume: Math.round(signedVolume(m) * 1000) / 1000 })
+
+/** In S3D the viewer shows one scene; switch it to the scene the agent is working on, so the user sees the latest. */
+function showScene(id: string) {
+  const st = s()
+  if (st.service === '3d' && st.sceneEdit?.nodeId !== id) openSceneEditor(id)
+}
+
 function saveScene(id: string, scene: Scene3D) {
   s().updateNodes([id], { scene, type: 'shape3d' })
   touchedIds.push(id)
+  showScene(id)
 }
 
 function toMaterial(p: ObjSpec, base?: Material3D): Material3D | undefined {
@@ -448,10 +657,16 @@ const descendantsOf = (scene: Scene3D, ids: string[]) => {
   return out
 }
 
-function applySettings(scene: Scene3D, p: Partial<Pick<z.infer<typeof schemas.set_scene>, 'background' | 'environment' | 'ground' | 'shadows' | 'camera'>>) {
+function applySettings(scene: Scene3D, p: Partial<Pick<z.infer<typeof schemas.set_scene>, 'background' | 'environment' | 'ground' | 'shadows' | 'camera' | 'shadowQuality' | 'exposure' | 'envIntensity' | 'envRotation' | 'toneMapping' | 'post'>>) {
   if (p.background !== undefined) scene.background = p.background
   if (p.environment) scene.environment = p.environment
   if (p.shadows !== undefined) scene.shadows = p.shadows
+  if (p.shadowQuality) scene.shadowQuality = p.shadowQuality
+  if (p.exposure !== undefined) scene.exposure = p.exposure
+  if (p.envIntensity !== undefined) scene.envIntensity = p.envIntensity
+  if (p.envRotation !== undefined) scene.envRotation = p.envRotation
+  if (p.toneMapping) scene.toneMapping = p.toneMapping
+  if (p.post) scene.post = { ...scene.post, ...Object.fromEntries(Object.entries(p.post).filter(([, v]) => v !== undefined)) }
   if (p.ground) scene.ground = { ...scene.ground, ...Object.fromEntries(Object.entries(p.ground).filter(([, v]) => v !== undefined)) }
   if (p.camera) scene.camera = { ...scene.camera, ...Object.fromEntries(Object.entries(p.camera).filter(([, v]) => v !== undefined)) } as Scene3D['camera']
 }
@@ -608,6 +823,7 @@ export const impl = {
     if (!camera?.position) scene.camera = await measureScene(scene, (r) => fitCamera(r, w / h, camera?.fov ?? 40))
     const node = s().addNode('shape3d', { name, x: x ?? right, y: y ?? 0, w, h, scene }, parent)
     createdIds.push(node.id)
+    showScene(node.id)
     return { sceneId: node.id, objects: out.ids, camera: scene.camera }
   },
   async add_objects({ sceneId, parent, objects }: z.infer<typeof schemas.add_objects>) {
@@ -645,8 +861,7 @@ export const impl = {
     applySettings(scene, { ...settings, camera })
     if (frame) {
       const n = s().doc.nodes[sceneId]
-      const dirs: Record<(typeof VIEWS)[number], Vec3> = { iso: [1, 0.75, 1.3], front: [0, 0.15, 1], side: [1, 0.15, 0], top: [0.001, 1, 0.001] }
-      scene.camera = await measureScene(scene, (r) => fitCamera(r, n.w / Math.max(n.h, 1), scene.camera.fov, dirs[frame]))
+      scene.camera = await measureScene(scene, (r) => fitCamera(r, n.w / Math.max(n.h, 1), scene.camera.fov, VIEW_DIRS[frame]))
     }
     saveScene(sceneId, scene)
     return { camera: scene.camera }
@@ -662,7 +877,7 @@ export const impl = {
         const b = bounds.get(o.id)
         return {
           id: o.id, name: o.name, kind: o.kind, ...(o.parent && { parent: o.parent }),
-          ...(o.geometry && { geometry: o.geometry, params: o.params }), position: o.position,
+          ...(o.geometry && { geometry: o.geometry, params: o.params }), ...(o.mesh && { mesh: `${o.mesh.positions.length / 3} vertices, ${o.mesh.indices.length / 3} triangles` }), position: o.position,
           ...(o.rotation.some(Boolean) && { rotation: o.rotation }), ...(o.scale.some((v) => v !== 1) && { scale: o.scale }),
           ...(o.material && { color: o.material.color, metalness: o.material.metalness, roughness: o.material.roughness }),
           ...(o.light && { light: o.light }), ...(o.animate && { animate: o.animate }), ...(o.keyframes?.length && { keyframes: o.keyframes.length, keyframeSpan: [o.keyframes[0].t, o.keyframes.at(-1)!.t] }), ...(!o.visible && { visible: false }),
@@ -686,10 +901,105 @@ export const impl = {
     if (res.sceneId) (sceneId ? touchedIds : createdIds).push(res.sceneId)
     return { ...res, title: item.title }
   },
-  async render_scene({ sceneId, view, time }: z.infer<typeof schemas.render_scene>) {
+  async render_scene({ sceneId, view, time, width, supersample, wireframe, only, projection }: z.infer<typeof schemas.render_scene>) {
     const n = s().doc.nodes[sceneId]
-    const image = await renderScene(sceneNode(sceneId), n.w, n.h, view ?? 'camera', time ?? 0)
+    const image = await renderScene(sceneNode(sceneId), n.w, n.h, view ?? 'camera', time ?? 0, Math.min(4096, width ?? 768), { supersample, wireframe, only, ortho: projection === 'orthographic' })
     return { image, mediaType: 'image/png' }
+  },
+  async render_turntable({ sceneId, count, object, elevation, zoom, time, only }: z.infer<typeof schemas.render_turntable>) {
+    const n = s().doc.nodes[sceneId]
+    const scene = sceneNode(sceneId)
+    const steps = Math.max(4, Math.min(12, Math.round(count ?? 8)))
+    const views = await Promise.all(Array.from({ length: steps }, async (_, i) => {
+      const azimuth = Math.round((360 * i) / steps)
+      return { label: `${azimuth}°`, camera: await lookCamera(scene, n.w / Math.max(n.h, 1), { object, azimuth, elevation: elevation ?? 15, zoom }) }
+    }))
+    const image = await renderViews(scene, n.w, n.h, views, time ?? 0, { only })
+    return { image, mediaType: 'image/png', note: 'Angles are degrees around the subject: 0° is the front, 90° the right side, 180° the back, 270° the left.' }
+  },
+  async subdivide_mesh({ sceneId, id, levels }: z.infer<typeof schemas.subdivide_mesh>) {
+    const scene = structuredClone(sceneNode(sceneId))
+    const o = meshObject(scene, id)
+    o.mesh = subdivideMesh(o.mesh!, levels ?? 1)
+    saveScene(sceneId, scene)
+    return { id, ...meshStats(o.mesh) }
+  },
+  async sculpt_mesh({ sceneId, id, strokes }: z.infer<typeof schemas.sculpt_mesh>) {
+    const scene = structuredClone(sceneNode(sceneId))
+    const o = meshObject(scene, id)
+    // Strokes are given in world space; the mesh lives in the object's own space.
+    const inv = worldMatrix(scene, o).invert()
+    const k = Math.cbrt(Math.abs(new THREE.Matrix4().copy(inv).determinant())) || 1
+    o.mesh = sculptMesh(o.mesh!, strokes.map((st) => {
+      const c = new THREE.Vector3(...(st.at as Vec3)).applyMatrix4(inv)
+      return { brush: st.brush, center: [c.x, c.y, c.z] as [number, number, number], radius: st.radius * k, strength: st.strength }
+    }))
+    saveScene(sceneId, scene)
+    return { id, strokes: strokes.length, ...meshStats(o.mesh) }
+  },
+  async paint_mesh({ sceneId, id, ops }: z.infer<typeof schemas.paint_mesh>) {
+    const scene = structuredClone(sceneNode(sceneId))
+    const o = meshObject(scene, id)
+    const inv = worldMatrix(scene, o).invert()
+    const k = Math.cbrt(Math.abs(new THREE.Matrix4().copy(inv).determinant())) || 1
+    const local = (v: number[]) => { const c = new THREE.Vector3(...(v as Vec3)).applyMatrix4(inv); return [c.x, c.y, c.z] as [number, number, number] }
+    const mapped: PaintOp[] = ops.map((op) => {
+      if (op.kind === 'brush') return { ...op, center: local(op.at), radius: op.radius * k }
+      if (op.kind === 'patches') return { ...op, scale: op.scale === undefined ? undefined : op.scale * k, region: op.region && { center: local(op.region.at), radius: op.region.radius * k }, yRange: op.yRange as [number, number] | undefined }
+      return { ...op, scale: op.scale === undefined ? undefined : op.scale * k }
+    })
+    o.mesh = paintMesh(o.mesh!, new THREE.Color(o.material?.color ?? DEFAULT_MATERIAL.color), mapped)
+    o.material = { ...DEFAULT_MATERIAL, ...o.material, vertexColors: true }
+    saveScene(sceneId, scene)
+    return { id, painted: ops.length, vertices: o.mesh.positions.length / 3, note: 'Painted as vertex colours; the detail is as fine as the vertex density (subdivide_mesh for sharper edges).' }
+  },
+  set_fur({ sceneId, id, remove, length, layers, density, tipColor }: z.infer<typeof schemas.set_fur>) {
+    const scene = structuredClone(sceneNode(sceneId))
+    const o = scene.objects.find((x) => x.id === id)
+    if (!o || o.kind !== 'mesh') throw new Error(`No mesh object ${id} in this scene`)
+    if (remove) delete o.fur
+    else o.fur = { length: length ?? o.fur?.length ?? 0.015, layers: layers ?? o.fur?.layers ?? 10, density: density ?? o.fur?.density ?? 40, ...((tipColor ?? o.fur?.tipColor) && { tipColor: tipColor ?? o.fur?.tipColor }) }
+    saveScene(sceneId, scene)
+    return { id, fur: o.fur ?? null, note: 'Fur is drawn as shells over the surface. For a soft coat also set material sheen and a low specularIntensity.' }
+  },
+  async set_lighting({ sceneId, preset, subject, intensity, replace }: z.infer<typeof schemas.set_lighting>) {
+    const scene = structuredClone(sceneNode(sceneId))
+    const bounds = await measureScene(scene, objectBounds)
+    const all = new THREE.Box3()
+    for (const [oid, b] of bounds) if (!subject || oid === subject) all.union(b)
+    if (all.isEmpty()) all.set(new THREE.Vector3(-1, 0, -1), new THREE.Vector3(1, 1, 1))
+    const sphere = all.getBoundingSphere(new THREE.Sphere())
+    const c = sphere.center, d = Math.max(sphere.radius * 3, 3), m = intensity ?? 1
+    if (replace !== false) scene.objects = scene.objects.filter((o) => o.kind !== 'light')
+    const rig = (name: string, light: Light3D, dir: Vec3, near = false) => {
+      // Directional lights aim at the origin, so only the direction matters; spots and points sit around the subject.
+      const pos: Vec3 = near ? [c.x + dir[0] * d, c.y + dir[1] * d, c.z + dir[2] * d] : [dir[0] * d, dir[1] * d, dir[2] * d]
+      scene.objects.push({ id: `light-${uid().slice(0, 6)}`, name, kind: 'light', parent: null, position: pos.map((v) => Math.round(v * 100) / 100) as Vec3, rotation: [0, 0, 0], scale: [1, 1, 1], visible: true, light: { ...light, intensity: light.intensity * m } })
+    }
+    const base = { castShadow: false }
+    if (preset === 'three-point') {
+      rig('Key light', { type: 'directional', color: '#fff1e0', intensity: 2.4, castShadow: true, size: 5 }, [0.7, 0.9, 1])
+      rig('Fill light', { type: 'directional', color: '#d6e4ff', intensity: 0.7, ...base, size: 6 }, [-1, 0.35, 0.8])
+      rig('Rim light', { type: 'directional', color: '#ffffff', intensity: 1.6, ...base }, [-0.4, 0.7, -1])
+      rig('Ambient', { type: 'hemisphere', color: '#e8eefc', groundColor: '#3a3a44', intensity: 0.25, ...base }, [0, 1, 0])
+    } else if (preset === 'soft-studio') {
+      rig('Soft key', { type: 'directional', color: '#fff7ee', intensity: 2.2, castShadow: true, size: 10 }, [0.3, 1, 0.9])
+      rig('Hemisphere', { type: 'hemisphere', color: '#ffffff', groundColor: '#666670', intensity: 0.7, ...base }, [0, 1, 0])
+      rig('Low fill', { type: 'directional', color: '#e0e8ff', intensity: 0.5, ...base, size: 8 }, [-0.6, 0.2, 1])
+    } else if (preset === 'dramatic') {
+      rig('Hard key', { type: 'directional', color: '#ffe9cf', intensity: 3.4, castShadow: true, size: 0.5 }, [1, 0.6, 0.5])
+      rig('Rim light', { type: 'directional', color: '#9bb8ff', intensity: 2.4, ...base }, [-0.8, 0.5, -1])
+      rig('Ambient', { type: 'hemisphere', color: '#27304a', groundColor: '#0b0b10', intensity: 0.2, ...base }, [0, 1, 0])
+      scene.envIntensity = 0.15
+    } else {
+      rig('Top softbox', { type: 'directional', color: '#ffffff', intensity: 2.6, castShadow: true, size: 8 }, [0.1, 1, 0.4])
+      rig('Left fill', { type: 'directional', color: '#f1f5ff', intensity: 0.9, ...base, size: 6 }, [-1, 0.4, 0.5])
+      rig('Right fill', { type: 'directional', color: '#fff6ea', intensity: 0.9, ...base, size: 6 }, [1, 0.4, 0.5])
+      rig('Rim light', { type: 'directional', color: '#ffffff', intensity: 1.4, ...base }, [0, 0.6, -1])
+    }
+    scene.shadows = true
+    saveScene(sceneId, scene)
+    return { preset, lights: scene.objects.filter((o) => o.kind === 'light').map((o) => o.name), note: 'Check it with render_scene or render_views; tune individual lights with update_objects, exposure with set_scene.' }
   },
   add_character({ sceneId, id, name, position, facing, ...look }: z.infer<typeof schemas.add_character>) {
     const scene = structuredClone(sceneNode(sceneId))
@@ -723,6 +1033,75 @@ export const impl = {
     if (duration !== undefined) scene.duration = duration || undefined
     saveScene(sceneId, scene)
     return { duration: sceneDuration(scene) }
+  },
+  async render_views({ sceneId, views, time }: z.infer<typeof schemas.render_views>) {
+    const n = s().doc.nodes[sceneId]
+    const image = await renderViews(sceneNode(sceneId), n.w, n.h, views ?? ALL_ANGLES.slice(0, 6), time ?? 0)
+    return { image, mediaType: 'image/png' }
+  },
+  async snapshot_view({ sceneId, label, camera, look, time, reset }: z.infer<typeof schemas.snapshot_view>) {
+    const n = s().doc.nodes[sceneId]
+    const scene = sceneNode(sceneId)
+    if (reset) clearSnapshot(sceneId, label)
+    const before = getSnapshot(sceneId, label)
+    const w = n.w, h = n.h
+    let cam: Scene3D['camera']
+    if (camera) cam = { position: camera.position as Vec3, target: camera.target as Vec3, fov: camera.fov ?? scene.camera.fov }
+    else if (!look && before) cam = before.camera
+    else {
+      cam = await lookCamera(scene, w / Math.max(h, 1), look)
+    }
+    const image = await renderScene(scene, w, h, cam, time ?? 0)
+    setSnapshot(sceneId, label, { image, camera: cam, time: time ?? 0 })
+    if (!before) return { image, mediaType: 'image/png', saved: `Baseline "${label}" saved. After you change the scene, call snapshot_view again with the same label to compare.`, camera: cam }
+    const cmp = await compareImages(before.image, image)
+    return { image: cmp.image, mediaType: 'image/png', compared: `before | after | changes for "${label}"`, changedPercent: cmp.changedPercent, changedRegion: cmp.changedRegion, camera: cam }
+  },
+  async join_meshes({ sceneId, ids, name, removeOriginals }: z.infer<typeof schemas.join_meshes>) {
+    const scene = structuredClone(sceneNode(sceneId))
+    const pieces = await piecesFor(scene, ids)
+    const data = joinPieces(pieces)
+    const id = addMeshObject(scene, data, name ?? 'Joined mesh', pieces[0].color)
+    retire(scene, ids, removeOriginals)
+    saveScene(sceneId, scene)
+    return { id, ...meshStats(data), note: 'Parts are one mesh object now but stay separate shells; use fuse_objects to make them one continuous surface.' }
+  },
+  async fuse_objects({ sceneId, ids, operation, resolution, smooth, name, removeOriginals }: z.infer<typeof schemas.fuse_objects>) {
+    const scene = structuredClone(sceneNode(sceneId))
+    const op = operation ?? 'union'
+    if (op !== 'union' && ids.length < 2) throw new Error(`${op} needs at least two objects`)
+    const operands = await Promise.all(ids.map((i) => piecesFor(scene, [i])))
+    const data = voxelMesh(operands, op, { resolution: Math.max(16, Math.min(128, Math.round(resolution ?? 64))), smooth: Math.max(0, Math.min(4, smooth ?? 1)) })
+    const id = addMeshObject(scene, data, name ?? (op === 'union' ? 'Fused mesh' : `${op[0].toUpperCase()}${op.slice(1)} mesh`), operands[0][0].color)
+    retire(scene, ids, removeOriginals)
+    saveScene(sceneId, scene)
+    return { id, operation: op, ...meshStats(data), note: 'One continuous surface. Check it from several angles with render_views; smooth_mesh rounds it further.' }
+  },
+  async smooth_mesh({ sceneId, id, iterations, strength }: z.infer<typeof schemas.smooth_mesh>) {
+    const scene = structuredClone(sceneNode(sceneId))
+    const o = meshObject(scene, id)
+    o.mesh = smoothMesh(o.mesh!, Math.max(1, Math.min(20, Math.round(iterations ?? 3))), Math.max(0, Math.min(1, strength ?? 0.5)))
+    saveScene(sceneId, scene)
+    return { id, ...meshStats(o.mesh) }
+  },
+  async clean_mesh({ sceneId, id, weldDistance }: z.infer<typeof schemas.clean_mesh>) {
+    const scene = structuredClone(sceneNode(sceneId))
+    const o = meshObject(scene, id)
+    const p = o.mesh!.positions
+    let extent = 0
+    for (let a = 0; a < 3; a++) {
+      let lo = Infinity, hi = -Infinity
+      for (let i = a; i < p.length; i += 3) { lo = Math.min(lo, p[i]); hi = Math.max(hi, p[i]) }
+      extent = Math.max(extent, hi - lo)
+    }
+    const result = cleanMesh(o.mesh!, weldDistance ?? Math.max(extent * 0.001, 1e-5))
+    o.mesh = result.mesh
+    saveScene(sceneId, scene)
+    return { id, weldedVertices: result.welded, removedDegenerate: result.degenerate, removedDuplicate: result.duplicate, ...meshStats(result.mesh) }
+  },
+  async export_mesh({ sceneId, format }: z.infer<typeof schemas.export_mesh>) {
+    sceneNode(sceneId)
+    return exportScene(format, sceneId)
   },
   async render_timeline({ sceneId, times, view }: z.infer<typeof schemas.render_timeline>) {
     const n = s().doc.nodes[sceneId]
@@ -769,15 +1148,28 @@ export const DESCRIPTIONS: Record<keyof typeof impl, string> = {
   set_scene: 'Change scene background, environment, ground, shadows or camera; frame re-aims the camera to show every object.',
   get_scene: 'Read a 3D scene: settings, camera and every object with its world-space bounds (worldMin/worldMax), to reason about placement and contact.',
   search_3d_models: 'Search the internet (Smithsonian open-access 3D collection) for real scanned 3D models. Returns ids, titles and thumbnail images.',
-  ask_user: 'Open a large chooser in front of the user and WAIT for their decision. Use it to let them pick between search results (pass thumbs as images), design directions or variations. Returns { chosen: [option ids], message? } or { dismissed: true }.',
+  ask_user: 'Open a large centred chooser in front of the user and WAIT for their decision. Use it only to let them pick between 3D model search results (pass thumbs as images). For other questions use ask_questions. Returns { chosen: [option ids], message? } or { dismissed: true }.',
   import_3d_model: 'Download a model found with search_3d_models and add it to a scene (sceneId) or as a new scene.',
-  render_scene: 'Render the scene to an image and look at it (optionally at a timeline time). Use it to judge proportions, composition, colour and lighting from the camera or a preset view.',
+  render_scene: 'Render the scene to an image and look at it (optionally at a timeline time). Use it to judge proportions, composition, colour and lighting from the camera or a preset view. Options: width up to 4096 and supersample for fine detail, wireframe to see the mesh, only to isolate objects, orthographic projection.',
   add_character: 'Add a rigged person (head, hair, torso, arms, legs, shoes with joint pivots) standing at [x, z]. Set shirt/pants/skin/hair colours, height and build. Returns the characterId for animate_character.',
   animate_character: 'Make a character act over time: walk/run to a point, turn, sit on a seat of given height, stand up, idle, wave, jump. Actions play in order and chain after earlier ones; the timeline grows to fit.',
   set_keyframes: 'Keyframe any object over time (position, rotation degrees, scale, visible at t seconds) — doors opening, cars driving, things appearing — plus an optional camera path and the timeline duration. For endless rotation use update_objects animate spin instead.',
+  render_views: 'Render the scene from several angles (front, side, back, left, top, iso) in ONE labelled contact sheet. A model that looks right from the camera can be wrong from behind or above (missing back, floating parts, gaps, parts poking through), so check every side with this, not only render_scene.',
+  snapshot_view: 'Take a picture from a chosen viewpoint (an exact camera, or an object seen from an azimuth/elevation) under a label, and COMPARE it with the last picture of that label: you get before | after | what changed (red) and how much changed. Take one before a change, change the scene, take it again with the same label (the camera is reused) to see whether your edit did what you meant from that angle.',
+  join_meshes: 'Combine several objects (or groups) into ONE mesh object, keeping each part\'s colour as vertex colours. The parts stay separate shells; use fuse_objects to make a single connected surface.',
+  fuse_objects: 'Rebuild objects as ONE continuous surface by voxel remeshing: union fuses overlapping parts (legs into a body) with no seams, subtract cuts the other objects out of the first, intersect keeps the overlap. Colours carry over (later objects paint over earlier ones). Smoothing rounds the joints; raise resolution for fine detail. Works on closed shapes (box, sphere, capsule, cylinder…), not on open surfaces such as planes.',
+  smooth_mesh: 'Smooth a joined or fused mesh (Taubin smoothing: rounds muscles and joints without shrinking it).',
+  clean_mesh: 'Clean a joined or fused mesh: weld vertices that nearly touch and remove degenerate and duplicate triangles.',
+  export_mesh: 'Download the scene as a 3D file: glb (colours, materials, lights), obj or stl (geometry only, for printing).',
+  render_turntable: 'Render the subject from 4-12 angles around it (degrees from the front) in one contact sheet: a turntable check that nothing is wrong from any side.',
+  subdivide_mesh: 'Subdivide a joined/fused mesh: four times the triangles per level and a rounder surface, so faceting disappears and there is detail to sculpt and paint.',
+  sculpt_mesh: 'Sculpt a mesh object with brush strokes at world positions: inflate/deflate (volume, muscle, wrinkles), smooth, pinch, crease (grooves, eyelids, nostrils). Subdivide first; strokes only move existing vertices.',
+  paint_mesh: 'Paint colours onto a mesh object: round brush strokes, irregular patches (cow markings, camouflage) with coverage/scale/seed, and subtle variation for dirt and imperfections. Detail follows vertex density.',
+  set_fur: 'Add short fur to a mesh object, drawn as shells: length, layers, density, tip colour. Pair it with material sheen and a low specularIntensity for a soft coat.',
+  set_lighting: 'Set up a lighting rig around the subject: three-point (warm soft key, cool fill, rim), soft-studio, dramatic or product. Replaces existing lights unless told not to. Light softness comes from each light\'s size.',
   render_timeline: 'Render several moments of the animation in one contact sheet image to check the motion (positions, poses, contact with seats, framing) before recording.',
   capture_image: 'Capture a still image of the scene at a time and view (any size up to 4096 px), save it as an image on the canvas beside the scene, optionally download it. Returns the image to look at.',
-  record_video: 'Record the scene animation (looping motion, keyframes, characters, camera path) to a video file, placed as a video node beside the scene and optionally downloaded. Takes about as long as the clip to record.',
+  record_video: 'Record the scene animation (looping motion, keyframes, characters, camera path) to a video file, placed as a video node beside the scene and optionally downloaded. Usually records faster than the clip plays (hardware encoding).',
   get_document: 'Read the current page as a node tree (ids, types, names, positions relative to parent, sizes, fills, text) plus the selection.',
   create_nodes: 'Create nested nodes inside a parent (frame id) or on the page. Coordinates are relative to the parent. Children of auto-layout frames are positioned automatically.',
   update_nodes: 'Change properties of existing nodes by id.',
@@ -810,10 +1202,10 @@ When to act:
 Real-world models from the internet:
 - When the user wants a real object (an artifact, fossil, aircraft, animal, statue…) or asks to find/discover/import a model, call search_3d_models, then ask_user with the best results as options (image = thumb, label = title) so the user picks, then import_3d_model with the chosen id. If only one result fits perfectly you may import it directly.
 - If the user answers ask_user with a message instead of a choice, follow the message (e.g. search again with new words). If they dismiss it, stop and say so briefly.
-- Also use ask_user whenever a real choice belongs to the user (style directions, which variant to keep) instead of guessing.
+- ask_user is for picking between model results with pictures. For any other choice that belongs to the user (style, size, which variant, missing details) use ask_questions instead of guessing.
 
 Workflow for 3D:
-- Build the whole object or scene in ONE create_scene call with nested groups. Then call render_scene once and look at the image: fix proportions, gaps, colours and framing with update_objects / add_objects / set_scene.
+- Build the whole object or scene in ONE create_scene call with nested groups. Then call render_scene once and look at it, then render_views to check EVERY side (front, side, back, left, top): something right from one angle can be wrong from another. Fix proportions, gaps, floating or missing parts, colours and framing with update_objects / add_objects / set_scene.
 - Use get_scene when you need exact world bounds to make parts touch or align.
 - To edit an existing scene, get_scene first, then update_objects with the object ids. Never rebuild a scene that only needs edits.
 
@@ -831,6 +1223,7 @@ Animation, characters, images and video:
 
 Always:
 - Call get_document first when the user refers to "this"/the selection or to existing work.
-- After building or editing, call verify_design on what you touched. Fix every issue it reports, then verify again until ok. Warnings may be intentional; fix the ones that are mistakes.
+- Verification is part of the work: after building or editing, call verify_design on what you touched, fix every issue it reports, and verify again until ok. Warnings may be intentional; fix the ones that are mistakes.
+- For tasks with several steps keep a to-do list with update_todos and do not stop until every item is completed and verified.
 - Never repeat a call that already succeeded.
 - After building, finish with a 1-2 sentence summary of what you made. Do not output JSON or code to the user.`

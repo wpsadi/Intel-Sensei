@@ -1,25 +1,59 @@
 import { type ModelMessage, asSchema } from 'ai'
 import { create } from 'zustand'
-import type { OpenAILanguageModelResponsesOptions } from '@ai-sdk/openai'
-import type { ChatToolStep } from '@/features/note/db/types'
+import { toast } from 'sonner'
+import type { ChatPlan, ChatQuestion, ChatTodoList, ChatToolStep } from '@/features/note/db/types'
 import { thinkingOnly } from '@/ai/utils/thinking'
-import { S3D_MODEL } from '@/constants/ai'
-import { OPENAI_BASE_URL, OPENAI_KEY } from '@/ai/utils/openai-key'
+import { S3D_AGENT_CONTEXT_LIMIT, S3D_MODEL } from '@/constants/ai'
+import { ANTHROPIC_BASE_URL, ANTHROPIC_KEY } from '@/ai/utils/anthropic-key'
 import { chatsRepo, uid } from '../db'
 import { readFile } from '../files'
 import { useS3D } from '../store'
 import type { AgentAttachment, AgentChat, AgentMessage } from '../types'
 import { askUser } from './ask-user'
+import { askQuestions } from './ask-questions'
+import { agentDescriptions, agentSchemas } from './agent-tools'
+import { type AgentMode, approveTool, needsApproval, toolAllowed } from './modes'
+import { goalInstructions, modeInstructions } from './skills'
+import { VERDICT_DESCRIPTION, VERIFIER_TOOLS, verdictSchema, verifierInstructions } from './verifier'
 import { DESCRIPTIONS, SYSTEM_PROMPT, createdIds, impl, schemas, screensOf, touchedIds } from './tools-impl'
 import { type ToolSpec, streamInWorker } from '@/ai/worker/client'
 
-/** Tool rounds within one pass. A safety net, far above what a pass needs, so a stuck model still stops. */
-const MAX_STEPS = 40
+/** Tool rounds within one pass. When a pass uses them all it was cut off, so the run goes on in a new pass. */
+const MAX_STEPS = 8
+/** Passes in one run: a safety net so a model that never finishes still stops. */
+const MAX_PASSES = 30
+/** A /goal run may take far more passes: it only ends when the goal is achieved, the user stops it, or it stalls. */
+const MAX_GOAL_PASSES = 80
+/** Independent checks of a /goal run; each one that fails sends the worker back to work. */
+const MAX_VERIFICATIONS = 8
+/** Multi-angle checks per run; each one is a pass, so a model that keeps changing things cannot loop on it forever. */
+const MAX_ANGLE_CHECKS = 3
 /**
  * After every pass the app reviews the screens the agent touched and sends any problems back to fix, until the
  * review is clean. This only stops a model that keeps failing to fix the same problems from looping forever.
  */
 const MAX_REVIEWS = 8
+
+/**
+ * Claude Haiku 5.5 thinks adaptively by default; `effort` sets how deep. Its thinking text is omitted by default,
+ * so nothing extra is sent back and forth.
+ */
+const anthropicOptions = (effort: 'low' | 'medium' | 'high' | 'max') => ({
+  anthropic: {
+    // Summarized thinking streams while the model works, so a long think shows progress instead of a silent pause.
+    thinking: { type: 'adaptive', display: 'summarized' },
+    effort,
+    // Each step resends the instructions, tools and history; caching them makes later steps much faster and cheaper.
+  },
+})
+
+/** A pass that sends nothing (only keep-alive pings) for this long, while no tool is running, has stalled. */
+const STALL_MS = 150_000
+/** Stalled passes retried before the run gives up. */
+const MAX_STALL_RETRIES = 2
+
+const LOG = '[S3D agent]'
+const secs = (ms: number) => (ms < 1000 ? `${Math.round(ms)}ms` : `${(ms / 1000).toFixed(1)}s`)
 
 /** Tool names as plain words for the steps list, e.g. "add_frame" → "Add frame". */
 const stepLabel = (name: string) => name.charAt(0).toUpperCase() + name.slice(1).replace(/_/g, ' ')
@@ -33,11 +67,65 @@ const stepLabel = (name: string) => name.charAt(0).toUpperCase() + name.slice(1)
 export const useAgentRun = create<{ live: Record<string, AgentChat>; viewedId: string | null; saved: number }>()(() => ({ live: {}, viewedId: null, saved: 0 }))
 
 const aborts = new Map<string, () => void>()
-export const stopAgent = (chatId: string) => aborts.get(chatId)?.()
+
+/**
+ * Runs live in the tab that started them, but every tab of the app shows them: the running tab broadcasts each
+ * update, other tabs mirror it, and Stop in any tab reaches the tab doing the work.
+ */
+type AgentSync =
+  | { kind: 'live'; chat: AgentChat }
+  | { kind: 'end'; id: string }
+  | { kind: 'stop'; id: string }
+  | { kind: 'hello' }
+const agentChannel = typeof BroadcastChannel !== 'undefined' ? new BroadcastChannel('s3d-agent') : null
+const pending = new Map<string, AgentChat>()
+let flushTimer: ReturnType<typeof setTimeout> | null = null
+/** Updates stream token by token, so they go out at most every 120 ms. */
+function broadcastLive(chat: AgentChat) {
+  pending.set(chat.id, chat)
+  flushTimer ??= setTimeout(() => {
+    flushTimer = null
+    for (const c of pending.values()) agentChannel?.postMessage({ kind: 'live', chat: c } satisfies AgentSync)
+    pending.clear()
+  }, 120)
+}
+function broadcastEnd(id: string) {
+  pending.delete(id)
+  agentChannel?.postMessage({ kind: 'end', id } satisfies AgentSync)
+}
+agentChannel?.addEventListener('message', (e: MessageEvent<AgentSync>) => {
+  const msg = e.data
+  if (msg.kind === 'live') {
+    if (!aborts.has(msg.chat.id)) useAgentRun.setState((s) => ({ live: { ...s.live, [msg.chat.id]: msg.chat } }))
+  } else if (msg.kind === 'end') {
+    if (!aborts.has(msg.id)) useAgentRun.setState((s) => ({ live: without(s.live, msg.id), saved: s.saved + 1 }))
+  } else if (msg.kind === 'stop') aborts.get(msg.id)?.()
+  else if (msg.kind === 'hello') {
+    // A tab just opened: tell it about the runs this tab is doing.
+    for (const id of aborts.keys()) {
+      const c = useAgentRun.getState().live[id]
+      if (c) agentChannel?.postMessage({ kind: 'live', chat: c } satisfies AgentSync)
+    }
+  }
+})
+agentChannel?.postMessage({ kind: 'hello' } satisfies AgentSync)
+
+export const stopAgent = (chatId: string) => {
+  const local = aborts.get(chatId)
+  if (local) return local()
+  agentChannel?.postMessage({ kind: 'stop', id: chatId } satisfies AgentSync)
+}
 
 /** What one run's tool calls created, changed and added to the undo history. */
 interface RunTrack {
   signal: AbortSignal
+  mode: AgentMode
+  docId: string
+  chatId: string
+  goal?: string
+  completeGoal: (summary: string, evidence: string) => void
+  setPlan: (plan: ChatPlan) => void
+  setTodos: (todos: ChatTodoList) => void
   created: string[]
   touched: string[]
   /** History length before the run's first step and after its last; `interleaved` when another run's step fell between. */
@@ -53,12 +141,50 @@ interface RunTrack {
 let toolLine: Promise<unknown> = Promise.resolve()
 const UNLOCKED = new Set(['ask_user', 'search_3d_models'])
 
-/** Checks a tool call's input against its schema, then runs it. */
-function runTool(name: string, args: unknown, track: RunTrack) {
+/** Checks a tool call against the mode and its schema, asks the user when the mode needs it, then runs it. */
+async function runTool(name: string, args: unknown, track: RunTrack) {
+  if (name === 'complete_goal' && !track.goal) throw new Error('There is no goal to complete.')
+  if (!toolAllowed(track.mode, name)) throw new Error(`${name} is not available in this mode. Use only the tools you were given.`)
+  if (name in agentSchemas) return agentTool(name as keyof typeof agentSchemas, args, track)
   const tool = name as keyof typeof impl
   const parsed = schemas[tool].safeParse(args)
   if (!parsed.success) throw new Error(`Invalid input for ${name}: ${parsed.error.message}`)
-  return execTool(tool, parsed.data, track)
+  // Waiting for the user happens before joining the canvas line, so it never holds up another run.
+  if (needsApproval(track.mode, name)) {
+    const asked = performance.now()
+    await approveTool(track.docId, { chatId: track.chatId, tool: name, label: stepLabel(name), args: parsed.data }, track.signal)
+    console.info(LOG, `${name}: waited ${secs(performance.now() - asked)} for approval`)
+  }
+  const started = performance.now()
+  try {
+    return await execTool(tool, parsed.data, track)
+  } finally {
+    console.info(LOG, `${name}: ran in ${secs(performance.now() - started)}`)
+  }
+}
+
+/** Tools about the conversation: the plan, the to-do list and questions for the user. */
+async function agentTool(name: keyof typeof agentSchemas, args: unknown, track: RunTrack) {
+  const parsed = agentSchemas[name].safeParse(args)
+  if (!parsed.success) throw new Error(`Invalid input for ${name}: ${parsed.error.message}`)
+  if (name === 'write_plan') {
+    track.setPlan(parsed.data as ChatPlan)
+    return 'The plan is shown to the user. Stop now: write one sentence saying they can build it, and do not build anything.'
+  }
+  if (name === 'update_todos') {
+    const list = parsed.data as ChatTodoList
+    track.setTodos({ ...list, title: list.title ?? 'To-do' })
+    const left = list.items.filter((i) => i.status !== 'completed').length
+    return left ? `Saved. ${left} of ${list.items.length} still to do; keep going.` : 'Saved. Every item is completed.'
+  }
+  if (name === 'complete_goal') {
+    const { summary, evidence } = parsed.data as { summary: string; evidence: string }
+    track.completeGoal(summary, evidence)
+    return 'Recorded. A separate verifier will now check the real result against the goal; if it finds problems you will be sent back to fix them.'
+  }
+  const { questions } = parsed.data as { questions: ChatQuestion[] }
+  const answers = await askQuestions(track.chatId, questions, track.signal)
+  return 'dismissed' in answers ? { dismissed: true, note: 'The user closed the questions. Choose sensible defaults, or stop and say so.' } : answers
 }
 
 async function execTool(name: keyof typeof impl, args: unknown, track: RunTrack) {
@@ -91,15 +217,24 @@ async function execTool(name: keyof typeof impl, args: unknown, track: RunTrack)
 
 let toolSpecs: Promise<Record<string, ToolSpec>> | null = null
 const getToolSpecs = () =>
-  (toolSpecs ??= Promise.all(
-    (Object.keys(impl) as (keyof typeof impl)[]).map(async (name) => [name, { description: DESCRIPTIONS[name], schema: await asSchema(schemas[name] as never).jsonSchema, imageOutput: name === 'render_scene' || name === 'render_timeline' || name === 'capture_image' } satisfies ToolSpec] as const),
-  ).then(Object.fromEntries))
+  (toolSpecs ??= Promise.all([
+    ...(Object.keys(impl) as (keyof typeof impl)[]).map(async (name) => [name, { description: DESCRIPTIONS[name], schema: await asSchema(schemas[name] as never).jsonSchema, imageOutput: name === 'render_scene' || name === 'render_timeline' || name === 'capture_image' } satisfies ToolSpec] as const),
+    ...(Object.keys(agentSchemas) as (keyof typeof agentSchemas)[]).map(async (name) => [name, { description: agentDescriptions[name], schema: await asSchema(agentSchemas[name] as never).jsonSchema } satisfies ToolSpec] as const),
+  ]).then(Object.fromEntries))
+
+/** The tools a mode offers; the rest are not even shown to the model. */
+const toolsFor = async (mode: AgentMode, goal?: string) => Object.fromEntries(Object.entries(await getToolSpecs()).filter(([name]) => toolAllowed(mode, name) && (name !== 'complete_goal' || !!goal))) as Record<string, ToolSpec>
 
 /* ---------- run ---------- */
 
 async function toModel(m: AgentMessage): Promise<ModelMessage> {
-  if (m.role === 'assistant') return { role: 'assistant', content: m.text || '(no reply)' }
-  const parts: Exclude<Extract<ModelMessage, { role: 'user' }>['content'], string> = [{ type: 'text', text: m.text }]
+  if (m.role === 'assistant') {
+    // The plan lives beside the text, so spell it out for the model or it could not build it later.
+    const plan = m.plan ? `\n\nPlan "${m.plan.title}":\n${m.plan.description ? `${m.plan.description}\n` : ''}${m.plan.steps.map((st, i) => `${i + 1}. ${st.title}${st.details ? ` (${st.details})` : ''}`).join('\n')}` : ''
+    return { role: 'assistant', content: (m.text + plan).trim() }
+  }
+  const parts: Exclude<Extract<ModelMessage, { role: 'user' }>['content'], string> = [{ type: 'text', text: m.goal ? `Goal: ${m.goal}` : m.text }]
+  if (m.context) parts.push({ type: 'text', text: m.context })
   // 3D models cannot be sent to the model as files; it places them in a scene by ref instead.
   const models = (m.attachments ?? []).filter((a) => /\.(glb|gltf)$/i.test(a.name))
   if (models.length) parts.push({ type: 'text', text: `Attached 3D models (use as model objects with src): ${models.map((a) => `${a.name} → ${a.ref}`).join(', ')}` })
@@ -132,22 +267,34 @@ async function save(c: AgentChat) {
 }
 
 /** Starts the agent on `base` (a new chat when null) and shows it. It keeps running in the background until it ends or is stopped. */
-export async function runAgent(text: string, files: AgentAttachment[], base: AgentChat | null, docId: string) {
+export async function runAgent(text: string, files: AgentAttachment[], base: AgentChat | null, docId: string, mode: AgentMode, context?: string) {
   if (!text.trim() || (base && useAgentRun.getState().live[base.id])) return
-  // S3D runs on OpenAI: Gemini models do not handle 3D modelling well.
-  const key = OPENAI_KEY.value
-  const baseURL = OPENAI_BASE_URL.value || undefined
-  const userMsg: AgentMessage = { id: uid(), role: 'user', text, attachments: files, createdAt: Date.now() }
-  const assistant: AgentMessage = { id: uid(), role: 'assistant', text: '', createdAt: Date.now() }
+  // "/goal <what to achieve>" keeps the agent working until it declares the goal achieved.
+  const slash = /^\/goal(?:\s+([\s\S]*))?$/i.exec(text.trim())
+  const goal = slash ? (slash[1] ?? '').trim() : undefined
+  if (slash && !goal) {
+    toast.info('Say what to achieve: /goal build a low-poly cow and export it')
+    return
+  }
+  if (goal && (mode === 'ask' || mode === 'plan')) {
+    toast.info(`/goal builds things, so it needs Edit or Full access mode (now ${mode}).`)
+    return
+  }
+  // S3D runs on Anthropic: Gemini models do not handle 3D modelling well.
+  const key = ANTHROPIC_KEY.value
+  const baseURL = ANTHROPIC_BASE_URL.value || undefined
+  const userMsg: AgentMessage = { id: uid(), role: 'user', text, attachments: files, createdAt: Date.now(), ...(context && { context }), ...(goal && { goal }) }
+  const assistant: AgentMessage = { id: uid(), role: 'assistant', text: '', mode, createdAt: Date.now(), ...(goal && { goal, goalState: 'working' as const }) }
   const current = base ?? { id: uid(), docId, title: text.slice(0, 40), messages: [], updatedAt: Date.now() }
   let c: AgentChat = { ...current, messages: [...current.messages, userMsg, assistant], updatedAt: Date.now() }
   const update = (patch: Partial<AgentMessage>) => {
     c = { ...c, messages: c.messages.map((m) => (m.id === assistant.id ? { ...m, ...patch } : m)) }
     useAgentRun.setState((s) => ({ live: { ...s.live, [c.id]: c } }))
+    if (aborts.has(c.id)) broadcastLive(c)
   }
   if (!key) {
     useAgentRun.setState({ viewedId: c.id })
-    update({ error: 'Add your OpenAI API key in Settings → AI features to use the S3D agent.' })
+    update({ error: 'Add your Anthropic API key in Settings → AI features to use the S3D agent.' })
     await save(c)
     useAgentRun.setState((s) => ({ live: without(s.live, c.id) }))
     return
@@ -161,29 +308,144 @@ export async function runAgent(text: string, files: AgentAttachment[], base: Age
     const controller = new AbortController()
     aborts.set(c.id, () => controller.abort())
     // Stopping the agent also withdraws a question it is waiting on.
-    const track: RunTrack = { signal: controller.signal, created: [], touched: [], interleaved: false }
+    let todos: ChatTodoList | undefined
+    let planWritten = false
+    let goalDone = false
+    let goalSummary = ''
+    let goalEvidence = ''
+    const track: RunTrack = {
+      signal: controller.signal, mode, docId, chatId: c.id, created: [], touched: [], interleaved: false, goal,
+      completeGoal: (summary, evidence) => {
+        goalDone = true
+        goalSummary = summary
+        goalEvidence = evidence
+      },
+      setPlan: (plan) => {
+        planWritten = true
+        update({ plan })
+      },
+      setTodos: (list) => {
+        todos = list
+        update({ todos: list })
+      },
+    }
     try {
-      const instructions = SYSTEM_PROMPT + selectionContext()
-      const tools = await getToolSpecs()
-      let messages = await Promise.all(c.messages.filter((m) => m.id !== assistant.id && !m.error).map(toModel))
+      const instructions = SYSTEM_PROMPT + modeInstructions(mode) + (goal ? goalInstructions(goal) : '') + selectionContext()
+      const tools = await toolsFor(mode, goal)
+      const cut = c.summary ? c.messages.findIndex((m) => m.id === c.summary!.uptoId) + 1 : 0
+      let messages: ModelMessage[] = [
+        ...(c.summary && cut > 0 ? [{ role: 'user' as const, content: `Summary of the earlier conversation (compacted):\n\n${c.summary.text}` }] : []),
+        ...(await Promise.all(c.messages.slice(Math.max(0, cut)).filter((m) => m.id !== assistant.id && !m.error && (m.role === 'user' || m.text.trim() || m.plan)).map(toModel))),
+      ]
       const started = Date.now()
       let reply = ''
       let thoughts = ''
       let thinking = true
-      // OpenAI can reason without sharing a summary of it; this tells that case apart from no reasoning at all.
-      let reasoned = false
       let steps: ChatToolStep[] = []
       const setStep = (step: ChatToolStep) => {
         steps = steps.some((x) => x.id === step.id) ? steps.map((x) => (x.id === step.id ? step : x)) : [...steps, step]
         update({ steps })
       }
 
-      for (let round = 0; ; round++) {
+      /** A clean automatic review is the verification step, so finish the to-do items that are only that. */
+      const completeVerifyTodos = () => {
+        if (!todos) return
+        const isVerify = (t: string) => /verif|review|check|render/i.test(t)
+        if (todos.items.some((i) => i.status !== 'completed' && !isVerify(i.title))) return
+        if (todos.items.every((i) => i.status === 'completed')) return
+        track.setTodos({ ...todos, items: todos.items.map((i) => ({ ...i, status: 'completed' as const })) })
+      }
+      const verdicts: NonNullable<AgentMessage['verification']> = []
+      let goalVerified = false
+
+      /** The verifier: a fresh agent with only the goal and the worker's claim. It looks, then submits a verdict. */
+      const verifyGoal = async (round: number): Promise<{ achieved: boolean; summary: string; problems: string[] }> => {
+        const scenes = [...new Set([...track.created, ...track.touched])].filter((id) => ['shape3d', 'model3d'].includes(useS3D.getState().doc.nodes[id]?.type ?? ''))
+        const brief = `Goal: ${goal}\n\nThe worker says it is achieved: ${goalSummary}\nIts evidence: ${goalEvidence}\n${scenes.length ? `3D scenes it worked on: ${scenes.map((id) => `"${useS3D.getState().doc.nodes[id]?.name}" (sceneId=${id})`).join(', ')}.` : 'Look at the document with get_document.'}\n\nVerify this against the real state now and submit your verdict.`
+        const allowed = new Set([...VERIFIER_TOOLS, 'submit_verdict'])
+        const all = await getToolSpecs()
+        const vtools: Record<string, ToolSpec> = {
+          ...Object.fromEntries(Object.entries(all).filter(([n]) => VERIFIER_TOOLS.includes(n))),
+          submit_verdict: { description: VERDICT_DESCRIPTION, schema: await asSchema(verdictSchema as never).jsonSchema },
+        }
+        let verdict: { achieved: boolean; summary: string; problems: string[] } | null = null
+        let vMessages: ModelMessage[] = [{ role: 'user', content: brief }]
+        const label = (name: string) => `Verifier · ${name === 'submit_verdict' ? 'Verdict' : stepLabel(name)}${round > 1 ? ` (check ${round})` : ''}`
+        for (let attempt = 0; attempt < 2 && !verdict; attempt++) {
+          let err: string | undefined
+          const res = await streamInWorker({
+            provider: 'anthropic', key, baseURL, model: S3D_MODEL, instructions: verifierInstructions, maxSteps: 30, tools: vtools, messages: vMessages,
+            providerOptions: anthropicOptions('medium'), contextLimit: S3D_AGENT_CONTEXT_LIMIT,
+          }, {
+            signal: controller.signal,
+            execTool: async (name, args) => {
+              if (!allowed.has(name)) throw new Error(`${name} is not available to the verifier`)
+              if (name === 'submit_verdict') {
+                const parsed = verdictSchema.safeParse(args)
+                if (!parsed.success) throw new Error(`Invalid verdict: ${parsed.error.message}`)
+                verdict = parsed.data
+                return 'Verdict recorded. You are done.'
+              }
+              return runTool(name, args, track)
+            },
+            onPart: (part) => {
+              if (part.type === 'tool-call') setStep({ id: `v${round}-${part.toolCallId}`, name: part.toolName, label: label(part.toolName), status: 'running' })
+              else if (part.type === 'tool-result') setStep({ id: `v${round}-${part.toolCallId}`, name: part.toolName, label: label(part.toolName), status: 'done' })
+              else if (part.type === 'tool-error') setStep({ id: `v${round}-${part.toolCallId}`, name: part.toolName, label: label(part.toolName), detail: part.error, status: 'failed' })
+              else if (part.type === 'error') err = part.error
+            },
+          })
+          if (err ?? res.error) throw new Error(err ?? res.error)
+          if (controller.signal.aborted) throw new Error('aborted')
+          vMessages = [...(res.replaced ? res.messages : [...vMessages, ...res.messages]), { role: 'user', content: 'Call submit_verdict now with your verdict.' }]
+        }
+        return verdict ?? { achieved: false, summary: 'The verifier gave no verdict.', problems: ['The verification could not be completed; re-check the whole goal yourself from every angle, then call complete_goal again.'] }
+      }
+      let compactions = 0
+      let toolTotal = 0
+      let modelTotal = 0
+      const runStarted = performance.now()
+      let reviews = 0
+      let angleChecks = 0
+      let angleEdits = 0
+      let stallRetries = 0
+      let idle = 0
+      let calls = 0
+      for (let pass = 0; pass < (goal ? MAX_GOAL_PASSES : MAX_PASSES); pass++) {
         // Each pass ends with its own summary; the last pass's summary is the reply.
         let passReply = ''
+        calls = 0
+        // Timing for the console: when each call started, and where the current model step began.
+        const callStarted = new Map<string, number>()
+        let stepMark = performance.now()
+        let modelOpen = true
+        let stepModelMs = 0
+        const passStarted = performance.now()
+        goalDone = false
+        if (goal) update({ goalState: 'working' })
         let streamError: string | undefined
+        // Call to answer, including waits for approval and for other runs' canvas edits.
+        const logAnswered = (name: string, id: string, error?: string) => {
+          const took = performance.now() - (callStarted.get(id) ?? performance.now())
+          toolTotal += took
+          console.info(LOG, `${name}: answered in ${secs(took)}${error ? ` (failed: ${error})` : ''}`)
+        }
+        // Watchdog: the provider sometimes keeps the stream open with pings and never answers. Each part resets the
+        // timer, a running tool pauses it, and a stall aborts only this pass so it can be retried.
+        const passCtl = new AbortController()
+        const onRunAbort = () => passCtl.abort()
+        controller.signal.addEventListener('abort', onRunAbort, { once: true })
+        let toolsRunning = 0
+        let stalled = false
+        let lastPart = performance.now()
+        const watchdog = setInterval(() => {
+          if (toolsRunning || performance.now() - lastPart < STALL_MS) return
+          stalled = true
+          console.warn(LOG, `pass ${pass + 1}: no response from the provider for ${secs(STALL_MS)}, retrying`)
+          passCtl.abort()
+        }, 5000)
         const result = await streamInWorker({
-          provider: 'openai',
+          provider: 'anthropic',
           key,
           baseURL,
           model: S3D_MODEL,
@@ -191,19 +453,18 @@ export async function runAgent(text: string, files: AgentAttachment[], base: Age
           maxSteps: MAX_STEPS,
           tools,
           messages,
-          providerOptions: {
-            openai: {
-              // OpenAI leaves out its reasoning summary unless asked for it.
-              reasoningEffort: 'high',
-              reasoningSummary: 'auto',
-              // Each tool step sends back the reasoning from earlier steps. With storage on, that goes as an id OpenAI
-              // must look up, which fails under zero data retention or through proxies; the encrypted reasoning travels
-              // inline instead.
-              store: false,
-              include: ['reasoning.encrypted_content'],
-            } satisfies OpenAILanguageModelResponsesOptions,
-          },
-        }, { signal: controller.signal, execTool: (name, args) => runTool(name, args, track), onPart: (part) => {
+          providerOptions: anthropicOptions('medium'),
+          contextLimit: S3D_AGENT_CONTEXT_LIMIT,
+        }, { signal: passCtl.signal, execTool: async (name, args) => {
+          toolsRunning++
+          try {
+            return await runTool(name, args, track)
+          } finally {
+            toolsRunning--
+            lastPart = performance.now()
+          }
+        }, onPart: (part) => {
+          lastPart = performance.now()
           if (part.type === 'text-delta') {
             // Thinking is over once the first words arrive.
             if (thinking) {
@@ -213,55 +474,171 @@ export async function runAgent(text: string, files: AgentAttachment[], base: Age
             passReply += part.text
             update({ text: passReply })
           } else if (part.type === 'reasoning-start') {
-            reasoned = true
             // Each step thinks afresh; keep its thoughts as their own paragraph.
             if (thoughts) thoughts += '\n\n'
           } else if (part.type === 'reasoning-delta') {
             thoughts += part.text
             update({ reasoning: thinkingOnly(thoughts) })
           } else if (part.type === 'tool-call') {
+            calls++
+            // The model's part of a step ends when it asks for its first tool.
+            if (modelOpen) {
+              modelOpen = false
+              stepModelMs = performance.now() - stepMark
+            }
+            callStarted.set(part.toolCallId, performance.now())
             setStep({ id: part.toolCallId, name: part.toolName, label: stepLabel(part.toolName), status: 'running' })
           } else if (part.type === 'tool-result') {
+            logAnswered(part.toolName, part.toolCallId)
             setStep({ id: part.toolCallId, name: part.toolName, label: stepLabel(part.toolName), status: 'done' })
           } else if (part.type === 'tool-error') {
+            logAnswered(part.toolName, part.toolCallId, part.error)
             setStep({ id: part.toolCallId, name: part.toolName, label: stepLabel(part.toolName), detail: part.error, status: 'failed' })
+          } else if (part.type === 'usage') {
+            // A step that called no tools was the model's alone, up to its end.
+            const now = performance.now()
+            const modelMs = modelOpen ? now - stepMark : stepModelMs
+            modelTotal += modelMs
+            console.info(LOG, `model step: ${secs(modelMs)} thinking/writing · ${part.inputTokens} in / ${part.outputTokens} out tokens`)
+            stepMark = now
+            modelOpen = true
+            update({ contextTokens: part.contextTokens })
+          }
+          else if (part.type === 'compacted') {
+            compactions++
+            update({ compactions })
+            setStep({ id: `compact-${compactions}`, name: 'compact', label: 'Compacted context', detail: `${Math.round(part.beforeTokens / 1000)}k → ${Math.round(part.afterTokens / 1000)}k tokens`, status: 'done' })
           } else if (part.type === 'error') streamError = part.error
         } })
+        clearInterval(watchdog)
+        controller.signal.removeEventListener('abort', onRunAbort)
+        if (stalled && !controller.signal.aborted) {
+          stallRetries++
+          setStep({ id: `stall-${stallRetries}`, name: 'stall', label: 'Provider stopped responding', detail: stallRetries > MAX_STALL_RETRIES ? 'Gave up' : 'Retrying', status: 'failed' })
+          if (stallRetries > MAX_STALL_RETRIES) throw new Error(`The model provider stopped responding (${MAX_STALL_RETRIES + 1} times, ${secs(STALL_MS)} each). Try again, or lower the effort.`)
+          pass--
+          continue
+        }
         if (streamError ?? result.error) throw new Error(streamError ?? result.error)
+        console.info(LOG, `pass ${pass + 1}: ${secs(performance.now() - passStarted)} · ${calls} tool calls`)
         if (passReply.trim()) reply = passReply.trim()
         if (controller.signal.aborted) throw new Error('aborted')
-        messages = [...messages, ...result.messages]
+        messages = result.replaced ? result.messages : [...messages, ...result.messages]
 
-        // Review what this reply built or changed; nothing touched means nothing to review.
+        // A plan ends the turn: the user decides whether to build it.
+        if (planWritten) break
+
+        // Verification is part of the loop: review what this pass built or changed, and send problems back.
         const screens = screensOf([...track.created, ...track.touched])
-        if (!screens.length) break
-        const review = await impl.verify_design({ ids: screens })
-        const found = review.issues.length + review.more
-        setStep({
-          id: `review-${round}`,
-          name: 'verify_design',
-          label: round ? `Review again (${round + 1})` : 'Review',
-          detail: review.ok ? 'All good' : `${found} ${found === 1 ? 'problem' : 'problems'} to fix`,
-          status: review.ok ? 'done' : 'failed',
-        })
-        if (review.ok) break
-        if (round + 1 >= MAX_REVIEWS) {
-          reply = `${reply || 'Done.'}\n\nThe review still finds ${found} ${found === 1 ? 'problem' : 'problems'} after ${MAX_REVIEWS} attempts to fix ${found === 1 ? 'it' : 'them'}.`
-          break
+        if (screens.length) {
+          const review = await impl.verify_design({ ids: screens })
+          const found = review.issues.length + review.more
+          setStep({
+            id: `review-${reviews}`,
+            name: 'verify_design',
+            label: reviews ? `Review again (${reviews + 1})` : 'Review',
+            detail: review.ok ? 'All good' : `${found} ${found === 1 ? 'problem' : 'problems'} to fix`,
+            status: review.ok ? 'done' : 'failed',
+          })
+          reviews++
+          if (review.ok) completeVerifyTodos()
+          else if (reviews >= MAX_REVIEWS) {
+            reply = `${reply || 'Done.'}\n\nThe review still finds ${found} ${found === 1 ? 'problem' : 'problems'} after ${MAX_REVIEWS} attempts to fix ${found === 1 ? 'it' : 'them'}.`
+            break
+          } else {
+            idle = 0
+            messages.push({
+              role: 'user',
+              content: `Automatic review of your work found these problems. Fix every one, keeping the work intact: 3D issues (they have a sceneId) with update_objects, delete_objects or set_scene; 2D issues with update_nodes or delete_nodes. Keep your to-do list up to date, and do not stop until the work is complete and verified.\n${JSON.stringify(review.issues)}`,
+            })
+            continue
+          }
         }
-        messages.push({
-          role: 'user',
-          content: `Automatic review of your work found these problems. Fix every one, keeping the work intact: 3D issues (they have a sceneId) with update_objects, delete_objects or set_scene; 2D issues with update_nodes or delete_nodes, then reply with a short summary.\n${JSON.stringify(review.issues)}`,
-        })
+
+        // A scene that looks right from the camera can be wrong from behind or above: show every side before finishing.
+        const scenes = [...new Set([...track.created, ...track.touched])].filter((id) => ['shape3d', 'model3d'].includes(useS3D.getState().doc.nodes[id]?.type ?? ''))
+        const edits = track.created.length + track.touched.length
+        if (scenes.length && edits > angleEdits && angleChecks < MAX_ANGLE_CHECKS) {
+          angleEdits = edits
+          angleChecks++
+          const sheets = await Promise.all(scenes.slice(0, 3).map(async (sceneId) => ({ sceneId, name: useS3D.getState().doc.nodes[sceneId]?.name ?? sceneId, view: await impl.render_views({ sceneId }) })))
+          setStep({ id: `angles-${angleChecks}`, name: 'render_views', label: `Check all angles${angleChecks > 1 ? ` (${angleChecks})` : ''}`, detail: `${sheets.length} scene${sheets.length === 1 ? '' : 's'}`, status: 'done' })
+          messages.push({
+            role: 'user',
+            content: [
+              { type: 'text', text: 'Automatic multi-angle check. Each sheet shows a scene from front, side, back, left, top and iso. Look at EVERY angle for what the camera view hides: missing or flat backs, floating or poking-through parts, gaps, misaligned or mirrored parts, parts outside the body. Fix any problem with update_objects / add_objects / delete_objects and update your to-do list. If every angle is correct, reply with a one or two sentence summary.' },
+              ...sheets.flatMap((x) => [{ type: 'text' as const, text: `${x.name} (sceneId=${x.sceneId}):` }, { type: 'file' as const, data: x.view.image, mediaType: 'image/png' }]),
+            ],
+          })
+          idle = 0
+          continue
+        }
+
+        // Keep going while the to-do list has open items, or the pass was cut off by the step limit.
+        const open = todos?.items.filter((i) => i.status !== 'completed') ?? []
+        const cutOff = calls >= MAX_STEPS
+        if (((mode === 'edit' || mode === 'full') && open.length) || cutOff) {
+          idle = calls ? 0 : idle + 1
+          // Two passes in a row that did nothing: the model will not move on, so stop and say so.
+          if (idle >= 2) {
+            reply = `${reply || 'Stopped.'}\n\n${open.length ? `${open.length} to-do ${open.length === 1 ? 'item is' : 'items are'} still not completed: ${open.map((i) => i.title).join('; ')}.` : 'The work may be unfinished.'} Ask me to continue.`
+            break
+          }
+          messages.push({
+            role: 'user',
+            content: `${open.length ? `Your to-do list still has ${open.length} item${open.length === 1 ? '' : 's'} not completed:\n${open.map((i) => `- [${i.status}] ${i.title}`).join('\n')}\n` : ''}${cutOff ? 'Your last pass was cut off by the tool-call limit. ' : ''}Continue working now from where you stopped. Do the next item, call update_todos as each one is finished, and end with verification (render_scene + verify_design, fix what it reports). Do not write a final summary until every item is completed.`,
+          })
+          continue
+        }
+        // A goal run is finished only by a separate verifier agreeing; until then the worker keeps going.
+        if (goal) {
+          if (goalDone) {
+            update({ goalState: 'verifying' })
+            const round = verdicts.length + 1
+            const verdict = await verifyGoal(round)
+            verdicts.push({ round, ...verdict })
+            update({ verification: verdicts })
+            if (verdict.achieved) {
+              update({ goalState: 'achieved' })
+              goalVerified = true
+              break
+            }
+            if (round >= MAX_VERIFICATIONS) {
+              reply = `${reply || 'Stopped.'}\n\nThe verifier still finds problems after ${MAX_VERIFICATIONS} checks:\n${verdict.problems.map((p) => `- ${p}`).join('\n')}`
+              break
+            }
+            idle = 0
+            messages.push({
+              role: 'user',
+              content: `An independent verifier checked the result against the goal "${goal}" and says it is NOT achieved yet.\nVerifier summary: ${verdict.summary}\nProblems to fix:\n${verdict.problems.map((p, i) => `${i + 1}. ${p}`).join('\n')}\n\nFix every problem (the verifier checks the real scene, not your claims), update your to-do list, check your work from every angle, then call complete_goal again.`,
+            })
+            continue
+          }
+          idle = calls ? 0 : idle + 1
+          if (idle >= 2) {
+            reply = `${reply || 'Stopped.'}\n\nThe goal is not marked achieved: "${goal}". Ask me to continue.`
+            break
+          }
+          messages.push({
+            role: 'user',
+            content: `The goal is not achieved yet: "${goal}". Do not stop and do not ask me to continue. Work out what is still missing (your to-do list, every angle with render_views, verify_design), do it, and when you believe the goal is fully achieved call complete_goal. A separate verifier will then check it.`,
+          })
+          continue
+        }
+        break
       }
-      if (reasoned && !thoughts.trim()) {
-        update({ reasoning: '_The model reasoned but OpenAI did not share a summary. OpenAI only returns reasoning summaries to verified organizations (platform.openai.com → Settings → Organization → Verify); a custom base URL or proxy may also drop them._' })
+      if (goal && goalVerified) reply = goalSummary || reply
+      else if (goal && !controller.signal.aborted) update({ goalState: 'stopped' })
+      if ((mode === 'edit' || mode === 'full') && todos?.items.some((i) => i.status !== 'completed') && !controller.signal.aborted && !reply.includes('not completed')) {
+        reply = `${reply || 'Stopped.'}\n\nSome to-do items are not completed yet. Ask me to continue.`
       }
+      console.info(LOG, `run done in ${secs(performance.now() - runStarted)} · model ${secs(modelTotal)} · tools ${secs(toolTotal)}`)
       update({ text: reply || 'Done.' })
     } catch (error) {
       if (!controller.signal.aborted) update({ error: error instanceof Error ? error.message : String(error) })
       else update({ text: (c.messages.find((m) => m.id === assistant.id)?.text ?? '') + '\n\n_Stopped._' })
     } finally {
+      update({ workedSeconds: Math.max(1, Math.round((Date.now() - assistant.createdAt) / 1000)) })
       // One undo for the whole reply works only while its steps sit together on top of the history.
       if (track.start !== undefined && !track.interleaved) update({ changes: track.start, changesEnd: track.end })
       const made = track.created.filter((id) => useS3D.getState().doc.nodes[id])
@@ -269,7 +646,42 @@ export async function runAgent(text: string, files: AgentAttachment[], base: Age
       if (made.length && useAgentRun.getState().viewedId === c.id) useS3D.getState().zoomToFit(made)
       aborts.delete(c.id)
       await save(c)
+      broadcastEnd(c.id)
       useAgentRun.setState((s) => ({ live: without(s.live, c.id) }))
     }
   }
+}
+
+/**
+ * Compacts a chat on request: the model summarizes everything so far, and later replies see only that summary plus
+ * newer messages. The chat itself still shows every message.
+ */
+export async function compactChat(chat: AgentChat) {
+  const key = ANTHROPIC_KEY.value
+  if (!key) throw new Error('Add your Anthropic API key in Settings first.')
+  if (useAgentRun.getState().live[chat.id]) throw new Error('Wait for the reply to finish, or stop it, before compacting.')
+  const last = chat.messages.at(-1)
+  if (!last) return chat
+  const cut = chat.summary ? chat.messages.findIndex((m) => m.id === chat.summary!.uptoId) + 1 : 0
+  const transcript = chat.messages.slice(Math.max(0, cut)).filter((m) => !m.error).map((m) => {
+    const plan = m.plan ? `\nPlan "${m.plan.title}": ${m.plan.steps.map((st) => st.title).join('; ')}` : ''
+    const todos = m.todos ? `\nTo-dos: ${m.todos.items.map((i) => `[${i.status}] ${i.title}`).join('; ')}` : ''
+    return `${m.role.toUpperCase()}: ${m.text}${plan}${todos}${m.context ? `\n${m.context}` : ''}`
+  }).join('\n\n')
+  let text = ''
+  let err: string | undefined
+  const res = await streamInWorker({
+    provider: 'anthropic', key, baseURL: ANTHROPIC_BASE_URL.value || undefined, model: S3D_MODEL, tools: {},
+    instructions: 'Compress this design-agent conversation so the agent can continue it. Keep the user requests and goals word for word, decisions, constraints, every scene/object/node id mentioned with what it is, what is done, what is still to do, open problems and the to-do state. Write compact markdown.',
+    messages: [{ role: 'user', content: `${chat.summary ? `Earlier summary:\n${chat.summary.text}\n\n` : ''}${transcript}` }],
+    providerOptions: anthropicOptions('low'),
+  }, { signal: new AbortController().signal, execTool: () => { throw new Error('No tools') }, onPart: (p) => {
+    if (p.type === 'text-delta') text += p.text
+    else if (p.type === 'error') err = p.error
+  } })
+  if (err ?? res.error) throw new Error(err ?? res.error)
+  if (!text.trim()) throw new Error('The model returned no summary.')
+  const next: AgentChat = { ...chat, summary: { text: text.trim(), uptoId: last.id }, updatedAt: Date.now() }
+  await save(next)
+  return next
 }

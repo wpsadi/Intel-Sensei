@@ -5,7 +5,7 @@ export type ToWorker =
   | {
       type: 'start'
       runId: string
-      provider: 'openai' | 'google'
+      provider: 'openai' | 'google' | 'anthropic'
       key: string
       baseURL?: string
       model: string
@@ -15,6 +15,8 @@ export type ToWorker =
       providerOptions?: Record<string, Record<string, unknown>>
       tools: Record<string, ToolSpec>
       messages: ModelMessage[]
+      /** Context window in tokens. When a step would come near it, older messages are summarized (compaction). */
+      contextLimit?: number
     }
   | { type: 'abort'; runId: string }
   | { type: 'tool-result'; callId: string; result?: unknown; error?: string }
@@ -34,8 +36,13 @@ export type StreamPart =
   | { type: 'tool-result'; toolCallId: string; toolName: string; output: unknown }
   | { type: 'tool-error'; toolCallId: string; toolName: string; error: string }
   | { type: 'error'; error: string }
+  /** How full the context was after a model step: its input plus its output. */
+  | { type: 'usage'; contextTokens: number; inputTokens: number; outputTokens: number }
+  /** Older messages were summarized to make room. */
+  | { type: 'compacted'; beforeTokens: number; afterTokens: number }
 
 export type FromWorker =
   | { type: 'part'; runId: string; part: StreamPart }
   | { type: 'tool-exec'; runId: string; callId: string; name: string; args: unknown }
-  | { type: 'done'; runId: string; messages: ModelMessage[]; aborted: boolean; error?: string }
+  /** `replaced`: compaction rewrote the history, so `messages` is the whole new history, not only this pass's replies. */
+  | { type: 'done'; runId: string; messages: ModelMessage[]; replaced?: boolean; aborted: boolean; error?: string }

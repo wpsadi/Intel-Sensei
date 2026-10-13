@@ -19,6 +19,7 @@ export function ChatReasoning({
   duration,
   defaultOpen,
   className,
+  toolCount: showToolCount = true,
 }: {
   reasoning?: string
   steps?: ChatToolStep[]
@@ -26,13 +27,15 @@ export function ChatReasoning({
   duration?: number
   defaultOpen?: boolean
   className?: string
+  /** Adds "· used N tools" to the header; off where the reply shows its own timing instead. */
+  toolCount?: boolean
 }) {
   if (!reasoning && !steps?.length) return null
   const running = steps?.some((s) => s.status === 'running')
   const label = (streaming: boolean, seconds?: number) => {
     if (streaming || running) return <Shimmer duration={1}>{running ? 'Working…' : 'Thinking…'}</Shimmer>
     const thought = reasoning ? (seconds ? `Thought for ${seconds} seconds` : 'Thought for a few seconds') : 'Done'
-    return <p>{steps?.length ? `${thought} · ${toolCount(steps.length)}` : thought}</p>
+    return <p>{showToolCount && steps?.length ? `${thought} · ${toolCount(steps.length)}` : thought}</p>
   }
   return (
     <Reasoning isStreaming={isStreaming} duration={duration} defaultOpen={defaultOpen} className={className}>

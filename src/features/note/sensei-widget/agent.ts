@@ -1,7 +1,7 @@
 import { type ModelMessage, asSchema } from 'ai'
 import { create } from 'zustand'
 import type { GoogleLanguageModelOptions } from '@ai-sdk/google'
-import { CHAT_MODEL } from '@/constants/ai'
+import { SNOTE_AGENT_CONTEXT_LIMIT, CHAT_MODEL } from '@/constants/ai'
 import { currentTimePrompt } from '@/ai/utils/current-time'
 import { thinkingOnly } from '@/ai/utils/thinking'
 import { createSearchTool, upsertSearch } from '@/ai/tools/search'
@@ -140,7 +140,10 @@ export async function sendSensei(text: string, base: WidgetChat | null, noteTitl
   let thinking = true
   void runSensei({
     apiKey,
-    messages: history.filter((m) => m.content).map((m) => ({ role: m.role, content: m.content })),
+    messages: [
+      ...(current.summary ? [{ role: 'user' as const, content: `Summary of the earlier conversation (compacted):\n\n${current.summary.text}` }] : []),
+      ...history.slice(current.summary ? history.findIndex((m) => m.id === current.summary!.uptoId) + 1 : 0).filter((m) => m.content).map((m) => ({ role: m.role, content: m.content })),
+    ],
     noteTitle,
     onText: (soFar) => {
       // Thinking is over once the first words arrive.
@@ -153,6 +156,7 @@ export async function sendSensei(text: string, base: WidgetChat | null, noteTitl
     onReasoning: (reasoning) => patch({ reasoning }),
     onSteps: (steps) => patch({ steps }),
     onSearches: (searches) => patch({ searches }),
+    onUsage: (usage) => patch(usage),
     signal: controller.signal,
   })
     .then((reply) => patch({ content: reply || (controller.signal.aborted ? 'Stopped.' : 'Done.') }))
@@ -179,6 +183,7 @@ async function runSensei({
   onReasoning,
   onSteps,
   onSearches,
+  onUsage,
   signal,
 }: {
   apiKey: string
@@ -188,6 +193,7 @@ async function runSensei({
   onReasoning: (soFar: string) => void
   onSteps: (steps: ChatToolStep[]) => void
   onSearches: (searches: ChatSearch[]) => void
+  onUsage: (usage: { contextTokens?: number; compactions?: number }) => void
   signal: AbortSignal
 }) {
   let searches: ChatSearch[] = []
@@ -207,6 +213,7 @@ async function runSensei({
   let reply = ''
   let thoughts = ''
   let streamError: string | undefined
+  let compactions = 0
   let steps: ChatToolStep[] = []
   // Web searches show in their own list, so they are not repeated as steps.
   const setStep = (step: ChatToolStep) => {
@@ -222,6 +229,7 @@ async function runSensei({
       instructions: instructions(noteTitle),
       tools,
       messages,
+      contextLimit: SNOTE_AGENT_CONTEXT_LIMIT,
       // Gemini leaves out its thought summaries unless asked for them.
       providerOptions: { google: { thinkingConfig: { thinkingLevel: 'high', includeThoughts: true } } satisfies GoogleLanguageModelOptions },
     },
@@ -254,10 +262,40 @@ async function runSensei({
         } else if (part.type === 'tool-error') {
           console.warn(LOG, 'tool error', part.toolName, part.error)
           setStep({ id: part.toolCallId, name: part.toolName, label: stepLabel(part.toolName), detail: part.error, status: 'failed' })
+        } else if (part.type === 'usage') onUsage({ contextTokens: part.contextTokens })
+        else if (part.type === 'compacted') {
+          compactions++
+          onUsage({ compactions })
+          setStep({ id: `compact-${compactions}`, name: 'compact', label: 'Compacted context', detail: `${Math.round(part.beforeTokens / 1000)}k → ${Math.round(part.afterTokens / 1000)}k tokens`, status: 'done' })
         } else if (part.type === 'error') streamError = part.error
       },
     },
   )
   if (streamError ?? result.error) throw new Error(streamError ?? result.error)
   return reply.trim()
+}
+
+/** Compacts a widget chat on request: later replies see a summary of everything so far plus newer messages. */
+export async function compactSenseiChat(chat: WidgetChat) {
+  const apiKey = GEMINI_KEY.value
+  if (!apiKey) throw new Error('Add your Gemini API key in Settings first.')
+  const last = chat.messages.at(-1)
+  if (!last) return chat
+  const cut = chat.summary ? chat.messages.findIndex((m) => m.id === chat.summary!.uptoId) + 1 : 0
+  const transcript = chat.messages.slice(cut).filter((m) => m.content).map((m) => `${m.role.toUpperCase()}: ${m.content}`).join('\n\n')
+  let text = ''
+  let err: string | undefined
+  const res = await streamInWorker({
+    provider: 'google', key: apiKey, model: CHAT_MODEL, tools: {},
+    instructions: 'Compress this notes-assistant conversation so it can continue. Keep the user requests word for word, decisions, the notes and pages mentioned (titles and ids), what was done and what is still open. Write compact markdown.',
+    messages: [{ role: 'user', content: `${chat.summary ? `Earlier summary:\n${chat.summary.text}\n\n` : ''}${transcript}` }],
+  }, { signal: new AbortController().signal, execTool: () => { throw new Error('No tools') }, onPart: (p) => {
+    if (p.type === 'text-delta') text += p.text
+    else if (p.type === 'error') err = p.error
+  } })
+  if (err ?? res.error) throw new Error(err ?? res.error)
+  if (!text.trim()) throw new Error('The model returned no summary.')
+  const next: WidgetChat = { ...chat, summary: { text: text.trim(), uptoId: last.id }, updatedAt: Date.now() }
+  await save(next)
+  return next
 }

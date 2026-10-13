@@ -1,9 +1,11 @@
 import { useState } from 'react'
-import { BoxIcon, EyeIcon, EyeOffIcon, FolderIcon, LightbulbIcon, PackageIcon } from 'lucide-react'
+import { pickFiles, storeFile } from '../files'
+import { TEXTURE_PATTERNS } from '../render/textures'
+import { PlusIcon, XIcon, BoxIcon, EyeIcon, EyeOffIcon, FolderIcon, LightbulbIcon, PackageIcon } from 'lucide-react'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { cn } from '@/lib/utils'
 import { Check, ColorField, NumberField, Section, Sel, TextField } from '../inspector/fields'
-import { DEFAULT_MATERIAL, GEOMETRY_PARAMS, MATERIAL_PRESETS, sceneOf } from '../render/scene3d'
+import { DEFAULT_MATERIAL, DEFAULT_POINTS, GEOMETRY_PARAMS, MATERIAL_PRESETS, sceneOf } from '../render/scene3d'
 import { useS3D } from '../store'
 import type { Geometry3D, Light3D, Material3D, Obj3D, Scene3D, Vec3 } from '../types'
 import { editObject, editScene, selectObject } from './edit'
@@ -78,6 +80,31 @@ function Vec3Field({ title, value, step, onChange }: { title: string; value: Vec
   )
 }
 
+/** Edits the point list of a path geometry: tube [x, y, z], lathe profile [radius, y], extrude outline [x, y]. */
+function PointsEditor({ dims, points, onChange }: { dims: 2 | 3; points: number[][]; onChange: (p: number[][]) => void }) {
+  const axes = dims === 3 ? ['x', 'y', 'z'] : ['x', 'y']
+  const setAt = (i: number, j: number, v: number) => onChange(points.map((p, a) => (a === i ? p.map((c, b) => (b === j ? v : c)) : p)))
+  return (
+    <div className="flex flex-col gap-1">
+      {points.map((p, i) => (
+        <div key={i} className="flex items-center gap-1">
+          <div className="grid flex-1 gap-1" style={{ gridTemplateColumns: `repeat(${dims}, minmax(0, 1fr))` }}>
+            {axes.map((axis, j) => <NumberField key={axis} label={axis} title={`Point ${i + 1} ${axis}`} step={0.05} value={p[j] ?? 0} onChange={(v) => setAt(i, j, v)} />)}
+          </div>
+          <button type="button" title="Remove point" disabled={points.length <= 2} className="rounded p-0.5 text-muted-foreground hover:bg-muted disabled:opacity-30" onClick={() => onChange(points.filter((_, a) => a !== i))}><XIcon className="size-3" /></button>
+        </div>
+      ))}
+      <button type="button" className="flex items-center justify-center gap-1 rounded border border-dashed py-0.5 text-[11px] text-muted-foreground hover:bg-muted"
+        onClick={() => {
+          const last = points.at(-1) ?? new Array(dims).fill(0)
+          const prev = points.at(-2) ?? last
+          // Continue in the direction of the last segment so the new point is easy to find.
+          onChange([...points, last.map((c, j) => c + (c - (prev[j] ?? c)) || 0.25)])
+        }}><PlusIcon className="size-3" /> Add point</button>
+    </div>
+  )
+}
+
 const LABEL = 'text-[11px] text-muted-foreground'
 
 function ObjectInspector({ o }: { o: Obj3D }) {
@@ -100,14 +127,22 @@ function ObjectInspector({ o }: { o: Obj3D }) {
       </Section>
       {o.kind === 'mesh' && (
         <Section title="Geometry">
-          <Sel<Geometry3D> value={geo} options={(Object.keys(GEOMETRY_PARAMS) as Geometry3D[]).map((g) => ({ value: g, label: g }))} onChange={(g) => set((x) => { x.geometry = g; x.params = {} })} />
+          <Sel<Geometry3D> value={geo} options={(Object.keys(GEOMETRY_PARAMS) as Geometry3D[]).filter((g) => g !== 'mesh' || geo === 'mesh').map((g) => ({ value: g, label: g === 'mesh' ? `mesh (${(o.mesh?.indices.length ?? 0) / 3} triangles)` : g }))} onChange={(g) => set((x) => { x.geometry = g; x.params = {} })} />
           <div className="grid grid-cols-2 gap-1">
             {Object.entries(GEOMETRY_PARAMS[geo]).map(([k, def]) => (
-              <NumberField key={k} label={k.slice(0, 3)} title={k} step={['detail', 'p', 'q', 'segments'].includes(k) ? 1 : k === 'arc' ? 5 : 0.01} min={0}
+              <NumberField key={k} label={k.slice(0, 3)} title={k} step={['detail', 'p', 'q', 'segments', 'turns', 'frequency', 'closed'].includes(k) ? 1 : k === 'arc' ? 5 : 0.01} min={0}
                 value={typeof o.params?.[k] === 'number' ? (o.params[k] as number) : def}
                 onChange={(v) => set((x) => { x.params = { ...x.params, [k]: v } })} />
             ))}
           </div>
+          {(geo === 'tube' || geo === 'lathe' || geo === 'extrude') && (
+            <>
+              <div className={LABEL}>{geo === 'tube' ? 'Path points' : geo === 'lathe' ? 'Profile (radius, y)' : 'Outline'}</div>
+              <PointsEditor dims={geo === 'tube' ? 3 : 2}
+                points={Array.isArray(o.params?.points) && (o.params.points as number[][]).length > 1 ? (o.params.points as number[][]) : DEFAULT_POINTS[geo]!}
+                onChange={(points) => set((x) => { x.params = { ...x.params, points } })} />
+            </>
+          )}
         </Section>
       )}
       {o.kind === 'mesh' && (
@@ -118,8 +153,25 @@ function ObjectInspector({ o }: { o: Obj3D }) {
             <NumberField label="Met" title="Metalness" step={0.05} min={0} max={1} value={mat.metalness} onChange={(metalness) => setMat({ metalness })} />
             <NumberField label="Rgh" title="Roughness" step={0.05} min={0} max={1} value={mat.roughness} onChange={(roughness) => setMat({ roughness })} />
             <NumberField label="Gls" title="Glass (transmission)" step={0.05} min={0} max={1} value={mat.transmission} onChange={(transmission) => setMat({ transmission })} />
+            <NumberField label="Shn" title="Sheen (soft grazing highlight)" step={0.05} min={0} max={1} value={mat.sheen ?? 0} onChange={(sheen) => setMat({ sheen })} />
+            <NumberField label="Spc" title="Specular intensity" step={0.05} min={0} max={1} value={mat.specularIntensity ?? 1} onChange={(specularIntensity) => setMat({ specularIntensity })} />
             <NumberField label="Coat" title="Clearcoat" step={0.05} min={0} max={1} value={mat.clearcoat} onChange={(clearcoat) => setMat({ clearcoat })} />
           </div>
+          <div className={LABEL}>Texture</div>
+          <Sel<string> value={mat.pattern ?? (mat.image ? 'image' : 'none')}
+            options={[{ value: 'none', label: 'None' }, ...TEXTURE_PATTERNS.map((p) => ({ value: p, label: p })), { value: 'image', label: 'Image…' }]}
+            onChange={async (v) => {
+              if (v === 'none') return setMat({ pattern: undefined, image: undefined })
+              if (v !== 'image') return setMat({ pattern: v as Material3D['pattern'], image: undefined })
+              const [file] = await pickFiles('image/*', false)
+              if (file) setMat({ pattern: undefined, image: await storeFile(file) })
+            }} />
+          {(mat.pattern || mat.image) && (
+            <div className="grid grid-cols-2 gap-1">
+              <NumberField label="Rep" title="Texture repeat" step={0.25} min={0.1} value={mat.patternScale ?? 1} onChange={(patternScale) => setMat({ patternScale })} />
+              <NumberField label="Rdg" title="Ridges / bump depth" step={0.05} min={0} max={1} value={mat.bump ?? 0} onChange={(bump) => setMat({ bump })} />
+            </div>
+          )}
           <div className={LABEL}>Glow</div>
           <ColorField color={mat.emissive} onChange={(emissive) => setMat({ emissive })} />
           <NumberField label="Int" title="Glow intensity" step={0.1} min={0} value={mat.emissiveIntensity} onChange={(emissiveIntensity) => setMat({ emissiveIntensity })} />
@@ -133,6 +185,7 @@ function ObjectInspector({ o }: { o: Obj3D }) {
           <ColorField color={o.light.color} onChange={(color) => set((x) => { x.light = { ...x.light!, color } })} />
           <NumberField label="Int" title="Intensity" step={0.1} min={0} value={o.light.intensity} onChange={(intensity) => set((x) => { x.light = { ...x.light!, intensity } })} />
           {o.light.type === 'spot' && <NumberField label="Ang" title="Cone angle" step={1} min={1} max={89} value={o.light.angle ?? 30} onChange={(angle) => set((x) => { x.light = { ...x.light!, angle } })} />}
+          <NumberField label="Size" title="Shadow softness (bigger = softer, like a larger light)" step={0.5} min={0} max={10} value={o.light.size ?? 0} onChange={(size) => set((x) => { x.light = { ...x.light!, size } })} />
           <Check label="Cast shadows" checked={o.light.castShadow} onChange={(castShadow) => set((x) => { x.light = { ...x.light!, castShadow } })} />
         </Section>
       )}
@@ -161,6 +214,13 @@ function SceneSettings({ scene }: { scene: Scene3D }) {
       <Section title="Ground">
         <Check label="Show ground" checked={scene.ground.visible} onChange={(visible) => set((s) => { s.ground.visible = visible })} />
         {scene.ground.visible && <ColorField color={scene.ground.color} onChange={(color) => set((s) => { s.ground.color = color })} />}
+      </Section>
+      <Section title="Look">
+        <NumberField label="Exp" title="Exposure (overall brightness)" step={0.05} min={0} value={scene.exposure ?? 1} onChange={(exposure) => set((s) => { s.exposure = exposure })} />
+        <NumberField label="Env" title="Environment light and reflections" step={0.05} min={0} value={scene.envIntensity ?? 0.6} onChange={(envIntensity) => set((s) => { s.envIntensity = envIntensity })} />
+        <NumberField label="Rot" title="Turn the environment, degrees" step={15} value={scene.envRotation ?? 0} onChange={(envRotation) => set((s) => { s.envRotation = envRotation })} />
+        <Sel<string> value={scene.toneMapping ?? 'aces'} options={['aces', 'neutral', 'linear', 'none']} onChange={(t) => set((s) => { s.toneMapping = t as Scene3D['toneMapping'] })} />
+        <Sel<string> value={scene.shadowQuality ?? 'normal'} options={[{ value: 'normal', label: 'Shadows: normal' }, { value: 'high', label: 'Shadows: high' }, { value: 'ultra', label: 'Shadows: ultra' }]} onChange={(q) => set((s) => { s.shadowQuality = q as Scene3D['shadowQuality'] })} />
       </Section>
       <Section title="Camera">
         <NumberField label="FOV" title="Field of view" step={1} min={10} max={120} value={scene.camera.fov} onChange={(fov) => set((s) => { s.camera.fov = fov })} />

@@ -1,10 +1,12 @@
 import * as THREE from 'three'
+import { BufferTarget, CanvasSource, Mp4OutputFormat, Output, getFirstEncodableVideoCodec, type VideoCodec } from 'mediabunny'
 import { RoundedBoxGeometry } from 'three/examples/jsm/geometries/RoundedBoxGeometry.js'
 import { RoomEnvironment } from 'three/examples/jsm/environments/RoomEnvironment.js'
 import { DRACOLoader } from 'three/examples/jsm/loaders/DRACOLoader.js'
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js'
 import { resolveFile } from '../files'
-import type { CameraKey3D, Geometry3D, Keyframe3D, Material3D, Obj3D, SNode, Scene3D, Vec3 } from '../types'
+import { applyTextures, disposeTextures } from './textures'
+import type { CameraKey3D, Geometry3D, Keyframe3D, Material3D, MeshData3D, Obj3D, SNode, Scene3D, Vec3 } from '../types'
 
 /** Dimension keys and defaults per geometry, in scene units. Also documents the params the agent may set. */
 export const GEOMETRY_PARAMS: Record<Geometry3D, Record<string, number>> = {
@@ -25,6 +27,17 @@ export const GEOMETRY_PARAMS: Record<Geometry3D, Record<string, number>> = {
   tetrahedron: { radius: 0.5, detail: 0 },
   lathe: { segments: 48 },
   extrude: { depth: 0.2, bevel: 0.02 },
+  tube: { radius: 0.05, closed: 0 },
+  helix: { radius: 0.3, height: 1, turns: 4, tube: 0.04 },
+  wave: { width: 1, height: 1, amplitude: 0.08, frequency: 4 },
+  mesh: {},
+}
+
+/** Point lists the path-based geometries fall back to when none is set; the inspector starts editing from these. */
+export const DEFAULT_POINTS: Partial<Record<Geometry3D, number[][]>> = {
+  tube: [[-0.5, 0, 0], [-0.2, 0.3, 0.2], [0.2, -0.3, -0.2], [0.5, 0, 0]],
+  lathe: [[0, 0], [0.5, 0], [0.5, 0.2], [0.2, 0.6], [0.3, 1]],
+  extrude: [[0, 0], [1, 0], [0.5, 1]],
 }
 
 export const DEFAULT_MATERIAL: Material3D = {
@@ -107,11 +120,37 @@ export function makeGeometry(geo: Geometry3D, p: Obj3D['params'], lite = false):
     case 'tetrahedron': return new THREE.TetrahedronGeometry(n('radius'), n('detail'))
     case 'lathe': {
       const profile = pts(p, 'points').map(([x, y]) => new THREE.Vector2(x, y))
-      return new THREE.LatheGeometry(profile.length > 1 ? profile : [new THREE.Vector2(0, 0), new THREE.Vector2(0.5, 0), new THREE.Vector2(0, 1)], lite ? Math.min(12, n('segments')) : n('segments'))
+      return new THREE.LatheGeometry(profile.length > 1 ? profile : DEFAULT_POINTS.lathe!.map(([x, y]) => new THREE.Vector2(x, y)), lite ? Math.min(12, n('segments')) : n('segments'))
     }
+    case 'tube': {
+      // A smooth Catmull-Rom curve through [x, y, z] points, swept with a round pipe.
+      const raw = pts(p, 'points').filter((q) => q.length >= 3)
+      const path = (raw.length > 1 ? raw : DEFAULT_POINTS.tube!).map(([x, y, z]) => new THREE.Vector3(x, y, z))
+      const closed = n('closed') > 0
+      return new THREE.TubeGeometry(new THREE.CatmullRomCurve3(path, closed), seg(Math.max(24, path.length * 16), 12), n('radius'), seg(16, 6), closed)
+    }
+    case 'helix': {
+      const turns = n('turns'), r = n('radius'), h = n('height')
+      const count = Math.max(8, Math.ceil(turns * 24)) + 1
+      const path = Array.from({ length: count }, (_, i) => {
+        const t = i / (count - 1)
+        return new THREE.Vector3(Math.cos(t * turns * Math.PI * 2) * r, (t - 0.5) * h, Math.sin(t * turns * Math.PI * 2) * r)
+      })
+      return new THREE.TubeGeometry(new THREE.CatmullRomCurve3(path), path.length * (lite ? 1 : 2), n('tube'), seg(12, 5), false)
+    }
+    case 'wave': {
+      // A plane rippled along its width; lies flat like a plane when rotated -90° on x.
+      const w = n('width'), h = n('height'), amp = n('amplitude'), freq = n('frequency')
+      const g = new THREE.PlaneGeometry(w, h, seg(96, 16), seg(96, 16))
+      const pos = g.attributes.position
+      for (let i = 0; i < pos.count; i++) pos.setZ(i, amp * Math.sin((pos.getX(i) / w) * freq * Math.PI * 2) * Math.cos((pos.getY(i) / h) * freq * Math.PI))
+      g.computeVertexNormals()
+      return g
+    }
+    case 'mesh': return new THREE.BufferGeometry()
     case 'extrude': {
       const outline = pts(p, 'points')
-      const shape = new THREE.Shape((outline.length > 2 ? outline : [[0, 0], [1, 0], [0.5, 1]]).map(([x, y]) => new THREE.Vector2(x, y)))
+      const shape = new THREE.Shape((outline.length > 2 ? outline : DEFAULT_POINTS.extrude!).map(([x, y]) => new THREE.Vector2(x, y)))
       const bevel = n('bevel')
       const g = new THREE.ExtrudeGeometry(shape, { depth: n('depth'), bevelEnabled: bevel > 0, curveSegments: seg(12, 4), bevelSize: bevel, bevelThickness: bevel, bevelSegments: 3 })
       g.center()
@@ -120,13 +159,93 @@ export function makeGeometry(geo: Geometry3D, p: Obj3D['params'], lite = false):
   }
 }
 
+/** Box-projected UVs: each vertex takes the two axes across the face it mostly points along. Fine for noise, fur and tiling patterns. */
+function boxUVs(g: THREE.BufferGeometry) {
+  const p = g.getAttribute('position'), n = g.getAttribute('normal')
+  const uv = new Float32Array(p.count * 2)
+  for (let i = 0; i < p.count; i++) {
+    const ax = Math.abs(n.getX(i)), ay = Math.abs(n.getY(i)), az = Math.abs(n.getZ(i))
+    if (ay >= ax && ay >= az) { uv[i * 2] = p.getX(i); uv[i * 2 + 1] = p.getZ(i) }
+    else if (ax >= az) { uv[i * 2] = p.getZ(i); uv[i * 2 + 1] = p.getY(i) }
+    else { uv[i * 2] = p.getX(i); uv[i * 2 + 1] = p.getY(i) }
+  }
+  g.setAttribute('uv', new THREE.BufferAttribute(uv, 2))
+}
+
+let furNoise: THREE.CanvasTexture | null = null
+/** Random dots: where a strand exists. Shells cut this at a rising threshold, so strands thin out toward the tip. */
+function strandNoise() {
+  if (!furNoise) {
+    const c = document.createElement('canvas')
+    c.width = c.height = 256
+    const g = c.getContext('2d')!
+    const img = g.createImageData(256, 256)
+    for (let i = 0; i < 256 * 256; i++) {
+      const v = Math.floor(Math.random() * 255)
+      img.data[i * 4] = img.data[i * 4 + 1] = img.data[i * 4 + 2] = v
+      img.data[i * 4 + 3] = 255
+    }
+    g.putImageData(img, 0, 0)
+    furNoise = new THREE.CanvasTexture(c)
+    furNoise.wrapS = furNoise.wrapT = THREE.RepeatWrapping
+  }
+  return furNoise
+}
+
+/** Short fur as shells: copies of the surface pushed out along its normals, each keeping fewer strand pixels. */
+function addFur(mesh: THREE.Mesh, o: Obj3D) {
+  const fur = o.fur!
+  const layers = Math.max(3, Math.min(16, Math.round(fur.layers)))
+  const base = new THREE.Color(o.material?.color ?? DEFAULT_MATERIAL.color)
+  const tip = new THREE.Color(fur.tipColor ?? o.material?.color ?? DEFAULT_MATERIAL.color)
+  const src = mesh.geometry
+  if (!src.getAttribute('normal')) src.computeVertexNormals()
+  if (!src.getAttribute('uv')) boxUVs(src)
+  const useVertexColors = !!o.material?.vertexColors && !!src.getAttribute('color')
+  for (let i = 1; i <= layers; i++) {
+    const t = i / layers
+    const g = src.clone()
+    const p = g.getAttribute('position'), n = g.getAttribute('normal')
+    for (let v = 0; v < p.count; v++) p.setXYZ(v, p.getX(v) + n.getX(v) * fur.length * t, p.getY(v) + n.getY(v) * fur.length * t, p.getZ(v) + n.getZ(v) * fur.length * t)
+    const noise = strandNoise().clone()
+    noise.repeat.set(fur.density, fur.density)
+    noise.needsUpdate = true
+    const shell = new THREE.Mesh(g, new THREE.MeshStandardMaterial({
+      color: base.clone().lerp(tip, t), vertexColors: useVertexColors, roughness: o.material?.roughness ?? 0.9, alphaMap: noise, alphaTest: 0.15 + 0.7 * t, transparent: false, side: THREE.DoubleSide,
+    }))
+    shell.castShadow = false
+    shell.receiveShadow = true
+    shell.userData = { fur: true }
+    mesh.add(shell)
+  }
+}
+
+/** A baked mesh as geometry, with smooth shading from its shared vertices. */
+function meshGeometry(m: MeshData3D) {
+  const g = new THREE.BufferGeometry()
+  g.setAttribute('position', new THREE.Float32BufferAttribute(m.positions, 3))
+  if (m.colors) g.setAttribute('color', new THREE.Float32BufferAttribute(m.colors, 3))
+  g.setIndex(m.indices)
+  g.computeVertexNormals()
+  boxUVs(g)
+  return g
+}
+
 function makeMaterial(m: Partial<Material3D> | undefined) {
   const v = { ...DEFAULT_MATERIAL, ...m }
-  return new THREE.MeshPhysicalMaterial({
+  const mat = new THREE.MeshPhysicalMaterial({
     color: v.color, metalness: v.metalness, roughness: v.roughness, emissive: v.emissive, emissiveIntensity: v.emissiveIntensity,
     opacity: v.opacity, transparent: v.opacity < 1 || v.transmission > 0, transmission: v.transmission, thickness: v.transmission ? 0.5 : 0,
-    clearcoat: v.clearcoat, wireframe: v.wireframe, flatShading: v.flatShading, side: THREE.DoubleSide,
+    clearcoat: v.clearcoat, vertexColors: !!v.vertexColors, sheen: v.sheen ?? 0, sheenColor: new THREE.Color(v.sheenColor ?? '#ffffff'), sheenRoughness: 0.5, specularIntensity: v.specularIntensity ?? 1, wireframe: v.wireframe, flatShading: v.flatShading, side: THREE.DoubleSide,
   })
+  applyTextures(mat, v)
+  return mat
+}
+
+/** A bigger `size` blurs the shadow edge, like a larger light source. */
+function softShadow(light: THREE.PointLight | THREE.SpotLight | THREE.DirectionalLight, size = 0) {
+  light.shadow.radius = 1 + size * 2
+  light.shadow.blurSamples = 8 + Math.round(size * 2)
 }
 
 function makeLight(o: Obj3D, shadows: boolean): THREE.Object3D {
@@ -137,6 +256,7 @@ function makeLight(o: Obj3D, shadows: boolean): THREE.Object3D {
     case 'point': {
       const p = new THREE.PointLight(l.color, l.intensity, 0, 2)
       p.castShadow = shadows && l.castShadow
+      softShadow(p, l.size)
       return p
     }
     case 'spot':
@@ -145,6 +265,7 @@ function makeLight(o: Obj3D, shadows: boolean): THREE.Object3D {
       d.castShadow = shadows && l.castShadow
       d.shadow.mapSize.set(2048, 2048)
       d.shadow.bias = -0.0005
+      softShadow(d, l.size)
       if (d instanceof THREE.DirectionalLight) Object.assign(d.shadow.camera, { left: -10, right: 10, top: 10, bottom: -10, near: 0.1, far: 50 })
       // Lights shine at the scene origin.
       return d
@@ -200,9 +321,10 @@ export async function buildScene(scene: Scene3D, { models = true, lite = false }
   for (const o of scene.objects) {
     let obj: THREE.Object3D
     if (o.kind === 'mesh') {
-      const mesh = new THREE.Mesh(makeGeometry(o.geometry ?? 'box', o.params, lite), liteMat ?? makeMaterial(o.material))
+      const mesh = new THREE.Mesh(o.geometry === 'mesh' && o.mesh ? meshGeometry(o.mesh) : makeGeometry(o.geometry ?? 'box', o.params, lite), liteMat ?? makeMaterial(o.material))
       mesh.castShadow = o.castShadow ?? true
       mesh.receiveShadow = true
+      if (o.fur && !lite) addFur(mesh, o)
       obj = mesh
     } else if (o.kind === 'light') obj = lite ? new THREE.Object3D() : makeLight(o, scene.shadows)
     else if (o.kind === 'model') {
@@ -231,7 +353,33 @@ export async function buildScene(scene: Scene3D, { models = true, lite = false }
     root.add(ground)
   }
   root.updateMatrixWorld(true)
+  if (!lite) fitShadows(root, scene)
   return root
+}
+
+/** Sizes each light's shadow map to the subject, so a small model gets sharp shadows instead of a thin slice of a huge map. */
+function fitShadows(root: THREE.Object3D, scene: Scene3D) {
+  const box = new THREE.Box3()
+  root.traverse((o) => {
+    const m = o as THREE.Mesh
+    if (m.isMesh && !o.userData.ground && !o.userData.fur && !o.userData.helper) box.expandByObject(m)
+  })
+  if (box.isEmpty()) return
+  const sphere = box.getBoundingSphere(new THREE.Sphere())
+  // Lights aim at the origin, so the frustum must reach from there out to the far side of the subject.
+  const radius = sphere.radius + sphere.center.length()
+  const size = { normal: 2048, high: 4096, ultra: 8192 }[scene.shadowQuality ?? 'normal']
+  root.traverse((o) => {
+    const l = o as THREE.DirectionalLight
+    if (!l.isDirectionalLight || !l.castShadow) return
+    const r = Math.max(radius * 1.6, 1)
+    Object.assign(l.shadow.camera, { left: -r, right: r, top: r, bottom: -r, near: 0.05, far: Math.max(50, r * 8) })
+    l.shadow.camera.updateProjectionMatrix()
+  })
+  root.traverse((o) => {
+    const l = o as THREE.DirectionalLight
+    if (l.shadow && l.castShadow) l.shadow.mapSize.set(size, size)
+  })
 }
 
 /**
@@ -347,13 +495,17 @@ let roomEnv: { gen: THREE.PMREMGenerator; tex: THREE.Texture } | null = null
 /** Applies background and environment for a renderer; the studio environment is generated once per renderer. */
 export function applyLook(target: THREE.Scene, scene: Scene3D, gl: THREE.WebGLRenderer) {
   target.background = scene.background ? new THREE.Color(scene.background) : null
+  // The renderer is shared, so every look sets its tone mapping and exposure explicitly.
+  gl.toneMapping = { aces: THREE.ACESFilmicToneMapping, neutral: THREE.NeutralToneMapping, linear: THREE.LinearToneMapping, none: THREE.NoToneMapping }[scene.toneMapping ?? 'aces']
+  gl.toneMappingExposure = scene.exposure ?? 1
+  target.environmentRotation.set(0, THREE.MathUtils.degToRad(scene.envRotation ?? 0), 0)
   if (scene.environment === 'studio') {
     if (!roomEnv || (roomEnv.gen as unknown as { _renderer: unknown })._renderer !== gl) {
       const gen = new THREE.PMREMGenerator(gl)
       roomEnv = { gen, tex: gen.fromScene(new RoomEnvironment(), 0.04).texture }
     }
     target.environment = roomEnv.tex
-    target.environmentIntensity = 0.6
+    target.environmentIntensity = scene.envIntensity ?? 0.6
   } else target.environment = null
 }
 
@@ -393,6 +545,11 @@ export function fitCamera(root: THREE.Object3D, aspect: number, fov = 40, dir: V
 
 let offscreen: THREE.WebGLRenderer | null = null
 function offscreenRenderer() {
+  // A lost context (GPU reset, too many contexts) never comes back by itself, so start a new renderer.
+  if (offscreen?.getContext().isContextLost()) {
+    offscreen.dispose()
+    offscreen = null
+  }
   if (!offscreen) {
     try {
       offscreen = new THREE.WebGLRenderer({ antialias: true, preserveDrawingBuffer: true, alpha: true })
@@ -407,8 +564,12 @@ function offscreenRenderer() {
   return offscreen
 }
 
-export type SceneView = 'camera' | 'front' | 'side' | 'top' | 'iso'
-const VIEW_DIRS: Record<Exclude<SceneView, 'camera'>, Vec3> = { front: [0, 0.15, 1], side: [1, 0.15, 0], top: [0.001, 1, 0.001], iso: [1, 0.75, 1.3] }
+export type SceneView = 'camera' | 'front' | 'back' | 'side' | 'left' | 'top' | 'iso' | 'iso-back'
+export const VIEW_DIRS: Record<Exclude<SceneView, 'camera'>, Vec3> = {
+  front: [0, 0.15, 1], back: [0, 0.15, -1], side: [1, 0.15, 0], left: [-1, 0.15, 0], top: [0.001, 1, 0.001], iso: [1, 0.75, 1.3], 'iso-back': [-1, 0.75, -1.3],
+}
+/** The angles a model must hold up from, front to back and above. */
+export const ALL_ANGLES: SceneView[] = ['front', 'side', 'back', 'left', 'top', 'iso', 'iso-back']
 
 /** Output size for a node of w×h, longest side capped at `max`. */
 export function fitSize(w: number, h: number, max: number) {
@@ -421,32 +582,137 @@ export function fitSize(w: number, h: number, max: number) {
  * Builds a scene once and renders it at any time on the timeline. `frame(t)` poses objects and the camera for t
  * and draws into `canvas`; call `dispose` when done.
  */
-export async function sceneRenderer(scene: Scene3D, width: number, height: number, view: SceneView = 'camera') {
+export interface RenderOpts {
+  /** Draw at this many times the size, then shrink: smoother edges. 1..3 */
+  supersample?: number
+  /** Show the mesh edges. */
+  wireframe?: boolean
+  /** Show only these objects (and what they sit in), hiding the rest. */
+  only?: string[]
+  /** Orthographic projection: no perspective, for judging proportions and alignment. */
+  ortho?: boolean
+}
+
+/** Keeps the listed objects, their parents and their children visible and hides every other object. */
+function isolate(root: THREE.Object3D, scene: Scene3D, only: string[]) {
+  const keep = new Set<string>()
+  const byId = new Map(scene.objects.map((o) => [o.id, o]))
+  for (const id of only) {
+    for (let o = byId.get(id); o; o = o.parent ? byId.get(o.parent) : undefined) keep.add(o.id)
+    for (const o of scene.objects) for (let a: Obj3D | undefined = o; a; a = a.parent ? byId.get(a.parent) : undefined) if (a.id === id) keep.add(o.id)
+  }
+  root.traverse((o) => {
+    const id = o.userData.id as string | undefined
+    if (id && o.userData.kind !== 'light' && !keep.has(id)) o.visible = false
+  })
+}
+
+function makeOrtho(cam: Scene3D['camera'], aspect: number) {
+  const dist = new THREE.Vector3(...cam.position).distanceTo(new THREE.Vector3(...cam.target))
+  const h = Math.tan(THREE.MathUtils.degToRad(cam.fov / 2)) * dist
+  const c = new THREE.OrthographicCamera(-h * aspect, h * aspect, h, -h, 0.05, 500)
+  c.position.set(...cam.position)
+  c.lookAt(...cam.target)
+  c.updateMatrixWorld()
+  return c
+}
+
+export async function sceneRenderer(scene: Scene3D, width: number, height: number, view: SceneView | Scene3D['camera'] = 'camera', opts: RenderOpts = {}) {
   const gl = offscreenRenderer()
   gl.setSize(width, height, false)
   const target = new THREE.Scene()
   const root = await buildScene(scene)
+  if (opts.only?.length) isolate(root, scene, opts.only)
+  if (opts.wireframe) root.traverse((o) => {
+    const m = o as THREE.Mesh
+    if (m.isMesh && !o.userData.ground) for (const mat of [m.material].flat()) (mat as THREE.MeshBasicMaterial).wireframe = true
+  })
   target.add(root)
   applyLook(target, { ...scene, background: scene.background ?? '#ffffff' }, gl)
-  const fixed = view === 'camera' ? null : fitCamera(root, width / height, scene.camera.fov, VIEW_DIRS[view])
+  const fixed = typeof view === 'object' ? view : view === 'camera' ? null : fitCamera(root, width / height, scene.camera.fov, VIEW_DIRS[view])
   return {
     canvas: gl.domElement,
     frame(t: number) {
       animate(root, t)
       root.updateMatrixWorld(true)
-      gl.render(target, makeCamera({ ...scene, camera: fixed ?? cameraAt(scene, t) }, width / height))
+      const cam = fixed ?? cameraAt(scene, t)
+      gl.render(target, opts.ortho ? makeOrtho(cam, width / height) : makeCamera({ ...scene, camera: cam }, width / height))
     },
     dispose: () => disposeTree(root),
   }
 }
 
+/** Draws a finished frame at its final size with the scene's post settings: contrast, saturation and a sharpening pass. */
+function finishImage(canvas: HTMLCanvasElement, width: number, height: number, post: Scene3D['post']) {
+  const out = document.createElement('canvas')
+  out.width = width
+  out.height = height
+  const g = out.getContext('2d', { willReadFrequently: true })!
+  g.imageSmoothingEnabled = true
+  g.imageSmoothingQuality = 'high'
+  const contrast = post?.contrast ?? 1, saturation = post?.saturation ?? 1
+  if (contrast !== 1 || saturation !== 1) g.filter = `contrast(${contrast}) saturate(${saturation})`
+  g.drawImage(canvas, 0, 0, width, height)
+  g.filter = 'none'
+  const k = Math.max(0, Math.min(1, post?.sharpen ?? 0)) * 0.6
+  if (k > 0) {
+    const src = g.getImageData(0, 0, width, height)
+    const dst = g.createImageData(width, height)
+    const d = src.data
+    for (let y = 0; y < height; y++) for (let x = 0; x < width; x++) {
+      const i = (y * width + x) * 4
+      for (let c = 0; c < 3; c++) {
+        const up = d[(Math.max(0, y - 1) * width + x) * 4 + c], dn = d[(Math.min(height - 1, y + 1) * width + x) * 4 + c]
+        const lf = d[(y * width + Math.max(0, x - 1)) * 4 + c], rt = d[(y * width + Math.min(width - 1, x + 1)) * 4 + c]
+        dst.data[i + c] = Math.max(0, Math.min(255, d[i + c] * (1 + 4 * k) - k * (up + dn + lf + rt)))
+      }
+      dst.data[i + 3] = d[i + 3]
+    }
+    g.putImageData(dst, 0, 0)
+  }
+  return out
+}
+
 /** Renders a scene to a PNG (base64, no data: prefix) at time t, optionally from a preset view instead of the scene camera. */
-export async function renderScene(scene: Scene3D, w: number, h: number, view: SceneView = 'camera', t = 0, max = 768) {
+export async function renderScene(scene: Scene3D, w: number, h: number, view: SceneView | Scene3D['camera'] = 'camera', t = 0, max = 768, opts: RenderOpts = {}) {
   const { width, height } = fitSize(w, h, max)
-  const r = await sceneRenderer(scene, width, height, view)
+  const ss = Math.max(1, Math.min(3, Math.round(opts.supersample ?? 1)))
+  // Supersampling stays within what a canvas can hold.
+  const f = Math.min(ss, 8192 / Math.max(width, height))
+  const r = await sceneRenderer(scene, Math.round(width * f), Math.round(height * f), view, opts)
   r.frame(t)
-  const url = r.canvas.toDataURL('image/png')
+  const needsFinish = f !== 1 || !!scene.post?.contrast || !!scene.post?.saturation || !!scene.post?.sharpen
+  const url = (needsFinish ? finishImage(r.canvas, width, height, scene.post) : r.canvas).toDataURL('image/png')
   r.dispose()
+  return url.slice(url.indexOf(',') + 1)
+}
+
+/** One contact sheet of the scene from several angles at time t, each labelled, so a single look checks every side. */
+export async function renderViews(scene: Scene3D, w: number, h: number, views: (SceneView | { label: string; camera: Scene3D['camera'] })[], t = 0, opts: RenderOpts = {}) {
+  const cols = Math.min(views.length, 3)
+  const rows = Math.ceil(views.length / cols)
+  const cell = fitSize(w, h, 420)
+  const sheet = document.createElement('canvas')
+  sheet.width = cell.width * cols
+  sheet.height = cell.height * rows
+  const g = sheet.getContext('2d')!
+  g.font = '600 16px system-ui, sans-serif'
+  for (const [i, entry] of views.entries()) {
+    const view = typeof entry === 'string' ? entry : entry.camera
+    const name = typeof entry === 'string' ? entry : entry.label
+    const r = await sceneRenderer(scene, cell.width, cell.height, view, opts)
+    r.frame(t)
+    const x = (i % cols) * cell.width, y = Math.floor(i / cols) * cell.height
+    g.drawImage(r.canvas, x, y)
+    g.strokeStyle = '#0003'
+    g.strokeRect(x, y, cell.width, cell.height)
+    g.fillStyle = '#000a'
+    g.fillRect(x + 6, y + 6, 12 + g.measureText(name).width, 24)
+    g.fillStyle = '#fff'
+    g.fillText(name, x + 12, y + 24)
+    r.dispose()
+  }
+  const url = sheet.toDataURL('image/png')
   return url.slice(url.indexOf(',') + 1)
 }
 
@@ -475,21 +741,60 @@ export async function renderTimeline(scene: Scene3D, w: number, h: number, times
   return url.slice(url.indexOf(',') + 1)
 }
 
+/** WebCodecs path: renders each frame, copies it to a 2D canvas and encodes it straight into an mp4, no real-time waiting. */
+async function encodeScene(scene: Scene3D, width: number, height: number, duration: number, fps: number, codec: VideoCodec, opts: RecordOpts) {
+  const r = await sceneRenderer(scene, width, height, opts.view)
+  // Encoding reads from a 2D canvas copy, so the shared WebGL canvas can be resized by other renders meanwhile.
+  const out = document.createElement('canvas')
+  out.width = width
+  out.height = height
+  const g = out.getContext('2d')!
+  const target = new BufferTarget()
+  const output = new Output({ format: new Mp4OutputFormat({ fastStart: 'in-memory' }), target })
+  const source = new CanvasSource(out, { codec, bitrate: 8_000_000, keyFrameInterval: 2 })
+  output.addVideoTrack(source, { frameRate: fps })
+  const frames = Math.max(1, Math.round(duration * fps))
+  try {
+    await output.start()
+    for (let i = 0; i < frames; i++) {
+      r.frame(i / fps)
+      g.drawImage(r.canvas, 0, 0, width, height)
+      // Awaiting respects encoder backpressure, so memory stays flat on long clips.
+      await source.add(i / fps, 1 / fps)
+      opts.onProgress?.((i + 1) / frames)
+    }
+    await output.finalize()
+  } catch (e) {
+    if (output.state !== 'finalized') await output.cancel().catch(() => {})
+    throw e
+  } finally {
+    r.dispose()
+  }
+  return { blob: new Blob([target.buffer!], { type: 'video/mp4' }), ext: 'mp4', width, height, duration, fps }
+}
+
 function videoMime() {
-  const types = ['video/mp4;codecs=avc1', 'video/webm;codecs=vp9', 'video/webm;codecs=vp8', 'video/webm']
+  // avc3 keeps codec settings in-band, so a changing resolution does not break the mp4; avc1 is the fallback.
+  const types = ['video/mp4;codecs=avc3', 'video/mp4;codecs=avc1', 'video/webm;codecs=vp9', 'video/webm;codecs=vp8', 'video/webm']
   return types.find((t) => typeof MediaRecorder !== 'undefined' && MediaRecorder.isTypeSupported(t))
 }
 
+type RecordOpts = { duration?: number; fps?: number; view?: SceneView; max?: number; onProgress?: (f: number) => void }
+
 /**
- * Records the scene timeline to a video. Frames are posed by time so motion is exact, but MediaRecorder stamps
- * frames by wall clock, so recording takes about as long as the clip.
+ * Records the scene timeline to a video. With WebCodecs, frames are stamped by timeline time and encoded as fast as
+ * the GPU and encoder allow; otherwise it falls back to MediaRecorder, which takes about as long as the clip.
  */
-export async function recordScene(scene: Scene3D, w: number, h: number, opts: { duration?: number; fps?: number; view?: SceneView; max?: number; onProgress?: (f: number) => void } = {}) {
-  const mime = videoMime()
-  if (!mime) throw new Error('This browser cannot record video (no MediaRecorder).')
+export async function recordScene(scene: Scene3D, w: number, h: number, opts: RecordOpts = {}) {
   const duration = Math.min(120, opts.duration ?? sceneDuration(scene))
   const fps = Math.min(60, Math.max(10, opts.fps ?? 30))
   const { width, height } = fitSize(w, h, opts.max ?? 1280)
+  if (typeof VideoEncoder !== 'undefined') {
+    const codec = await getFirstEncodableVideoCodec(['avc', 'vp9', 'av1'], { width, height, bitrate: 8_000_000 })
+    if (codec) return encodeScene(scene, width, height, duration, fps, codec, opts)
+  }
+  const mime = videoMime()
+  if (!mime) throw new Error('This browser cannot record video (no WebCodecs or MediaRecorder).')
   const r = await sceneRenderer(scene, width, height, opts.view)
   // Recording reads from a 2D canvas copy, so the shared WebGL canvas can be resized by other renders meanwhile.
   const out = document.createElement('canvas')
@@ -533,6 +838,10 @@ export function disposeTree(root: THREE.Object3D) {
     const m = o as THREE.Mesh
     if (!m.isMesh || o.userData.shared) return
     m.geometry?.dispose()
-    for (const mat of [m.material].flat()) (mat as THREE.Material | undefined)?.dispose()
+    for (const mat of [m.material].flat()) {
+      if (!mat) continue
+      disposeTextures(mat)
+      mat.dispose()
+    }
   })
 }

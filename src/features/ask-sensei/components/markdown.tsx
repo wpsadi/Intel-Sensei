@@ -17,6 +17,10 @@ const SHELL_LANGUAGES = new Set(['', 'bash', 'sh', 'shell', 'zsh', 'console', 'p
  * block with a copy button. Mermaid and math keep their own renderers.
  */
 const components: Components = {
+  // Streamdown puts list markers inside the text box with no indent, so lists sit flush left; indent them like prose.
+  ul: ({ children }) => <ul className="my-2 list-outside list-disc space-y-1 pl-5 marker:text-muted-foreground [&_ul]:list-[circle]">{children}</ul>,
+  ol: ({ children }) => <ol className="my-2 list-outside list-decimal space-y-1 pl-5 marker:text-muted-foreground">{children}</ol>,
+  li: ({ children }) => <li className="pl-1 [&>p]:inline">{children}</li>,
   // Tables look like S-Note's database table view: no outer box, row lines, thin column dividers, muted headers.
   table: ({ children }) => (
     <ScrollArea className="my-2">

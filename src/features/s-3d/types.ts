@@ -1,4 +1,4 @@
-import type { ChatToolStep } from '@/features/note/db/types'
+import type { ChatPlan, ChatTodoList, ChatToolStep } from '@/features/note/db/types'
 
 /** S3D document model. Every node lives in `Doc.nodes`; pages and containers keep ordered child id lists (back to front). */
 export type NodeType =
@@ -24,6 +24,19 @@ export type Vec3 = [number, number, number]
 export type Geometry3D =
   | 'box' | 'roundedBox' | 'sphere' | 'cylinder' | 'cone' | 'capsule' | 'torus' | 'torusKnot'
   | 'plane' | 'circle' | 'ring' | 'icosahedron' | 'dodecahedron' | 'octahedron' | 'tetrahedron' | 'lathe' | 'extrude'
+  | 'tube' | 'helix' | 'wave'
+  /** Baked triangles in `Obj3D.mesh`: what joining and remeshing produce. */
+  | 'mesh'
+
+
+export type TexturePattern = 'checker' | 'stripes' | 'ridges' | 'dots' | 'grid' | 'bricks' | 'noise' | 'wood' | 'waves' | 'weave' | 'fur' | 'pores' | 'hide'
+
+/** An indexed triangle mesh in the object's local space. `colors` are linear RGB per vertex. */
+export interface MeshData3D {
+  positions: number[]
+  indices: number[]
+  colors?: number[]
+}
 
 export interface Material3D {
   color: string
@@ -37,6 +50,26 @@ export interface Material3D {
   clearcoat: number
   wireframe: boolean
   flatShading: boolean
+  /** Procedural surface pattern, tinted by `color`. Wins over `image`. */
+  pattern?: TexturePattern
+  /** A `s3d-file:` ref or URL for an image texture. */
+  image?: string
+  /** Texture repeats across the surface. Default 1. */
+  patternScale?: number
+  /** Relief depth (0..1) of the pattern or image: ridges, bumps, grooves. */
+  bump?: number
+  /** Use the mesh's per-vertex colours instead of `color` (joined or remeshed parts). */
+  vertexColors?: boolean
+  /** Soft fabric/fur-like highlight at grazing angles (0..1) and its tint. */
+  sheen?: number
+  sheenColor?: string
+  /** Strength of the specular reflection (0..1, default 1); lower for skin and fur. */
+  specularIntensity?: number
+  /** Image maps (an `s3d-file:` ref or URL), tiled like the base texture. */
+  normalImage?: string
+  roughnessImage?: string
+  aoImage?: string
+  normalScale?: number
 }
 
 export interface Light3D {
@@ -48,6 +81,20 @@ export interface Light3D {
   /** Spot lights: cone angle in degrees. */
   angle?: number
   castShadow: boolean
+  /** Soft shadow edge, 0 (hard) .. 10. A big soft key light uses a large size. */
+  size?: number
+}
+
+/** Short fur drawn as shells over a mesh. */
+export interface Fur3D {
+  /** Strand length in scene units. */
+  length: number
+  /** Shells: more is denser and smoother, slower. 4..16. */
+  layers: number
+  /** Strands per unit of surface: higher is finer. */
+  density: number
+  /** Defaults to the material colour. */
+  tipColor?: string
 }
 
 /** One object in a 3D scene. Objects are a flat list; `parent` points at a group object (or null for the scene root). */
@@ -65,6 +112,9 @@ export interface Obj3D {
   geometry?: Geometry3D
   /** Geometry dimensions; which keys apply depends on the geometry (see GEOMETRY_PARAMS). */
   params?: Record<string, number | number[][]>
+  /** geometry 'mesh': the baked triangles. */
+  mesh?: MeshData3D
+  fur?: Fur3D
   material?: Material3D
   light?: Light3D
   /** model objects: a `s3d-file:` ref or URL to a GLB/GLTF. */
@@ -102,6 +152,17 @@ export interface Scene3D {
   camera: { position: Vec3; target: Vec3; fov: number }
   ground: { visible: boolean; color: string; y: number }
   shadows: boolean
+  /** Shadow map detail; higher is sharper and slower. */
+  shadowQuality?: 'normal' | 'high' | 'ultra'
+  /** Overall brightness multiplier, default 1. */
+  exposure?: number
+  /** Strength of the environment lighting and reflections, default 0.6. */
+  envIntensity?: number
+  /** Turns the environment around the vertical axis, degrees. */
+  envRotation?: number
+  toneMapping?: 'aces' | 'neutral' | 'linear' | 'none'
+  /** Applied to still renders and captures: contrast/saturation 1 = unchanged, sharpen 0..1. */
+  post?: { contrast?: number; saturation?: number; sharpen?: number }
   /** Timeline length in seconds; defaults to the last keyframe. */
   duration?: number
   /** Camera moves over the timeline; the static camera is used when empty. */
@@ -310,6 +371,25 @@ export interface AgentMessage {
   reasoningSeconds?: number
   /** The tool calls behind this reply. */
   steps?: ChatToolStep[]
+  /** The plan the agent wrote in plan mode. */
+  plan?: ChatPlan
+  /** The to-do list the agent kept while working, as last updated. */
+  todos?: ChatTodoList
+  /** Elements the user @mentioned, resolved to ids; sent to the model but not shown. */
+  context?: string
+  /** Set when this reply ran as a /goal. */
+  goal?: string
+  /** Where a /goal run is: the worker is building, the verifier is checking, or it ended. */
+  goalState?: 'working' | 'verifying' | 'achieved' | 'stopped'
+  /** What the separate verifier concluded, one entry per check. */
+  verification?: { round: number; achieved: boolean; summary: string; problems: string[] }[]
+  /** Wall-clock seconds the whole reply took: thinking, tool calls, reviews and verification. */
+  workedSeconds?: number
+  /** Tokens in the context after the newest model call, and how often it was compacted. */
+  contextTokens?: number
+  compactions?: number
+  /** The mode this reply ran in. */
+  mode?: 'ask' | 'plan' | 'edit' | 'full'
   createdAt: number
 }
 
@@ -319,6 +399,8 @@ export interface AgentChat {
   title: string
   messages: AgentMessage[]
   updatedAt: number
+  /** A manual compaction: messages up to and including `uptoId` reach the model only as this summary. */
+  summary?: { text: string; uptoId: string }
 }
 
 export type Tool =

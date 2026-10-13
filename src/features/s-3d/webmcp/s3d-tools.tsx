@@ -34,15 +34,23 @@ function buildTools() {
     s3d_get_document: 'get_document', s3d_create_nodes: 'create_nodes', s3d_update_nodes: 'update_nodes', s3d_delete_nodes: 'delete_nodes',
     s3d_select: 'select_nodes', s3d_list_pages: 'list_pages', s3d_set_page: 'set_page', s3d_verify_design: 'verify_design',
     s3d_create_scene: 'create_scene', s3d_add_objects: 'add_objects', s3d_update_objects: 'update_objects', s3d_delete_objects: 'delete_objects',
-    s3d_set_scene: 'set_scene', s3d_get_scene: 'get_scene', s3d_render_scene: 'render_scene', s3d_render_timeline: 'render_timeline',
+    s3d_set_scene: 'set_scene', s3d_get_scene: 'get_scene', s3d_render_scene: 'render_scene', s3d_render_views: 'render_views', s3d_render_turntable: 'render_turntable', s3d_subdivide_mesh: 'subdivide_mesh', s3d_sculpt_mesh: 'sculpt_mesh', s3d_paint_mesh: 'paint_mesh', s3d_set_fur: 'set_fur', s3d_set_lighting: 'set_lighting', s3d_join_meshes: 'join_meshes', s3d_fuse_objects: 'fuse_objects', s3d_smooth_mesh: 'smooth_mesh', s3d_clean_mesh: 'clean_mesh', s3d_export_mesh: 'export_mesh', s3d_snapshot_view: 'snapshot_view', s3d_render_timeline: 'render_timeline',
     s3d_add_character: 'add_character', s3d_animate_character: 'animate_character', s3d_set_keyframes: 'set_keyframes',
     s3d_capture_image: 'capture_image', s3d_record_video: 'record_video',
+    s3d_create_screen: 'create_screen', s3d_create_page: 'create_page', s3d_search_3d_models: 'search_3d_models', s3d_import_3d_model: 'import_3d_model',
   }
   const tools = Object.entries(map).map(([name, key]) => ({
     name,
     description: DESCRIPTIONS[key],
     inputSchema: z.toJSONSchema(schemas[key]),
-    execute: (args: unknown) => respond((a: never) => (impl[key] as (x: never) => unknown)(a), args),
+    execute: async (args: unknown) => {
+      const started = performance.now()
+      try {
+        return await respond((a: never) => (impl[key] as (x: never) => unknown)(a), args)
+      } finally {
+        console.info(LOG, `${name}: answered in ${Math.round(performance.now() - started)}ms`)
+      }
+    },
   }))
   const svgSchema = z.object({ ids: z.array(z.string()).optional().describe('Node ids; defaults to the selection or the whole page') })
   tools.push({

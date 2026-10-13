@@ -279,6 +279,9 @@ export interface WidgetMessage {
   steps?: ChatToolStep[]
   searches?: ChatSearch[]
   error?: string
+  /** Tokens in the context after the newest model call, and how often it was compacted. */
+  contextTokens?: number
+  compactions?: number
 }
 
 /** A saved chat from the floating Sensei widget, listed in its history. */
@@ -287,4 +290,6 @@ export interface WidgetChat {
   title: string
   messages: WidgetMessage[]
   updatedAt: number
+  /** A manual compaction: messages up to and including `uptoId` reach the model only as this summary. */
+  summary?: { text: string; uptoId: string }
 }

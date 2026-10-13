@@ -3,16 +3,19 @@ import { Canvas, useFrame, useThree } from '@react-three/fiber'
 import { Grid, OrbitControls, TransformControls } from '@react-three/drei'
 import type { ThreeEvent } from '@react-three/fiber'
 import * as THREE from 'three'
-import { ArrowLeftIcon, BoxIcon, CameraIcon, FocusIcon, Move3dIcon, PlusIcon, Rotate3dIcon, Scale3dIcon } from 'lucide-react'
+import { ArrowLeftIcon, BoxIcon, CameraIcon, EyeIcon, EyeOffIcon, FocusIcon, RefreshCwIcon, Move3dIcon, PlusIcon, Rotate3dIcon, Scale3dIcon } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { DropdownMenu, DropdownMenuContent, DropdownMenuGroup, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
 import { cn } from '@/lib/utils'
 import { eventKey } from '../commands'
-import { GEOMETRY_PARAMS, animate, applyLook, buildScene, disposeTree, fitCamera, sceneOf } from '../render/scene3d'
+import { DEFAULT_POINTS, GEOMETRY_PARAMS, animate, applyLook, buildScene, disposeTree, fitCamera, sceneOf } from '../render/scene3d'
 import { useS3D } from '../store'
 import { GLBoundary } from '../render/three-view'
 import type { Geometry3D, Light3D, Scene3D, Vec3 } from '../types'
-import { addObject, closeSceneEditor, deleteObject, duplicateObject, editObject, editScene, selectObject, setGizmo } from './edit'
+import { addObject, closeSceneEditor, sceneActions, deleteObject, duplicateObject, editObject, editScene, selectObject, setGizmo } from './edit'
+
+/** Path geometries whose points can be dragged in the viewport: tube is [x, y, z], lathe is the [radius, y] profile. */
+const pathDims = (geo: Geometry3D | undefined) => (geo === 'tube' ? 3 : geo === 'lathe' ? 2 : 0)
 
 const r3 = (v: number) => Math.round(v * 1000) / 1000
 
@@ -79,6 +82,46 @@ function EditorScene({ scene, view, startTarget }: { scene: Scene3D; view: React
     return found
   }, [root, edit.selected])
 
+  // Draggable handles for the selected path object's points (tube, lathe).
+  const selectedData = scene.objects.find((o) => o.id === edit.selected)
+  const dims = selectedData?.kind === 'mesh' ? pathDims(selectedData.geometry) : 0
+  const pointsKey = JSON.stringify(selectedData?.params?.points ?? null)
+  const [handles, setHandles] = useState<THREE.Mesh[]>([])
+  const [activePoint, setActivePoint] = useState<number | null>(null)
+  // The active point survives the rebuild a drag causes, but not a change of selection.
+  useEffect(() => setActivePoint(null), [edit.selected])
+  useEffect(() => {
+    if (!selectedObj || !selectedData || !dims) return setHandles([])
+    const stored = selectedData.params?.points
+    const points = Array.isArray(stored) && (stored as number[][]).length > 1 ? (stored as number[][]) : DEFAULT_POINTS[selectedData.geometry!]!
+    const made = points.map((p, i) => {
+      const h = new THREE.Mesh(new THREE.SphereGeometry(0.035), new THREE.MeshBasicMaterial({ color: '#38bdf8', depthTest: false, transparent: true }))
+      h.position.set(p[0] ?? 0, p[1] ?? 0, dims === 3 ? p[2] ?? 0 : 0)
+      h.renderOrder = 999
+      h.castShadow = false
+      h.userData = { helper: true, pick: selectedData.id, pointIndex: i }
+      selectedObj.add(h)
+      return h
+    })
+    setHandles(made)
+    return () => {
+      for (const h of made) {
+        selectedObj.remove(h)
+        h.geometry.dispose()
+        ;(h.material as THREE.Material).dispose()
+      }
+    }
+  }, [selectedObj, dims, pointsKey])
+  useEffect(() => {
+    handles.forEach((h, i) => (h.material as THREE.MeshBasicMaterial).color.set(i === activePoint ? '#f97316' : '#38bdf8'))
+  }, [handles, activePoint])
+
+  const commitPoints = () => {
+    if (!selectedData) return
+    const next = handles.map((h) => (dims === 3 ? [r3(h.position.x), r3(h.position.y), r3(h.position.z)] : [r3(h.position.x), r3(h.position.y)]))
+    editObject(selectedData.id, (x) => { x.params = { ...x.params, points: next } })
+  }
+
   const outline = useMemo(() => (selectedObj ? new THREE.BoxHelper(selectedObj, '#3b82f6') : null), [selectedObj])
   // Motion plays while editing; it pauses during a gizmo drag so the drag edits the saved pose.
   const time = useRef(0)
@@ -101,6 +144,7 @@ function EditorScene({ scene, view, startTarget }: { scene: Scene3D; view: React
     // A drag that orbited the camera is not a click.
     if (e.delta > 4 || dragging.current) return
     e.stopPropagation()
+    if (e.object.userData.pointIndex !== undefined) return setActivePoint(e.object.userData.pointIndex as number)
     if (e.object.userData.ground) return selectObject(null)
     const chain = pickChain(e.object)
     // First click picks the outermost group; clicking again inside a selected group goes one level deeper.
@@ -125,7 +169,20 @@ function EditorScene({ scene, view, startTarget }: { scene: Scene3D; view: React
       {root && <primitive object={root} onClick={onClick} />}
       {outline && <primitive object={outline} />}
       <Grid position={[0, scene.ground.y + 0.002, 0]} infiniteGrid cellSize={0.1} sectionSize={1} cellColor="#6b7280" sectionColor="#9ca3af" cellThickness={0.5} sectionThickness={1} fadeDistance={25} fadeStrength={1.5} />
-      {selectedObj && (
+      {selectedObj && activePoint !== null && handles[activePoint] && (
+        <TransformControls
+          object={handles[activePoint]}
+          mode="translate"
+          size={0.6}
+          showZ={dims === 3}
+          onMouseDown={() => { dragging.current = true }}
+          onMouseUp={() => {
+            commitPoints()
+            setTimeout(() => { dragging.current = false }, 0)
+          }}
+        />
+      )}
+      {selectedObj && activePoint === null && (
         <TransformControls
           object={selectedObj}
           mode={edit.gizmo}
@@ -146,9 +203,9 @@ function EditorScene({ scene, view, startTarget }: { scene: Scene3D; view: React
   )
 }
 
-const ADD_SHAPES: Geometry3D[] = ['box', 'roundedBox', 'sphere', 'cylinder', 'cone', 'capsule', 'torus', 'torusKnot', 'plane', 'ring', 'icosahedron', 'dodecahedron', 'octahedron', 'tetrahedron', 'lathe', 'extrude']
-const ADD_LIGHTS: Light3D['type'][] = ['directional', 'point', 'spot', 'hemisphere', 'ambient']
-const label = (s: string) => s.replace(/([A-Z])/g, ' $1').replace(/^./, (c) => c.toUpperCase())
+export const ADD_SHAPES: Geometry3D[] = ['box', 'roundedBox', 'sphere', 'cylinder', 'cone', 'capsule', 'torus', 'torusKnot', 'plane', 'ring', 'icosahedron', 'dodecahedron', 'octahedron', 'tetrahedron', 'lathe', 'extrude', 'tube', 'helix', 'wave']
+export const ADD_LIGHTS: Light3D['type'][] = ['directional', 'point', 'spot', 'hemisphere', 'ambient']
+export const label = (s: string) => s.replace(/([A-Z])/g, ' $1').replace(/^./, (c) => c.toUpperCase())
 
 /**
  * Spline-style full-screen editor for one 3D scene: orbit freely, click objects, move/rotate/scale them with a gizmo.
@@ -159,6 +216,23 @@ export function SceneEditor({ embedded = false }: { embedded?: boolean }) {
   const node = useS3D((s) => (s.sceneEdit ? s.doc.nodes[s.sceneEdit.nodeId] : undefined))
   const scene = useMemo(() => (node ? sceneOf(node) : null), [node])
   const view = useRef<View>({})
+  const frameRef = useRef<(id?: string | null) => void>(undefined)
+  // Hiding unmounts the WebGL view to free the GPU; the scene and the agent keep working without it.
+  const [hidden, setHidden] = useState(false)
+  // Bumping the key closes the WebGL view and opens a fresh one, without reloading the page.
+  const [glKey, setGlKey] = useState(0)
+  const kept = useRef<{ position: Vec3; target: Vec3 } | null>(null)
+  // The view that is meant to be on screen; a context lost by any other (closing) view is expected.
+  const liveView = useRef({ key: glKey, hidden })
+  liveView.current = { key: glKey, hidden }
+  const keepCamera = () => {
+    const { camera, controls } = view.current
+    if (camera && controls) kept.current = { position: camera.position.toArray() as Vec3, target: controls.target.toArray() as Vec3 }
+  }
+  useEffect(() => {
+    sceneActions.frame = (id) => frameRef.current?.(id)
+    return () => { delete sceneActions.frame }
+  }, [])
   // The editor camera starts at the scene camera and is independent of it afterwards.
   const initial = useMemo(() => scene?.camera, [edit?.nodeId]) // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -210,6 +284,8 @@ export function SceneEditor({ embedded = false }: { embedded?: boolean }) {
     stand.geometry.dispose()
   }
 
+  frameRef.current = frame
+
   /** Makes what the editor camera sees the scene's camera on the canvas. */
   const applyView = () => {
     const { camera, controls } = view.current
@@ -226,9 +302,25 @@ export function SceneEditor({ embedded = false }: { embedded?: boolean }) {
   return (
     <div className="absolute inset-0 z-20 bg-[#1c1c20]" data-ui>
       <GLBoundary fallback={<div className="grid h-full place-items-center text-sm text-muted-foreground">3D needs WebGL, which this browser has turned off.</div>}>
-      <Canvas shadows={scene.shadows ? 'soft' : false} camera={{ position: initial.position, fov: initial.fov, near: 0.01, far: 500 }} gl={{ toneMapping: THREE.ACESFilmicToneMapping, preserveDrawingBuffer: true }} dpr={[1, 2]} onPointerMissed={(e) => e.button === 0 && selectObject(null)}>
-        <EditorScene scene={scene} view={view} startTarget={initial.target} />
+      {hidden ? (
+        <div className="grid h-full place-items-center text-sm text-muted-foreground">
+          <div className="flex flex-col items-center gap-2">
+            3D view hidden. Edits and the agent still work.
+            <Button variant="outline" size="sm" onClick={() => setHidden(false)}><EyeIcon /> Show view</Button>
+          </div>
+        </div>
+      ) : (
+      <Canvas key={glKey} shadows={scene.shadows ? 'soft' : false} camera={{ position: kept.current?.position ?? initial.position, fov: initial.fov, near: 0.01, far: 500 }} gl={{ toneMapping: THREE.ACESFilmicToneMapping, preserveDrawingBuffer: true }} dpr={[1, 2]} onPointerMissed={(e) => e.button === 0 && selectObject(null)}
+        // A lost GPU context leaves a blank view; open a fresh one instead. Unmounting also loses the context on purpose, so only react while mounted.
+        onCreated={({ gl }) => gl.domElement.addEventListener('webglcontextlost', () => {
+          if (!gl.domElement.isConnected || liveView.current.hidden || liveView.current.key !== glKey) return
+          console.warn('[S3D] WebGL context lost, restarting the 3D view')
+          keepCamera()
+          setTimeout(() => setGlKey((k) => k + 1), 500)
+        }, { once: true })}>
+        <EditorScene scene={scene} view={view} startTarget={kept.current?.target ?? initial.target} />
       </Canvas>
+      )}
       </GLBoundary>
 
       <div className="pointer-events-none absolute inset-x-0 top-3 flex justify-center">
@@ -239,6 +331,9 @@ export function SceneEditor({ embedded = false }: { embedded?: boolean }) {
               <div className="mx-1 h-5 w-px bg-border" />
             </>
           )}
+          <Button variant="ghost" size="icon-sm" title={hidden ? 'Show 3D view' : 'Hide 3D view (frees the GPU)'} onClick={() => { if (!hidden) { keepCamera(); view.current = {} } setHidden(!hidden) }} className={cn(hidden && 'bg-accent text-foreground')}>{hidden ? <EyeOffIcon /> : <EyeIcon />}</Button>
+          <Button variant="ghost" size="icon-sm" title="Restart 3D view (no page reload)" onClick={() => { if (!hidden) keepCamera(); setHidden(false); setGlKey((k) => k + 1) }}><RefreshCwIcon /></Button>
+          <div className="mx-1 h-5 w-px bg-border" />
           {gizmoBtn('translate', <Move3dIcon />, 'Move (W)')}
           {gizmoBtn('rotate', <Rotate3dIcon />, 'Rotate (E)')}
           {gizmoBtn('scale', <Scale3dIcon />, 'Scale (R)')}

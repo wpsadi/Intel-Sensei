@@ -13,8 +13,11 @@ import { pageTitle } from '../editor/nodes/pages'
 import { useNoteStore } from '../note.store'
 import { widgetChatsRepo } from '../db/repo'
 import type { WidgetChat } from '../db/types'
-import { sendSensei, setNoteContext, stopSensei, useSenseiRuns } from './agent'
+import { compactSenseiChat, sendSensei, setNoteContext, stopSensei, useSenseiRuns } from './agent'
 import { WidgetComposer } from './WidgetComposer'
+import { ContextRing } from '@/components/context-ring'
+import { UserBubble } from '@/components/user-bubble'
+import { SNOTE_AGENT_CONTEXT_LIMIT, CHAT_MODEL } from '@/constants/ai'
 
 const SUGGESTIONS = ['Summarize this note', 'How many blocks are on this page?', 'Add a to-do list of next steps']
 
@@ -37,6 +40,7 @@ export function SenseiWidget() {
   const endRef = useRef<HTMLDivElement>(null)
   const chat = (viewedId && live[viewedId]) || (chats.find((c) => c.id === viewedId) ?? null)
   const messages = chat?.messages ?? []
+  const usage = [...messages].reverse().find((m) => m.contextTokens)
   const busy = !!chat && !!live[chat.id]
   const anyBusy = Object.keys(live).length > 0
   const setViewed = (id: string | null) => useSenseiRuns.setState({ viewedId: id })
@@ -120,9 +124,7 @@ export function SenseiWidget() {
               )}
               {messages.map((m) =>
                 m.role === 'user' ? (
-                  <div key={m.id} className="ml-8 self-end rounded-2xl rounded-br-sm bg-primary px-3 py-2 text-sm whitespace-pre-wrap text-primary-foreground">
-                    {m.content}
-                  </div>
+                  <UserBubble key={m.id} text={m.content} />
                 ) : (
                   <div key={m.id} className="mr-4 flex flex-col text-sm">
                     <ChatReasoning reasoning={m.reasoning} steps={m.steps} isStreaming={busy && m === messages.at(-1) && !m.content} duration={m.reasoningSeconds} defaultOpen={false} className="mb-0" />
@@ -137,7 +139,13 @@ export function SenseiWidget() {
           </ScrollArea>
 
           <div className="border-t p-2">
-            <WidgetComposer onSend={send} streaming={busy} onStop={() => chat && stopSensei(chat.id)} autoFocus={open} />
+            <WidgetComposer
+              onSend={send}
+              streaming={busy}
+              onStop={() => chat && stopSensei(chat.id)}
+              autoFocus={open}
+              toolbarStart={<div className="mr-auto"><ContextRing onCompact={async () => chat && compactSenseiChat(chat)} compactDisabled={!messages.length ? 'Nothing to compact yet' : busy ? 'Wait for the reply to finish' : undefined} used={chat?.summary ? Math.ceil(chat.summary.text.length / 4) + 1500 : usage?.contextTokens ?? Math.ceil(messages.reduce((n, m) => n + m.content.length, 0) / 4)} max={SNOTE_AGENT_CONTEXT_LIMIT} modelId={`google:${CHAT_MODEL}`} compactions={messages.reduce((n, m) => n + (m.compactions ?? 0), 0)} /></div>}
+            />
           </div>
         </section>
       )}

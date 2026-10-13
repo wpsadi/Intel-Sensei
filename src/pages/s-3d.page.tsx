@@ -1,17 +1,17 @@
 import { useEffect } from 'react'
 import { S3DDialogs } from '@/features/s-3d/dialogs'
-import { PlayMode } from '@/features/s-3d/play/play-mode'
+import { ScenePlay } from '@/features/s-3d/play/scene-play'
 import { SceneEditor } from '@/features/s-3d/scene-editor/scene-editor'
 import { openSceneEditor } from '@/features/s-3d/scene-editor/edit'
 import { S3DTools } from '@/features/s-3d/webmcp/s3d-tools'
 import { Toaster } from '@/components/ui/sonner'
 import { currentPage, useS3D } from '@/features/s-3d/store'
 
-/** The node that holds a page's 3D scene; created on first visit so every S3D page is a scene. */
+/** The node that holds a page's 3D scene (the newest, so a scene the agent added wins); created on first visit so every S3D page is a scene. */
 function ensureSceneNode() {
   const st = useS3D.getState()
   const page = currentPage(st)
-  const existing = page.children.find((id) => st.doc.nodes[id]?.type === 'shape3d')
+  const existing = [...page.children].reverse().find((id) => st.doc.nodes[id]?.type === 'shape3d')
   if (existing) return existing
   return st.addNode('shape3d', { name: 'Scene', x: 0, y: 0, w: 1280, h: 720 }).id
 }
@@ -39,7 +39,7 @@ function S3DPage() {
       <div className="absolute inset-0">
         <SceneEditor embedded />
       </div>
-      {mode === 'play' && <PlayMode />}
+      {mode === 'play' && <ScenePlay />}
       <S3DDialogs />
       <S3DTools />
       <Toaster />

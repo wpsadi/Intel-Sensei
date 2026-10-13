@@ -75,10 +75,9 @@ export const Reasoning = memo(
       onChange: onOpenChange,
       prop: open,
     });
-    const [duration, setDuration] = useControllableState<number | undefined>({
-      defaultProp: undefined,
-      prop: durationProp,
-    });
+    // Plain state: durationProp starts undefined and later becomes a number, which Radix flags as uncontrolled -> controlled.
+    const [measuredDuration, setDuration] = useState<number | undefined>(undefined);
+    const duration = durationProp ?? measuredDuration;
 
     const hasEverStreamedRef = useRef(isStreaming);
     const [hasAutoClosed, setHasAutoClosed] = useState(false);

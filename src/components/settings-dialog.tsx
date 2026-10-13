@@ -23,6 +23,7 @@ import { Sidebar, SidebarContent, SidebarGroup, SidebarGroupContent, SidebarMenu
 import { FIRECRAWL_KEY } from "@/ai/utils/firecrawl-key"
 import { GEMINI_KEY } from "@/ai/utils/gemini-key"
 import { OPENAI_BASE_URL, OPENAI_KEY } from "@/ai/utils/openai-key"
+import { ANTHROPIC_BASE_URL, ANTHROPIC_KEY } from "@/ai/utils/anthropic-key"
 import { GeminiTestDialog } from "@/components/gemini-test-dialog"
 import { useSearchParams } from "react-router-dom"
 import { useState } from "react"
@@ -91,15 +92,23 @@ function AiFeaturesSection() {
       </div>
       <GeminiTestDialog apiKey={value.trim()} open={testOpen} onOpenChange={setTestOpen} />
       <FirecrawlKeyField />
+      <AnthropicKeyField />
       <OpenAIKeyField />
     </div>
   )
 }
 
-/** OpenAI key and optional base URL for the S3D agent only. Stored only in this browser. */
-function OpenAIKeyField() {
-  const [savedKey, setSavedKey] = useState(() => OPENAI_KEY.value)
-  const [savedUrl, setSavedUrl] = useState(() => OPENAI_BASE_URL.value)
+/** An API key and optional base URL for one provider, saved through `store`. Stored only in this browser. */
+function ProviderKeyField({ provider, store, keyHint, urlPlaceholder, urlHelp, keyPlaceholder }: {
+  provider: string
+  store: { key: { value: string }; url: { value: string } }
+  keyHint: string
+  keyPlaceholder: string
+  urlPlaceholder: string
+  urlHelp: string
+}) {
+  const [savedKey, setSavedKey] = useState(() => store.key.value)
+  const [savedUrl, setSavedUrl] = useState(() => store.url.value)
   // Null until the user types, so the fields show the saved values.
   const [draft, setDraft] = useState<string | null>(null)
   const [urlDraft, setUrlDraft] = useState<string | null>(null)
@@ -111,10 +120,10 @@ function OpenAIKeyField() {
   const dirty = (draft !== null && draft.trim() !== savedKey) || (urlDraft !== null && urlDraft.trim() !== savedUrl)
 
   const save = () => {
-    OPENAI_KEY.value = value.trim()
-    OPENAI_BASE_URL.value = url.trim()
+    store.key.value = value.trim()
+    store.url.value = url.trim()
     setSavedKey(value.trim())
-    setSavedUrl(OPENAI_BASE_URL.value)
+    setSavedUrl(store.url.value)
     setDraft(null)
     setUrlDraft(null)
     setSaved(true)
@@ -123,7 +132,7 @@ function OpenAIKeyField() {
   return (
     <div className="mt-4 flex flex-col gap-3 border-t pt-4">
       <label className="flex flex-col gap-1.5">
-        <span className="font-medium">OpenAI API key (S3D only)</span>
+        <span className="font-medium">{provider} API key</span>
         <input
           type="password"
           value={value}
@@ -131,15 +140,13 @@ function OpenAIKeyField() {
             setDraft(event.target.value)
             setSaved(false)
           }}
-          placeholder="sk-…"
+          placeholder={keyPlaceholder}
           className="h-9 rounded-md border bg-background px-3 outline-none"
         />
-        <span className="text-xs text-muted-foreground">
-          Used only by the S3D agent, because Gemini models do not perform well at 3D modelling. Everything else keeps using your Gemini key. Stored only in this browser.
-        </span>
+        <span className="text-xs text-muted-foreground">{keyHint}</span>
       </label>
       <label className="flex flex-col gap-1.5">
-        <span className="font-medium">OpenAI base URL (optional)</span>
+        <span className="font-medium">{provider} base URL (optional)</span>
         <input
           type="url"
           value={url}
@@ -147,11 +154,11 @@ function OpenAIKeyField() {
             setUrlDraft(event.target.value)
             setSaved(false)
           }}
-          placeholder="https://api.openai.com/v1"
+          placeholder={urlPlaceholder}
           className="h-9 rounded-md border bg-background px-3 outline-none"
         />
         <span className={badUrl ? "text-xs text-destructive" : "text-xs text-muted-foreground"}>
-          {badUrl ? "Enter a full URL starting with http:// or https://." : "For a proxy or any OpenAI-compatible endpoint (Azure, OpenRouter, a local server…). Leave empty for api.openai.com. It must allow requests from this browser (CORS)."}
+          {badUrl ? "Enter a full URL starting with http:// or https://." : urlHelp}
         </span>
       </label>
       <div className="flex items-center gap-2">
@@ -161,6 +168,34 @@ function OpenAIKeyField() {
         {saved && <span className="text-green-600">Saved.</span>}
       </div>
     </div>
+  )
+}
+
+/** Anthropic key and base URL for the S3D / S-Design agent. */
+function AnthropicKeyField() {
+  return (
+    <ProviderKeyField
+      provider="Anthropic"
+      store={{ key: ANTHROPIC_KEY, url: ANTHROPIC_BASE_URL }}
+      keyPlaceholder="sk-ant-…"
+      keyHint="Runs the S3D and S-Design agent (Claude), because Gemini models do not perform well at 3D modelling. Everything else keeps using your Gemini key. Stored only in this browser."
+      urlPlaceholder="https://api.anthropic.com/v1"
+      urlHelp="For a proxy or a custom Anthropic gateway. Leave empty for api.anthropic.com. It must allow requests from this browser (CORS)."
+    />
+  )
+}
+
+/** OpenAI key and base URL, kept for OpenAI-compatible endpoints. */
+function OpenAIKeyField() {
+  return (
+    <ProviderKeyField
+      provider="OpenAI"
+      store={{ key: OPENAI_KEY, url: OPENAI_BASE_URL }}
+      keyPlaceholder="sk-…"
+      keyHint="Optional. Not used by the S3D agent any more, which now runs on Anthropic. Stored only in this browser."
+      urlPlaceholder="https://api.openai.com/v1"
+      urlHelp="For a proxy or any OpenAI-compatible endpoint (Azure, OpenRouter, a local server…). Leave empty for api.openai.com. It must allow requests from this browser (CORS)."
+    />
   )
 }
 

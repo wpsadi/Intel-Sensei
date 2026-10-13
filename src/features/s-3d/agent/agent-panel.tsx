@@ -1,18 +1,72 @@
-import { useEffect, useRef, useState } from 'react'
-import { AlertCircleIcon, HistoryIcon, PaperclipIcon, PlusIcon, Trash2Icon, Undo2Icon, XIcon } from 'lucide-react'
+import { useEffect, useMemo, useRef, useState } from 'react'
+import { AlertCircleIcon, ChevronDownIcon, HistoryIcon, MessageCircleQuestionIcon, PaperclipIcon, PencilIcon, PlusIcon, ShieldCheckIcon, ListChecksIcon, Trash2Icon, Undo2Icon, XIcon } from 'lucide-react'
 import senseiLogo from '@/assets/sensei.svg'
 import { Button } from '@/components/ui/button'
 import { TypingDots } from '@/components/typing-dots'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { ChatReasoning } from '@/features/ask-sensei/components/chat-reasoning'
 import { Markdown } from '@/features/ask-sensei/components/markdown'
-import { WidgetComposer } from '@/features/note/sensei-widget/WidgetComposer'
+import { type ComposerSuggestion, WidgetComposer } from '@/features/note/sensei-widget/WidgetComposer'
 import { DropdownMenu, DropdownMenuContent, DropdownMenuGroup, DropdownMenuItem, DropdownMenuLabel, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
+import { sceneOf } from '../render/scene3d'
 import { chatsRepo } from '../db'
 import { pickFiles, storeFile } from '../files'
 import { useS3D } from '../store'
 import type { AgentAttachment, AgentChat, AgentMessage } from '../types'
-import { runAgent, stopAgent, useAgentRun } from './runner'
+import { ChatPlanCard, ChatTodoQueue } from '@/features/ask-sensei/components/chat-plan'
+import { compactChat, runAgent, stopAgent, useAgentRun } from './runner'
+import { type AgentMode, MODES, clearApprovals, loadApprovals, useAgentMode, useApprovals } from './modes'
+import { ApprovalDock } from './approval-dock'
+import { WorkedFor } from './worked-for'
+import { ContextRing } from '@/components/context-ring'
+import { UserBubble } from '@/components/user-bubble'
+import { S3D_AGENT_CONTEXT_LIMIT, S3D_MODEL } from '@/constants/ai'
+import { GoalBanner, VerificationCards } from './goal-ui'
+import { QuestionsDock, useAsking } from './ask-questions'
+
+/** Slash commands the chat box offers. */
+const COMMANDS = [{ id: 'goal', hint: 'Keep working until a goal is achieved' }]
+
+interface Element { id: string; name: string; kind: string; sceneId?: string }
+
+/** What @ can point at: the objects of the open 3D scene, otherwise the layers on the current page. */
+function elements(): Element[] {
+  const st = useS3D.getState()
+  const open = st.sceneEdit
+  const node = open && st.doc.nodes[open.nodeId]
+  if (node) return sceneOf(node).objects.map((o) => ({ id: o.id, name: o.name, kind: o.geometry ? `${o.kind} · ${o.geometry}` : o.kind, sceneId: node.id }))
+  const out: Element[] = []
+  const walk = (ids: string[]) => ids.forEach((id) => {
+    const n = st.doc.nodes[id]
+    if (!n) return
+    out.push({ id: n.id, name: n.name, kind: n.type })
+    walk(n.children)
+  })
+  walk(st.doc.pages.find((p) => p.id === st.pageId)?.children ?? [])
+  return out
+}
+
+const squash = (v: string) => v.toLowerCase().replace(/\s+/g, '')
+
+function suggest(trigger: '/' | '@', query: string): { title: string; items: ComposerSuggestion[] } {
+  const q = squash(query)
+  if (trigger === '/') {
+    return { title: 'Slash Commands', items: COMMANDS.filter((c) => c.id.startsWith(q)).map((c) => ({ id: c.id, label: `/${c.id}`, hint: c.hint, insert: `/${c.id}` })) }
+  }
+  const all = elements().filter((e) => squash(e.name).includes(q))
+  all.sort((a, b) => Number(squash(b.name).startsWith(q)) - Number(squash(a.name).startsWith(q)))
+  return { title: 'Elements', items: all.slice(0, 30).map((e) => ({ id: e.id, label: e.name, hint: e.kind, insert: `@${e.name}` })) }
+}
+
+/** The elements @mentioned in a message, with their ids, for the model (the chat shows only what the user typed). */
+function mentionContext(text: string) {
+  const lower = text.toLowerCase()
+  const hit = elements().filter((e) => e.name && lower.includes(`@${e.name.toLowerCase()}`)).sort((a, b) => b.name.length - a.name.length)
+  if (!hit.length) return undefined
+  return `Elements the user pointed at with @ (use these ids):\n${hit.map((e) => `- "${e.name}" id=${e.id} [${e.kind}]${e.sceneId ? ` in 3D scene sceneId=${e.sceneId}` : ''}`).join('\n')}`
+}
+
+const MODE_ICON: Record<AgentMode, typeof PencilIcon> = { ask: MessageCircleQuestionIcon, plan: ListChecksIcon, edit: PencilIcon, full: ShieldCheckIcon }
 
 const SUGGESTIONS = ['Model a low-poly tree on a grassy island', 'Make a modern desk lamp', 'Build a cozy room with a sofa and a table', 'Put a 3D product hero inside a landing page']
 
@@ -31,6 +85,10 @@ export function AgentPanel() {
   const saved = useAgentRun((s) => s.saved)
   const [chats, setChats] = useState<AgentChat[]>([])
   const [attachments, setAttachments] = useState<AgentAttachment[]>([])
+  const [todosOpen, setTodosOpen] = useState(true)
+  const mode = useAgentMode((s) => s.mode)
+  const setMode = useAgentMode((s) => s.set)
+  const approvedCount = useApprovals((s) => s.allowed[docId]?.length ?? 0)
   const bottomRef = useRef<HTMLDivElement>(null)
   const chat = (viewedId && live[viewedId]) || (chats.find((c) => c.id === viewedId) ?? null)
   const setViewed = (id: string | null) => useAgentRun.setState({ viewedId: id })
@@ -38,6 +96,9 @@ export function AgentPanel() {
   useEffect(() => {
     void chatsRepo.list(docId).then(setChats)
   }, [docId, saved])
+  useEffect(() => {
+    void loadApprovals(docId)
+  }, [docId])
 
   // Another file's chat is not shown here, unless it is the one still generating.
   useEffect(() => {
@@ -51,7 +112,7 @@ export function AgentPanel() {
 
   const run = (text: string, files: AgentAttachment[], base?: AgentChat) => {
     setAttachments([])
-    void runAgent(text, files, base ?? chat, docId)
+    void runAgent(text, files, base ?? chat, docId, mode, mentionContext(text))
   }
 
   const persist = async (c: AgentChat) => {
@@ -86,6 +147,26 @@ export function AgentPanel() {
   const selNames = selection.map((id) => nodes[id]?.name).filter(Boolean)
   const last = chat?.messages.at(-1)
   const generating = !!chat && !!live[chat.id]
+  const asking = useAsking(chat?.id ?? null)
+  const todos = [...(chat?.messages ?? [])].reverse().find((m) => m.todos)?.todos
+  // The list stays up while there is work left; the question form takes its place while the agent waits for answers.
+  const showTodos = !!todos && !asking && (generating || todos.items.some((i) => i.status !== 'completed'))
+  // Every message sent in this file, oldest first, for Up/Down in the box.
+  const history = useMemo(() => {
+    const all = new Map(chats.map((c) => [c.id, c]))
+    for (const c of Object.values(live)) all.set(c.id, c)
+    const sent = [...all.values()].flatMap((c) => c.messages.filter((m) => m.role === 'user')).sort((a, b) => a.createdAt - b.createdAt).map((m) => m.text)
+    return sent.filter((t, i) => t !== sent[i - 1])
+  }, [chats, live])
+  const usageMsg = [...(chat?.messages ?? [])].reverse().find((m) => m.contextTokens)
+  // Until a reply reports real usage (new chats, older saved chats), estimate from the text: ~4 characters a token.
+  const afterSummary = chat?.summary ? chat.messages.slice(chat.messages.findIndex((m) => m.id === chat.summary!.uptoId) + 1) : null
+  const contextUsed = afterSummary ? Math.ceil((chat!.summary!.text.length + afterSummary.reduce((n, m) => n + m.text.length, 0)) / 4) + 2000 : usageMsg?.contextTokens ?? Math.ceil((chat?.messages ?? []).reduce((n, m) => n + m.text.length + (m.reasoning?.length ?? 0), 0) / 4)
+  const ModeIcon = MODE_ICON[mode]
+  const build = (m: AgentMode) => {
+    setMode(m)
+    void runAgent('Build the plan above, following its steps.', [], chat, docId, m)
+  }
 
   return (
         <section className="flex h-full min-h-0 flex-col text-sm">
@@ -137,13 +218,23 @@ export function AgentPanel() {
               )}
               {chat?.messages.map((m) =>
                 m.role === 'user' ? (
-                  <div key={m.id} className="ml-8 self-end rounded-2xl rounded-br-sm bg-primary px-3 py-2 text-sm whitespace-pre-wrap text-primary-foreground">
-                    {m.text}
-                    {!!m.attachments?.length && <div className="mt-1 text-xs opacity-80">📎 {m.attachments.map((a) => a.name).join(', ')}</div>}
-                  </div>
+                  <UserBubble key={m.id} markdown text={m.text} footer={!!m.attachments?.length && <div className="mt-1 text-xs opacity-80 [overflow-wrap:anywhere]">📎 {m.attachments.map((a) => a.name).join(', ')}</div>} />
                 ) : (
                   <div key={m.id} className="mr-4 flex flex-col text-sm">
-                    <ChatReasoning reasoning={m.reasoning} steps={m.steps} isStreaming={generating && m === last && !m.text} duration={m.reasoningSeconds} defaultOpen={false} className="mb-0" />
+                    <WorkedFor startedAt={m.createdAt} seconds={m.workedSeconds} running={generating && m === last} />
+                    <ChatReasoning toolCount={false} reasoning={m.reasoning} steps={m.steps} isStreaming={generating && m === last && !m.text} duration={m.reasoningSeconds} defaultOpen={false} className="mb-0" />
+                    <VerificationCards message={m} />
+                    {m.plan && (
+                      <>
+                        <ChatPlanCard plan={m.plan} isStreaming={generating && m === last} />
+                        {m === last && !generating && (
+                          <div className="mb-2 flex gap-1.5">
+                            <Button size="xs" onClick={() => build('edit')}><PencilIcon />Build (ask before changes)</Button>
+                            <Button size="xs" variant="outline" onClick={() => build('full')}><ShieldCheckIcon />Build (full access)</Button>
+                          </div>
+                        )}
+                      </>
+                    )}
                     {m.text ? <Markdown>{m.text}</Markdown> : !m.error && generating && m === last && !m.reasoning && !m.steps?.length && <TypingDots className="h-3" />}
                     {m.error && (
                       <div className="flex flex-col gap-1 rounded-md bg-destructive/10 px-2 py-1 text-xs text-destructive">
@@ -175,12 +266,45 @@ export function AgentPanel() {
                 ))}
               </div>
             )}
+            {chat && <ApprovalDock chatId={chat.id} />}
+            {chat && <QuestionsDock chatId={chat.id} />}
+            {generating && last && <GoalBanner message={last} />}
+            {showTodos && <ChatTodoQueue todos={todos} open={todosOpen} onOpenChange={setTodosOpen} />}
             <WidgetComposer
               onSend={(text) => run(text, attachments)}
+              suggest={suggest}
+              history={history}
               streaming={generating}
               onStop={() => chat && stopAgent(chat.id)}
-              placeholder={selNames.length ? 'Edit the selection…' : 'Ask the agent to design…'}
-              toolbarStart={<Button variant="ghost" size="icon-sm" className="mr-auto" aria-label="Attach files" onClick={() => void attach()}><PaperclipIcon /></Button>}
+              placeholder={selNames.length ? 'Edit the selection…  (/ for commands, @ for elements)' : 'Ask the agent to design…  (/ for commands, @ for elements)'}
+              toolbarStart={
+                <div className="mr-auto flex items-center gap-0.5">
+                  <Button variant="ghost" size="icon-sm" aria-label="Attach files" onClick={() => void attach()}><PaperclipIcon /></Button>
+                  <ContextRing onCompact={async () => chat && compactChat(chat)} compactDisabled={!chat?.messages.length ? 'Nothing to compact yet' : generating ? 'Wait for the reply to finish' : undefined} used={contextUsed} max={S3D_AGENT_CONTEXT_LIMIT} modelId={`anthropic:${S3D_MODEL}`} compactions={chat?.messages.reduce((n, m) => n + (m.compactions ?? 0), 0)} />
+                  <DropdownMenu>
+                    <DropdownMenuTrigger render={<Button variant="ghost" size="xs" title="Agent mode" />}>
+                      <ModeIcon />{MODES.find((m) => m.id === mode)?.label}<ChevronDownIcon className="size-3" />
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent align="start" className="w-64">
+                      <DropdownMenuGroup>
+                        <DropdownMenuLabel>Mode</DropdownMenuLabel>
+                        {MODES.map((m) => {
+                          const Icon = MODE_ICON[m.id]
+                          return (
+                            <DropdownMenuItem key={m.id} className="items-start normal-case tracking-normal" onClick={() => setMode(m.id)}>
+                              <Icon className="mt-0.5" />
+                              <span className="flex flex-col"><span className={m.id === mode ? 'font-semibold' : ''}>{m.label}</span><span className="text-[11px] text-muted-foreground">{m.hint}</span></span>
+                            </DropdownMenuItem>
+                          )
+                        })}
+                      </DropdownMenuGroup>
+                      {approvedCount > 0 && (
+                        <DropdownMenuItem className="normal-case tracking-normal" onClick={() => void clearApprovals(docId)}>Reset {approvedCount} approved tool{approvedCount === 1 ? '' : 's'} for this file</DropdownMenuItem>
+                      )}
+                    </DropdownMenuContent>
+                  </DropdownMenu>
+                </div>
+              }
             />
           </div>
         </section>

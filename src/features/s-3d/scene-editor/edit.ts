@@ -3,6 +3,9 @@ import { DEFAULT_MATERIAL, GEOMETRY_PARAMS, sceneOf } from '../render/scene3d'
 import { useS3D } from '../store'
 import type { Geometry3D, Light3D, Obj3D, Scene3D } from '../types'
 
+/** Actions the open scene editor registers, so menus outside it can drive the viewport. */
+export const sceneActions: { frame?: (id: string | null) => void } = {}
+
 type Gizmo = 'translate' | 'rotate' | 'scale'
 
 export function openSceneEditor(nodeId: string) {
@@ -79,7 +82,7 @@ export function addObject(what: Geometry3D | Light3D['type'] | 'group') {
       const p = GEOMETRY_PARAMS[geometry]
       // Rest the new shape on the ground using its default height.
       const h = p.height ?? (p.radius ? p.radius * 2 : p.length ? p.length + 2 * (p.radius ?? 0) : 1)
-      const flat = geometry === 'plane' || geometry === 'circle' || geometry === 'ring'
+      const flat = geometry === 'plane' || geometry === 'circle' || geometry === 'ring' || geometry === 'wave'
       scene.objects.push({
         ...base, name: geometry[0].toUpperCase() + geometry.slice(1), kind: 'mesh', geometry, params: {},
         position: [x, scene.ground.y + (flat ? 0.01 : h / 2), 0], rotation: flat ? [-90, 0, 0] : [0, 0, 0], scale: [1, 1, 1],
