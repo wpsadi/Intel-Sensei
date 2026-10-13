@@ -6,7 +6,7 @@ import senseiLogo from '@/assets/sensei.svg'
 import { Sidebar, SidebarContent, SidebarHeader } from '@/components/ui/sidebar'
 import { Button } from '@/components/ui/button'
 import { useS3D } from '@/features/s-3d/store'
-import { LayersPanel } from '@/features/s-3d/layers/layers-panel'
+import { LayersPanel } from '@/features/s-design/layers/layers-panel'
 import { AgentPanel } from '@/features/s-3d/agent/agent-panel'
 import { SceneOutliner } from '@/features/s-3d/scene-editor/scene-panels'
 

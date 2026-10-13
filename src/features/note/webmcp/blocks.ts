@@ -438,6 +438,9 @@ const IN_PLACE = new Set(['paragraph', 'heading', 'codeBlock', 'listItem', 'task
 const ITEM_KINDS = new Set(['bullet', 'numbered', 'todo', 'toggle', 'th1', 'th2', 'th3', 'callout', 'quote', 'col2', 'col3', 'col4', 'col5', 'tabs'])
 const CONVERT_KEYS: Record<string, string> = { text: 'text', h1: 'h1', h2: 'h2', h3: 'h3', h4: 'h4', bullet: 'bullet', numbered: 'numbered', todo: 'todo', quote: 'quote', code: 'code' }
 
+/** True when text uses Markdown that makes whole blocks: headings, lists, quotes, rules, code fences, tables, or several paragraphs. */
+export const hasBlockMarkdown = (text: string) => /\n\s*\n|^\s{0,3}(#{1,6}\s|[-*+]\s|\d+[.)]\s|>|```|~~~|-{3,}\s*$|\|.+\|)/m.test(text)
+
 export async function updateBlock(args: z.output<typeof S.updateBlock>, ctx: BlockContext) {
   const { note, block, convert_to, checked, comment, ...content } = args
   const { editor, title, pageId } = await editorFor(note, ctx)
@@ -475,6 +478,21 @@ export async function updateBlock(args: z.output<typeof S.updateBlock>, ctx: Blo
   if (comment) {
     if (!('comments' in node.attrs)) throw new Error(`A ${kindOf(node.toJSON())} block cannot hold comments.`)
     attrs.comments = [...((node.attrs.comments as unknown[]) ?? []), { id: crypto.randomUUID(), text: comment, createdAt: Date.now() }]
+  }
+  // Markdown with headings, lists and the like in a plain text block becomes real blocks, as when it is pasted or inserted.
+  if (!convert_to && content.text !== undefined && !content.items && !content.rows && !content.attrs && checked === undefined && !comment && (node.type.name === 'paragraph' || node.type.name === 'heading') && hasBlockMarkdown(content.text)) {
+    const parsed = markdownToDoc(content.text, pageId).content ?? []
+    if (parsed.length && !(parsed.length === 1 && parsed[0].type === 'paragraph')) {
+      try {
+        const nodes = parsed.map((json) => editor.schema.nodeFromJSON(json))
+        nodes.forEach((next) => next.check())
+        apply(editor, (tr) => tr.replaceWith(pos, pos + node.nodeSize, nodes), 'here')
+        forgetRead(pageId)
+        return { status: 'updated', note: title, block: summarize(editor.state.doc.nodeAt(pos)!.toJSON(), block), replaced_with: `${nodes.length} block${nodes.length === 1 ? '' : 's'} from the Markdown`, next: 'Call list_blocks before editing again.' }
+      } catch {
+        // Blocks of those kinds cannot go here (for example inside a list), so the text is written as inline Markdown below.
+      }
+    }
   }
   const hasAttrs = Object.keys(attrs).length > 0
   if (!convert_to && !hasAttrs && content.text === undefined && !content.items && !content.rows) {

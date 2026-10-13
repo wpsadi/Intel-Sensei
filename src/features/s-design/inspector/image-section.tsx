@@ -2,9 +2,9 @@ import { useState } from 'react'
 import { toast } from 'sonner'
 import { Loader2Icon, RotateCcwIcon, ScissorsIcon, Undo2Icon } from 'lucide-react'
 import { Button } from '@/components/ui/button'
-import { removeBackground, restoreBackground } from '../remove-background'
-import type { ImageAdjust, SNode } from '../types'
-import { IconBtn, NumberField, Check, Sel, Section, shared, update } from './fields'
+import { removeBackground, restoreBackground } from '@/features/s-3d/remove-background'
+import type { ImageAdjust, SNode } from '@/features/s-3d/types'
+import { IconBtn, NumberField, Check, Sel, Section, shared, update } from '@/features/s-3d/inspector/fields'
 
 const PRESETS: Record<string, ImageAdjust> = {
   Original: {},

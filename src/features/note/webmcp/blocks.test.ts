@@ -31,6 +31,23 @@ describe('S-Note block tools', () => {
     editor.destroy()
   })
 
+  it('turns Markdown written into a text block into real blocks', async () => {
+    await readBlock({ block: '1' }, ctx)
+    const result = await updateBlock({ block: '1', text: '# The Proposal\n*By Anton Chekhov*\n\n---\n\n## Summary\n\n1. One\n2. Two\n' }, ctx)
+    expect(result).toMatchObject({ status: 'updated' })
+    const types = editor.getJSON().content!.map((node) => node.type)
+    expect(types).toEqual(expect.arrayContaining(['heading', 'horizontalRule', 'orderedList']))
+    expect(types.filter((type) => type === 'heading')).toHaveLength(3)
+    expect(editor.getText()).not.toContain('# The Proposal')
+  })
+
+  it('keeps plain text inline, with its heading level', async () => {
+    await readBlock({ block: '0' }, ctx)
+    await updateBlock({ block: '0', text: 'Launch *plan*' }, ctx)
+    expect(editor.getJSON().content![0]).toMatchObject({ type: 'heading', attrs: { level: 1 } })
+    expect(editor.getJSON().content!).toHaveLength(2)
+  })
+
   it('offers every block the "/" menu has', () => {
     expect(BLOCK_TYPES.filter((t) => t !== 'markdown').sort()).toEqual(BLOCKS.map((b) => b.key).sort())
   })

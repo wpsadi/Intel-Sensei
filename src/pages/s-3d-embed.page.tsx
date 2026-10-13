@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { Player } from '@/features/s-3d/play/play-mode'
+import { Player } from '@/features/s-design/play/play-mode'
 import { decodeDoc } from '@/features/s-3d/export/share'
 import type { Doc } from '@/features/s-3d/types'
 

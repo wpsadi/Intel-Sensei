@@ -1,7 +1,7 @@
 import type { ReactElement, ReactNode } from 'react'
 import { ContextMenu } from '@base-ui/react/context-menu'
 import { ChevronRightIcon } from 'lucide-react'
-import { cmd } from '../commands'
+import { cmd } from '@/features/s-3d/commands'
 
 const itemClass =
   'flex cursor-default items-center gap-6 rounded-sm px-2 py-1 text-xs outline-hidden select-none data-highlighted:bg-accent data-highlighted:text-accent-foreground data-disabled:pointer-events-none data-disabled:opacity-40'

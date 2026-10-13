@@ -1,3 +1,4 @@
+import { recordUsage } from '@/ai/usage'
 import type { FromWorker, StreamPart, ToWorker } from './protocol'
 
 export type { StreamPart, ToolSpec } from './protocol'
@@ -45,7 +46,11 @@ function agentWorker() {
 export function streamInWorker(start: Start, opts: { signal: AbortSignal; onPart: (p: StreamPart) => void; execTool: (name: string, args: unknown) => unknown }): Promise<Done> {
   const runId = crypto.randomUUID()
   return new Promise((done) => {
-    passes.set(runId, { onPart: opts.onPart, execTool: opts.execTool, done })
+    const onPart = (p: StreamPart) => {
+      if (p.type === 'spend') void recordUsage({ provider: start.provider, model: start.model, inputTokens: p.inputTokens, outputTokens: p.outputTokens, reasoningTokens: p.reasoningTokens, cachedTokens: p.cachedTokens, cacheWriteTokens: p.cacheWriteTokens })
+      opts.onPart(p)
+    }
+    passes.set(runId, { onPart, execTool: opts.execTool, done })
     const w = agentWorker()
     w.postMessage({ type: 'start', runId, ...start } satisfies ToWorker)
     if (opts.signal.aborted) w.postMessage({ type: 'abort', runId } satisfies ToWorker)

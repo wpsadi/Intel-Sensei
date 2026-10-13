@@ -102,7 +102,7 @@ const position = z
   .describe('Where in the note. Defaults to the end')
 
 const blockContent = {
-  text: z.string().optional().describe('Text of the block; note title for page/link-page; name for mentions; LaTeX for equations; Markdown for markdown'),
+  text: z.string().optional().describe('Text of the block; note title for page/link-page; name for mentions; LaTeX for equations; Markdown for markdown. In a plain text or heading block, Markdown with headings, lists, tables or several paragraphs is turned into real blocks'),
   items: z.array(z.string()).optional().describe('List items ("[x] " prefix = checked), toggle lines, column texts or tab titles'),
   rows: z.array(z.array(z.string())).optional().describe('Table cells row by row; the first row is the header'),
   attrs: z.record(z.string(), z.unknown()).optional().describe('Block settings, e.g. {"language":"ts"}, {"src":url}, {"url":url}, {"icon":"🔥"}'),

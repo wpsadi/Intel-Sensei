@@ -216,12 +216,18 @@ export const ReasoningContent = memo(
       )}
       {...props}
     >
-      <Streamdown plugins={streamdownPlugins}>{children}</Streamdown>
+      {children && <Streamdown plugins={streamdownPlugins}>{children}</Streamdown>}
       {steps}
     </CollapsibleContent>
   )
 );
 
+/** A stretch of reasoning text on its own, for placing between other content inside ReasoningContent. */
+export const ReasoningText = memo(({ children }: { children: string }) => (
+  <Streamdown plugins={streamdownPlugins}>{children}</Streamdown>
+));
+
 Reasoning.displayName = "Reasoning";
+ReasoningText.displayName = "ReasoningText";
 ReasoningTrigger.displayName = "ReasoningTrigger";
 ReasoningContent.displayName = "ReasoningContent";

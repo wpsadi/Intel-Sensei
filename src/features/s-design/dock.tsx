@@ -11,10 +11,10 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/comp
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuShortcut, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
 import { useS3D } from '@/features/s-3d/store'
 import { cmd, runCmd } from '@/features/s-3d/commands'
-import { BRUSH_TOOLS } from '@/features/s-3d/raster/canvas-tools'
+import { BRUSH_TOOLS } from './raster/canvas-tools'
 import type { Shape3D, Tool } from '@/features/s-3d/types'
 import { cn } from '@/lib/utils'
-import { ColorPicker } from './color-picker'
+import { ColorPicker } from '@/components/s-3d/color-picker'
 
 const SHAPES: { tool: Tool; label: string; icon: ReactNode; cmd: string }[] = [
   { tool: 'rect', label: 'Rectangle', icon: <SquareIcon />, cmd: 'tool-rect' },
@@ -149,7 +149,7 @@ function HistoryMenu() {
 }
 
 /** Floating toolbar of canvas tools at the bottom of the editor. */
-export function S3DDock() {
+export function DesignDock() {
   const tool = useS3D((s) => s.tool)
   const shape3d = useS3D((s) => s.shape3d)
   const zoom = useS3D((s) => s.camera.zoom)

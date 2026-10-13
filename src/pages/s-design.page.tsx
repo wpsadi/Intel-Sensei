@@ -1,9 +1,9 @@
 import { useLayoutEffect } from 'react'
 import { CanvasSkeleton } from '@/components/s-3d/canvas-skeleton'
-import { S3DCanvasEditor } from '@/features/s-3d/canvas/canvas'
-import { S3DDock } from '@/components/s-3d/s-3d-dock'
+import { DesignCanvas } from '@/features/s-design/canvas/canvas'
+import { DesignDock } from '@/features/s-design/dock'
 import { S3DDialogs } from '@/features/s-3d/dialogs'
-import { PlayMode } from '@/features/s-3d/play/play-mode'
+import { PlayMode } from '@/features/s-design/play/play-mode'
 import { SceneEditor } from '@/features/s-3d/scene-editor/scene-editor'
 import { S3DTools } from '@/features/s-3d/webmcp/s3d-tools'
 import { Toaster } from '@/components/ui/sonner'
@@ -22,12 +22,12 @@ function SDesignPage() {
   return (
     <div className="relative flex-1">
       <div className="absolute inset-0">
-        <S3DCanvasEditor />
+        <DesignCanvas />
         <SceneEditor />
       </div>
       <div className="pointer-events-none absolute inset-x-0 bottom-4 flex justify-center">
         <div className={sceneOpen ? 'hidden' : 'pointer-events-auto'}>
-          <S3DDock />
+          <DesignDock />
         </div>
       </div>
       {mode === 'play' && <PlayMode />}

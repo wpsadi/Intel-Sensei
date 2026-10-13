@@ -1,8 +1,8 @@
 import { MinusIcon, RefreshCwIcon } from 'lucide-react'
-import { uid } from '../db'
-import { useS3D } from '../store'
-import type { Interaction, NodeState, SNode } from '../types'
-import { IconBtn, NumberField, Section, Sel, TextField, update } from './fields'
+import { uid } from '@/features/s-3d/db'
+import { useS3D } from '@/features/s-3d/store'
+import type { Interaction, NodeState, SNode } from '@/features/s-3d/types'
+import { IconBtn, NumberField, Section, Sel, TextField, update } from '@/features/s-3d/inspector/fields'
 
 const capture = (n: SNode): NodeState['overrides'] => structuredClone({ x: n.x, y: n.y, w: n.w, h: n.h, rotation: n.rotation, opacity: n.opacity, fills: n.fills, visible: n.visible, radius: n.radius })
 

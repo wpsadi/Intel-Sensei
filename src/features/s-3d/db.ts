@@ -64,6 +64,9 @@ export const chatsRepo = {
   async list(docId: string) {
     return (await (await getDb()).getAllFromIndex('chats', 'byDoc', docId)).sort((a, b) => b.updatedAt - a.updatedAt)
   },
+  async get(id: string) {
+    return (await getDb()).get('chats', id)
+  },
   async put(chat: AgentChat) {
     await (await getDb()).put('chats', chat)
   },

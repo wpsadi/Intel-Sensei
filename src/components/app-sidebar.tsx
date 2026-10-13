@@ -11,7 +11,7 @@ import {
   SidebarHeader,
   SidebarRail,
 } from "@/components/ui/sidebar"
-import { TerminalIcon, AudioLinesIcon, SearchIcon, SparklesIcon, HomeIcon, InboxIcon, Settings2Icon, MessageCircleQuestionIcon, NotebookPenIcon, DraftingCompassIcon, PenToolIcon } from "lucide-react"
+import { TerminalIcon, AudioLinesIcon, SearchIcon, SparklesIcon, HomeIcon, InboxIcon, Settings2Icon, MessageCircleQuestionIcon, NotebookPenIcon, DraftingCompassIcon, PenToolIcon, DollarSignIcon } from "lucide-react"
 
 // This is sample data.
 const data = {
@@ -102,6 +102,14 @@ const data = {
     },
   ],
   navSecondary: [
+    {
+      title: "AI usage",
+      url: "/ai-usage",
+      icon: (
+        <DollarSignIcon
+        />
+      ),
+    },
     {
       title: "Settings",
       url: "?settings=open",

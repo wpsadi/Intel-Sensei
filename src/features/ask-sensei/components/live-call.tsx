@@ -152,8 +152,11 @@ export function useLiveCall(chatId: string | null, onChatOpened: (id: string) =>
     // Web searches and plans show as their own parts, through their tools' callbacks, so they are not repeated as steps.
     if (event.name === 'webSearch' || event.name === 'createPlan') return
     const { label, detail } = describeToolCall(event.name, event.args)
-    const step = { id: event.id, name: event.name, label, status: event.status, detail: event.status === 'failed' ? event.error : detail }
     changeReply((turn) => {
+      // Where the call fell in the thinking (as saved, trimmed), so the reasoning block shows thoughts and calls in order.
+      const previous = turn.parts.flatMap((part) => (part.type === 'steps' ? part.steps : [])).find((s) => s.id === event.id)
+      const at = previous?.at ?? turn.thoughts.trimStart().length
+      const step = { id: event.id, name: event.name, label, status: event.status, detail: event.status === 'failed' ? event.error : detail, at }
       const last = turn.parts.at(-1)
       turn.parts = last?.type === 'steps' ? [...turn.parts.slice(0, -1), { type: 'steps', steps: upsertById(last.steps, step) }] : [...turn.parts, { type: 'steps', steps: [step] }]
     })

@@ -5,6 +5,8 @@ import type { ChatPlan, ChatQuestion, ChatTodoList, ChatToolStep } from '@/featu
 import { thinkingOnly } from '@/ai/utils/thinking'
 import { S3D_AGENT_CONTEXT_LIMIT, S3D_MODEL } from '@/constants/ai'
 import { ANTHROPIC_BASE_URL, ANTHROPIC_KEY } from '@/ai/utils/anthropic-key'
+import { GEMINI_KEY } from '@/ai/utils/gemini-key'
+import { generateChatTitle } from '@/ai/inference/title'
 import { chatsRepo, uid } from '../db'
 import { readFile } from '../files'
 import { useS3D } from '../store'
@@ -302,6 +304,23 @@ export async function runAgent(text: string, files: AgentAttachment[], base: Age
   useAgentRun.setState((s) => ({ live: { ...s.live, [c.id]: c }, viewedId: c.id }))
   // Saved now so the chat shows in the history while it generates.
   await save(c)
+  // A new chat keeps the start of the request as its title until it is named, as in Ask Sensei. Titles use the
+  // quick Gemini model, so without a Gemini key the chat keeps the start of the request.
+  const geminiKey = GEMINI_KEY.value
+  if (!base && geminiKey)
+    void generateChatTitle(geminiKey, `User: ${goal ?? text}`)
+      .then(async (title) => {
+        if (!title) return
+        if (useAgentRun.getState().live[c.id]) {
+          c = { ...c, title }
+          useAgentRun.setState((s) => ({ live: { ...s.live, [c.id]: c } }))
+          await save(c)
+        } else {
+          const saved = await chatsRepo.get(c.id)
+          if (saved) await save({ ...saved, title })
+        }
+      })
+      .catch(() => {})
   void work()
 
   async function work() {
@@ -343,7 +362,9 @@ export async function runAgent(text: string, files: AgentAttachment[], base: Age
       let thinking = true
       let steps: ChatToolStep[] = []
       const setStep = (step: ChatToolStep) => {
-        steps = steps.some((x) => x.id === step.id) ? steps.map((x) => (x.id === step.id ? step : x)) : [...steps, step]
+        const previous = steps.find((x) => x.id === step.id)
+        step = { ...step, at: previous?.at ?? thinkingOnly(thoughts).length }
+        steps = previous ? steps.map((x) => (x.id === step.id ? step : x)) : [...steps, step]
         update({ steps })
       }
 

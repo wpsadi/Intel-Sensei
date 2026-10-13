@@ -1,10 +1,10 @@
 import { useState } from 'react'
 import { MinusIcon } from 'lucide-react'
 import { toast } from 'sonner'
-import { uid } from '../db'
-import { exportNodes } from '../export/exporter'
-import type { ExportSetting, SNode } from '../types'
-import { IconBtn, Section, Sel, TextField, update } from './fields'
+import { uid } from '@/features/s-3d/db'
+import { exportNodes } from '@/features/s-3d/export/exporter'
+import type { ExportSetting, SNode } from '@/features/s-3d/types'
+import { IconBtn, Section, Sel, TextField, update } from '@/features/s-3d/inspector/fields'
 
 const newSetting = (): ExportSetting => ({ id: uid(), format: 'png', scale: 1, suffix: '' })
 

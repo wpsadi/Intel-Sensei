@@ -1,10 +1,10 @@
 import { toast } from 'sonner'
-import { impl } from '../agent/tools-impl'
-import { absPos } from '../model'
-import { useS3D } from '../store'
-import type { Doc, SNode, Tool } from '../types'
-import { decode } from './bake'
-import type { Point } from './pixels'
+import { impl } from '@/features/s-3d/agent/tools-impl'
+import { absPos } from '@/features/s-3d/model'
+import { useS3D } from '@/features/s-3d/store'
+import type { Doc, SNode, Tool } from '@/features/s-3d/types'
+import { decode } from '@/features/s-3d/raster/bake'
+import type { Point } from '@/features/s-3d/raster/pixels'
 
 /** Pixel tools on the canvas. Each one calls the same agent tool that the model uses, so both paths stay in step. */
 export type RasterTool = 'brush' | 'eraser' | 'clone' | 'heal' | 'marquee' | 'lasso' | 'wand' | 'quick' | 'crop' | 'eyedropper' | 'zoom'

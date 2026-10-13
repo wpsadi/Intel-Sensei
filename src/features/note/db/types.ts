@@ -215,6 +215,8 @@ export interface ChatToolStep {
   status: 'running' | 'done' | 'failed'
   /** What it is working on, such as the note being saved. */
   detail?: string
+  /** How much of the reasoning text came before this call, so thoughts and tool calls show in the order they happened. */
+  at?: number
 }
 
 /**

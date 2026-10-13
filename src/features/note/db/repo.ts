@@ -351,6 +351,10 @@ export const widgetChatsRepo = {
     return (await (await getDb()).getAll('widgetChats')).sort((a, b) => b.updatedAt - a.updatedAt)
   },
 
+  async get(id: string) {
+    return (await getDb()).get('widgetChats', id)
+  },
+
   async put(chat: WidgetChat) {
     await (await getDb()).put('widgetChats', chat)
   },

@@ -5,6 +5,7 @@ import MainLayout from '@/layouts/main.layout'
 import NotFoundPage from '@/pages/not-found.page'
 import S3DLayout from '@/layouts/s-3d.layout'
 import S3DPage from '@/pages/s-3d.page'
+import AiUsagePage from '@/pages/ai-usage.page'
 import SDesignPage from '@/pages/s-design.page'
 import ErrorPage from '@/pages/error.page'
 import { ThemeProvider } from 'next-themes'
@@ -27,6 +28,7 @@ const router = createBrowserRouter([
         element: <AskSenseiPage />,
         children: [{ index: true }, { path: ':chatId' }],
       },
+      { path: '/ai-usage', element: <AiUsagePage /> },
       { path: '/s-note', element: <Suspense fallback={<SNoteSkeleton />}><SNotePage /></Suspense> },
       { path: '/s-note/:pageId', element: <Suspense fallback={<SNoteSkeleton />}><SNotePage /></Suspense> },
       {

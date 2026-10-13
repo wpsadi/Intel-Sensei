@@ -6,11 +6,11 @@ import { ScrollArea } from '@/components/ui/scroll-area'
 import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
-import { currentPage, useS3D } from '../store'
-import { ancestors, childrenOf, isContainer } from '../model'
+import { currentPage, useS3D } from '@/features/s-3d/store'
+import { ancestors, childrenOf, isContainer } from '@/features/s-3d/model'
 import { CommandContextMenu, NODE_MENU } from '../components/command-context-menu'
 import { NodeIcon } from './node-icon'
-import type { Doc, SNode } from '../types'
+import type { Doc, SNode } from '@/features/s-3d/types'
 
 interface Row {
   node: SNode

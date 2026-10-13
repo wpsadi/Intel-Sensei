@@ -143,6 +143,35 @@ export function openNote({ note }: z.output<typeof S.openNote>, go: (path: strin
 
 /* -------------------------------- writing --------------------------------- */
 
+/**
+ * Lists a new sub-note inside its parent, as a page block at the end of the parent's body, which is what the editor's
+ * "Page" block does. Without it the note exists in the sidebar tree but nothing in the parent points at it. A locked
+ * parent is left alone. Returns whether the block was added.
+ */
+async function listInParent(parent: Page, childId: string) {
+  if (parent.locked) return false
+  const block = { type: 'pageBlock', attrs: { pageId: childId } }
+  const live = getLiveEditor(parent.id)
+  // Through the open editor the block shows at once and autosaves; a closed note is saved directly.
+  if (live) {
+    live.chain().insertContentAt(live.state.doc.content.size, block).run()
+    return true
+  }
+  let doc: { type: string; content?: { type?: string; content?: unknown[] }[] }
+  try {
+    doc = JSON.parse(contentOf(parent) || '')
+  } catch {
+    doc = { type: 'doc' }
+  }
+  const nodes = doc.content ?? []
+  // Keep a trailing empty paragraph last, so the user can still click below the blocks and type.
+  const last = nodes.at(-1)
+  const trailingEmpty = last?.type === 'paragraph' && !last.content?.length
+  doc.content = trailingEmpty ? [...nodes.slice(0, -1), block, last] : [...nodes, block]
+  await state().updatePage(parent.id, { content: JSON.stringify(doc) })
+  return true
+}
+
 export async function createNote({ title, content, inside, icon, as_database, open }: z.output<typeof S.createNote>, go: (path: string) => void) {
   const store = state()
   const parent = inside ? findPage(inside) : undefined
@@ -163,8 +192,16 @@ export async function createNote({ title, content, inside, icon, as_database, op
       await store.updatePage(created.id, { content: writeContent('', content, 'replace', created.id) })
     }
   }
+  const listed = parent ? await listInParent(parent, created.id) : undefined
   if (open) go(`/s-note/${created.id}`)
-  return { status: 'created', id: created.id, title, inside: parent ? titleOf(parent) : 'workspace', opened: open }
+  return {
+    status: 'created',
+    id: created.id,
+    title,
+    inside: parent ? titleOf(parent) : 'workspace',
+    opened: open,
+    ...(parent && { linked_in_parent: listed, ...(!listed && { note: `"${titleOf(parent)}" is locked, so a link to the new note was not added to its body.` }) }),
+  }
 }
 
 export async function editNote(args: z.output<typeof S.editNote>) {

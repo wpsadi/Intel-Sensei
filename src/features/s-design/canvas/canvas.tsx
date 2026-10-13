@@ -1,14 +1,14 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { PointerEvent as RPointerEvent } from 'react'
 import { useTheme } from 'next-themes'
-import { broadcastPresence, containerAt, currentPage, useS3D } from '../store'
-import { type Rect, absPos, absRect, ancestors, childrenOf, intersects, isContainer, pathBounds, translatePath, unionRect } from '../model'
-import { AnimationStyles, NodeView, RenderContext, type RenderCtx } from '../render/node-view'
+import { broadcastPresence, containerAt, currentPage, useS3D } from '@/features/s-3d/store'
+import { type Rect, absPos, absRect, ancestors, childrenOf, intersects, isContainer, pathBounds, translatePath, unionRect } from '@/features/s-3d/model'
+import { AnimationStyles, NodeView, RenderContext, type RenderCtx } from '@/features/s-3d/render/node-view'
 import { CANVAS_MENU, CommandContextMenu, NODE_MENU } from '../components/command-context-menu'
-import { addFilesToCanvas } from '../io'
-import type { Doc, NodeType, SNode } from '../types'
+import { addFilesToCanvas } from '@/features/s-3d/io'
+import type { Doc, NodeType, SNode } from '@/features/s-3d/types'
 import { Rulers } from './rulers'
-import { openSceneEditor } from '../scene-editor/edit'
+import { openSceneEditor } from '@/features/s-3d/scene-editor/edit'
 import { useCanvasShortcuts } from './use-shortcuts'
 import { toolCursor } from './tool-cursors'
 import { BRUSH_TOOLS, type RasterGesture, type XY, brushDiameter, cachedSize, commitRaster, isRaster, pixelToWorld, rectOf, startRaster } from '../raster/canvas-tools'
@@ -75,7 +75,7 @@ const hexAlpha = (hex: string, a: number) => {
   return `rgba(${(n >> 16) & 255},${(n >> 8) & 255},${n & 255},${a})`
 }
 
-export function S3DCanvasEditor() {
+export function DesignCanvas() {
   const s = useS3D
   const doc = useS3D((st) => st.doc)
   const page = useS3D(currentPage)

@@ -2,7 +2,7 @@ import {
   BoxIcon, CircleIcon, Columns3Icon, FrameIcon, GroupIcon, HashIcon, ImageIcon, MessageCircleIcon, PentagonIcon, Rows3Icon,
   ScissorsIcon, SplineIcon, SquareDashedIcon, SquareIcon, SquaresExcludeIcon, SquaresIntersectIcon, SquaresSubtractIcon, SquaresUniteIcon, StarIcon, TypeIcon, VideoIcon,
 } from 'lucide-react'
-import type { SNode } from '../types'
+import type { SNode } from '@/features/s-3d/types'
 
 export function NodeIcon({ node, className }: { node: SNode; className?: string }) {
   const p = { className }

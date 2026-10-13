@@ -1,10 +1,10 @@
 import { ChevronDownIcon, ChevronUpIcon, EyeIcon, EyeOffIcon, MinusIcon, UploadIcon } from 'lucide-react'
-import { uid } from '../db'
-import { pickFiles, storeFile } from '../files'
-import { solid, stroke } from '../model'
-import { useS3D } from '../store'
-import type { Effect, Fill, SNode } from '../types'
-import { ColorField, IconBtn, NumberField, Section, Sel, moveItem, update } from './fields'
+import { uid } from '@/features/s-3d/db'
+import { pickFiles, storeFile } from '@/features/s-3d/files'
+import { solid, stroke } from '@/features/s-3d/model'
+import { useS3D } from '@/features/s-3d/store'
+import type { Effect, Fill, SNode } from '@/features/s-3d/types'
+import { ColorField, IconBtn, NumberField, Section, Sel, moveItem, update } from '@/features/s-3d/inspector/fields'
 
 type FillKind = Fill['kind']
 

@@ -2,6 +2,7 @@ import { generateText } from 'ai'
 import { createGoogle } from '@ai-sdk/google'
 import { GEMINI_KEY } from '@/ai/utils/gemini-key'
 import { MINI_STUFF_MODEL } from '@/constants/ai'
+import { recordSdkUsage } from '@/ai/usage'
 import { type Block, parseBlocks, toSpeech } from './blocks'
 import { NARRATION_CONFIG } from './config'
 
@@ -10,11 +11,12 @@ async function describeBlock(block: Block, config: (typeof NARRATION_CONFIG)[key
   const apiKey = GEMINI_KEY.value
   const what = block.type === 'code' && block.lang ? `${block.lang} code block` : block.type === 'diagram' ? 'diagram' : `${block.type}`
   try {
-    const { text } = await generateText({
+    const { text, usage } = await generateText({
       model: createGoogle({ apiKey })(MINI_STUFF_MODEL),
       prompt: `Someone is listening on a voice call and cannot see this ${what}. Describe it for them: ${config.cover}. Use at most ${config.sentences ?? 2} short sentences of plain spoken words. Never read it out line by line, cell by cell or symbol by symbol, and use no Markdown.\n\n${block.raw}`,
       maxOutputTokens: 300,
     })
+    void recordSdkUsage({ provider: 'google', model: MINI_STUFF_MODEL }, usage)
     return text.replace(/[*_#`>|~]/g, '').trim()
   } catch {
     // The description is a nicety: without it the voice still knows a block is there.

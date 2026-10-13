@@ -1,5 +1,6 @@
 import { AlertCircle, DatabaseIcon, WrenchIcon } from 'lucide-react'
-import { Reasoning, ReasoningContent, ReasoningTrigger } from '@/components/ai-elements/reasoning'
+import { Fragment, type ReactNode } from 'react'
+import { Reasoning, ReasoningContent, ReasoningText, ReasoningTrigger } from '@/components/ai-elements/reasoning'
 import { ChainOfThoughtStep } from '@/components/ai-elements/chain-of-thought'
 import { Shimmer } from '@/components/ai-elements/shimmer'
 import type { ChatToolStep } from '@/features/note/db/types'
@@ -9,8 +10,8 @@ const iconOf = (step: ChatToolStep) => (step.status === 'failed' ? AlertCircle :
 const toolCount = (n: number) => (n === 1 ? 'used a tool' : `used ${n} tools`)
 
 /**
- * Sensei's thinking and the tool calls it made, in one collapsible block: the thought summary first, then each
- * tool call as a step. Shared by Ask Sensei, the S-Note widget and the S3D agent so they read the same way.
+ * Sensei's thinking and the tool calls it made, in one collapsible block, in the order they happened: each
+ * stretch of thought, then the tool calls it led to. Shared by Ask Sensei, the S-Note widget and the S3D agent so they read the same way.
  */
 export function ChatReasoning({
   reasoning,
@@ -37,28 +38,54 @@ export function ChatReasoning({
     const thought = reasoning ? (seconds ? `Thought for ${seconds} seconds` : 'Thought for a few seconds') : 'Done'
     return <p>{showToolCount && steps?.length ? `${thought} · ${toolCount(steps.length)}` : thought}</p>
   }
+  const stepList = (list: ChatToolStep[], className = 'my-3 space-y-3') => (
+    <div className={className}>
+      {list.map((step) => (
+        <ChainOfThoughtStep
+          key={step.id}
+          icon={iconOf(step)}
+          label={step.label}
+          description={step.status === 'failed' ? (step.detail ?? 'Failed') : step.detail}
+          status={step.status === 'running' ? 'active' : 'complete'}
+        />
+      ))}
+    </div>
+  )
+  // Steps that know where they fell in the thinking are shown there, so it reads think → tools → think → tools.
+  // Older saved replies have no positions and keep the thinking first, then every step.
+  const ordered = reasoning && steps?.length && steps.every((s) => s.at !== undefined)
+  if (ordered) {
+    const pieces: ReactNode[] = []
+    let from = 0
+    let group: ChatToolStep[] = []
+    const flush = () => {
+      if (group.length) pieces.push(<Fragment key={`steps-${group[0].id}`}>{stepList(group)}</Fragment>)
+      group = []
+    }
+    for (const step of steps) {
+      const at = Math.min(Math.max(step.at!, from), reasoning.length)
+      const text = reasoning.slice(from, at).trim()
+      if (text) {
+        flush()
+        pieces.push(<ReasoningText key={`text-${from}`}>{text}</ReasoningText>)
+      }
+      from = at
+      group.push(step)
+    }
+    flush()
+    const rest = reasoning.slice(from).trim()
+    if (rest) pieces.push(<ReasoningText key={`text-${from}`}>{rest}</ReasoningText>)
+    return (
+      <Reasoning isStreaming={isStreaming} duration={duration} defaultOpen={defaultOpen} className={className}>
+        <ReasoningTrigger getThinkingMessage={label} />
+        <ReasoningContent steps={pieces}>{''}</ReasoningContent>
+      </Reasoning>
+    )
+  }
   return (
     <Reasoning isStreaming={isStreaming} duration={duration} defaultOpen={defaultOpen} className={className}>
       <ReasoningTrigger getThinkingMessage={label} />
-      <ReasoningContent
-        steps={
-          steps?.length ? (
-            <div className="mt-3 space-y-3">
-              {steps.map((step) => (
-                <ChainOfThoughtStep
-                  key={step.id}
-                  icon={iconOf(step)}
-                  label={step.label}
-                  description={step.status === 'failed' ? (step.detail ?? 'Failed') : step.detail}
-                  status={step.status === 'running' ? 'active' : 'complete'}
-                />
-              ))}
-            </div>
-          ) : undefined
-        }
-      >
-        {reasoning ?? ''}
-      </ReasoningContent>
+      <ReasoningContent steps={steps?.length ? stepList(steps, 'mt-3 space-y-3') : undefined}>{reasoning ?? ''}</ReasoningContent>
     </Reasoning>
   )
 }

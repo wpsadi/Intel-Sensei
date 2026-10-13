@@ -2,7 +2,7 @@ import { type JSONSchema7, type LanguageModel, type ModelMessage, type Tool, Too
 import { createOpenAI } from '@ai-sdk/openai'
 import { createGoogle } from '@ai-sdk/google'
 import { createAnthropic } from '@ai-sdk/anthropic'
-import type { FromWorker, ToWorker } from './protocol'
+import type { FromWorker, StreamPart, ToWorker } from './protocol'
 
 /**
  * Runs agent model calls off the main thread. Tools still run on the main thread, since they change the app:
@@ -54,19 +54,33 @@ const KEEP_TAIL = 6
  * Compaction: replaces everything but the last few messages with one summary written by the same model, so a long
  * run keeps going inside the context window. The kept tail never starts on a tool result, which needs its call.
  */
-async function compact(model: LanguageModel, messages: ModelMessage[], signal: AbortSignal) {
+type Spend = Omit<Extract<StreamPart, { type: 'spend' }>, 'type'>
+
+/** The billable token counts of a step, in the shape the usage log takes. */
+function spendOf(usage: { inputTokens?: number; outputTokens?: number; outputTokenDetails?: { reasoningTokens?: number }; inputTokenDetails?: { cacheReadTokens?: number; cacheWriteTokens?: number } }): Spend {
+  return {
+    inputTokens: usage.inputTokens ?? 0,
+    outputTokens: usage.outputTokens ?? 0,
+    reasoningTokens: usage.outputTokenDetails?.reasoningTokens || undefined,
+    cachedTokens: usage.inputTokenDetails?.cacheReadTokens || undefined,
+    cacheWriteTokens: usage.inputTokenDetails?.cacheWriteTokens || undefined,
+  }
+}
+
+async function compact(model: LanguageModel, messages: ModelMessage[], signal: AbortSignal, onSpend: (usage: Spend) => void) {
   let cut = Math.max(1, messages.length - KEEP_TAIL)
   while (cut < messages.length && messages[cut].role === 'tool') cut++
   if (cut >= messages.length - 1) cut = Math.max(1, messages.length - 2)
   while (cut > 0 && messages[cut].role === 'tool') cut--
   const older = messages.slice(0, cut)
   if (!older.length) return messages
-  const { text } = await generateText({
+  const { text, usage } = await generateText({
     model,
     abortSignal: signal,
     system: 'You compress an AI agent\'s working history so it can continue its task. Keep: the user\'s requests and goal word for word, decisions, constraints, every id that was created or changed (scenes, objects, nodes, pages, notes) with what it is, what is done and what is still to do, open problems, and the to-do list state. Drop chit-chat and raw data. Write compact markdown.',
     prompt: older.map(asTranscript).join('\n\n').slice(-400_000),
   })
+  onSpend({ ...spendOf(usage), compaction: true })
   return [{ role: 'user' as const, content: `Summary of the earlier conversation and work (older messages were compacted to fit the context window):\n\n${text}` }, ...messages.slice(cut)]
 }
 
@@ -117,7 +131,7 @@ async function runPass(msg: Extract<ToWorker, { type: 'start' }>) {
             if (latest) latest = messages
             return { messages: withCache(messages) }
           }
-          const next = await compact(model, messages, controller.signal)
+          const next = await compact(model, messages, controller.signal, (u) => part({ type: 'spend', ...u }))
           const after = estimateTokens(next)
           part({ type: 'compacted', beforeTokens: used, afterTokens: after })
           latest = next
@@ -138,8 +152,9 @@ async function runPass(msg: Extract<ToWorker, { type: 'start' }>) {
       else if (p.type === 'tool-result') part({ type: 'tool-result', toolCallId: p.toolCallId, toolName: p.toolName, output: msg.tools[p.toolName]?.imageOutput ? null : p.output })
       else if (p.type === 'tool-error') part({ type: 'tool-error', toolCallId: p.toolCallId, toolName: p.toolName, error: String(p.error) })
       else if (p.type === 'finish-step') {
-        const u = (p as { usage?: { inputTokens?: number; outputTokens?: number } }).usage
+        const u = (p as { usage?: Parameters<typeof spendOf>[0] }).usage
         if (u) {
+          part({ type: 'spend', ...spendOf(u) })
           lastContext = (u.inputTokens ?? 0) + (u.outputTokens ?? 0)
           part({ type: 'usage', contextTokens: lastContext, inputTokens: u.inputTokens ?? 0, outputTokens: u.outputTokens ?? 0 })
         }

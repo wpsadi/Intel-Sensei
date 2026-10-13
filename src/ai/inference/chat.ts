@@ -6,10 +6,13 @@ import { createPlanTools, PLAN_INSTRUCTIONS } from '@/ai/tools/plan'
 import { createMemoryTool, createScratchpad, createScratchpadTool, disposeScratchpad, MEMORY_INSTRUCTIONS, memoryPrompt, SCRATCHPAD_INSTRUCTIONS } from '@/ai/memory'
 import { createTodoTools, TODO_INSTRUCTIONS } from '@/ai/tools/todo'
 import { createSearchTool, upsertSearch } from '@/ai/tools/search'
+import { createScrapeTool } from '@/ai/tools/scrape'
+import { createSandboxTools, SANDBOX_INSTRUCTIONS } from '@/ai/sandbox/tools'
 import { type ChatTurn, toModelMessage } from '@/ai/utils/messages'
 import { thinkingOnly } from '@/ai/utils/thinking'
 import { currentTimePrompt } from '@/ai/utils/current-time'
 import { CHAT_MODEL } from '@/constants/ai'
+import { recordSdkUsage } from '@/ai/usage'
 
 
 /**
@@ -51,6 +54,9 @@ export async function chatWithGemini(
     instructions: SENSEI_SYSTEM_PROMPT,
     tools: {
       webSearch,
+      scrape: createScrapeTool(),
+      // terminal and python: files attached to this conversation are in the sandbox's home folder.
+      ...createSandboxTools({ attachments: () => messages.flatMap((turn) => turn.attachments ?? []) }),
       memory: createMemoryTool({ chatId: scope?.chatId }),
       ...(scratchpad && { scratchpad: createScratchpadTool(scratchpad) }),
       ...createPlanTools(onPlan),
@@ -68,6 +74,7 @@ export async function chatWithGemini(
         PLAN_INSTRUCTIONS,
         TODO_INSTRUCTIONS,
         ASK_INSTRUCTIONS,
+        SANDBOX_INSTRUCTIONS,
       ]
         .filter(Boolean)
         .join('\n\n'),
@@ -97,8 +104,10 @@ export async function chatWithGemini(
       }
     }
     if (streamError) throw streamError
+    const steps = await Promise.resolve(result.steps).catch(() => [])
+    // Every step is a billed call, even when the caller does not ask for the totals.
+    for (const step of steps) void recordSdkUsage({ provider: 'google', model: CHAT_MODEL }, step.usage)
     if (scope?.onUsage) {
-      const steps = await Promise.resolve(result.steps).catch(() => [])
       const last = steps.at(-1)?.usage
       if (last) {
         const sum = (pick: (usage: LanguageModelUsage) => number | undefined) => steps.reduce((total: number, step) => total + (pick(step.usage) ?? 0), 0)

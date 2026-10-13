@@ -1,7 +1,7 @@
 import type { ReactElement } from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
 import { BandageIcon, BoxSelectIcon, BrushIcon, CropIcon, EraserIcon, LassoIcon, PipetteIcon, StampIcon, WandIcon, WandSparklesIcon } from 'lucide-react'
-import type { Tool } from '../types'
+import type { Tool } from '@/features/s-3d/types'
 
 /** The Lucide icon of each pixel tool, with the hotspot (the point that clicks) in icon coordinates. */
 const CURSORS: Partial<Record<Tool, { icon: ReactElement; hot: string }>> = {

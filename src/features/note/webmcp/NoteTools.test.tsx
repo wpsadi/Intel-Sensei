@@ -105,4 +105,43 @@ describe('S-Note WebMCP tools', () => {
     expect(result.isError).toBe(true)
     expect(result.content[0].text).toMatch(/^Invalid input: notes/)
   })
+
+  describe('sub-notes', () => {
+    const create = (inside: string) => {
+      const createPage = vi.fn().mockResolvedValue(page('new', 'Agenda', { parentId: 'a', parentType: 'page' }))
+      useNoteStore.setState({ createPage })
+      return call('create_note', { title: 'Agenda', inside, open: false })
+    }
+
+    it('lists a new sub-note in its parent as a page block, like the editor does', async () => {
+      render(<MemoryRouter><Harness /></MemoryRouter>)
+      await create('Meeting notes')
+      const update = useNoteStore.getState().updatePage as ReturnType<typeof vi.fn>
+      expect(update).toHaveBeenCalledWith('a', { content: JSON.stringify({ type: 'doc', content: [{ type: 'pageBlock', attrs: { pageId: 'new' } }] }) })
+    })
+
+    it('keeps a trailing empty paragraph last', async () => {
+      useNoteStore.setState({ pages: { ...useNoteStore.getState().pages, a: page('a', 'Meeting notes', { content: JSON.stringify({ type: 'doc', content: [{ type: 'paragraph', content: [{ type: 'text', text: 'Hi' }] }, { type: 'paragraph' }] }) }) } })
+      render(<MemoryRouter><Harness /></MemoryRouter>)
+      await create('Meeting notes')
+      const update = useNoteStore.getState().updatePage as ReturnType<typeof vi.fn>
+      const doc = JSON.parse(update.mock.calls[0][1].content)
+      expect(doc.content.map((node: { type: string }) => node.type)).toEqual(['paragraph', 'pageBlock', 'paragraph'])
+    })
+
+    it('leaves a locked parent alone and says so', async () => {
+      render(<MemoryRouter><Harness /></MemoryRouter>)
+      const result = await create('Locked plan')
+      expect(useNoteStore.getState().updatePage).not.toHaveBeenCalled()
+      expect(result.content[0].text).toContain('is locked')
+    })
+
+    it('adds nothing for a top-level note', async () => {
+      render(<MemoryRouter><Harness /></MemoryRouter>)
+      const createPage = vi.fn().mockResolvedValue(page('top', 'Top'))
+      useNoteStore.setState({ createPage })
+      await call('create_note', { title: 'Top', open: false })
+      expect(useNoteStore.getState().updatePage).not.toHaveBeenCalled()
+    })
+  })
 })

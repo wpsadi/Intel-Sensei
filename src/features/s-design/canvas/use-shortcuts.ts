@@ -1,7 +1,7 @@
 import { useEffect, useRef } from 'react'
-import { COMMANDS, eventKey } from '../commands'
-import { useS3D } from '../store'
-import { useS3DDialog } from '../dialogs/dialog-store'
+import { COMMANDS, eventKey } from '@/features/s-3d/commands'
+import { useS3D } from '@/features/s-3d/store'
+import { useS3DDialog } from '@/features/s-3d/dialogs/dialog-store'
 
 /** Copy, cut and paste go through clipboard events in the canvas, so they are not bound here. */
 const CLIPBOARD = new Set(['mod+c', 'mod+x', 'mod+v'])
