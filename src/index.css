@@ -163,3 +163,9 @@
 .s3d-color-picker .react-colorful__saturation { border-radius: var(--radius-md); border-bottom: none; }
 .s3d-color-picker .react-colorful__hue { height: 0.75rem; border-radius: 9999px; }
 .s3d-color-picker .react-colorful__pointer { width: 0.875rem; height: 0.875rem; border-width: 2px; }
+
+/* The word being read aloud in Ask Sensei. */
+::highlight(tts-word) {
+  background-color: color-mix(in oklab, var(--primary) 30%, transparent);
+  color: inherit;
+}

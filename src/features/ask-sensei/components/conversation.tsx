@@ -1,5 +1,5 @@
 import { Bubble, Message, MessageContent } from '@/components/ui/chat'
-import { CircleStop, Copy, RotateCcw, Volume2 } from 'lucide-react'
+import { CircleStop, RotateCcw } from 'lucide-react'
 import { Checkpoint, CheckpointIcon } from '@/components/ai-elements/checkpoint'
 import { Separator } from '@/components/ui/separator'
 import { useEffect, useRef } from 'react'
@@ -8,15 +8,14 @@ import type { ChatAttachment, ChatMessage } from '@/features/note/db/types'
 import { ComposerAttachmentChip } from '@/components/assistant-ui/elements/composer'
 import { resolveMedia } from '@/features/note/db/media'
 import { useMediaUrl } from '@/features/note/db/hooks'
-import { Button } from '@/components/ui/button'
 import { ChatReasoning } from '@/features/ask-sensei/components/chat-reasoning'
 import { ChatPlanCard } from '@/features/ask-sensei/components/chat-plan'
 import { ChatQuestionsCard } from '@/features/ask-sensei/components/chat-questions'
 import { ChatSearches } from '@/features/ask-sensei/components/chat-searches'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { Markdown } from '@/features/ask-sensei/components/markdown'
-import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
-import { copyText } from '@/lib/clipboard'
+import { CopyMessage, ReplyAction, ReplyActions } from '@/components/reply-actions'
+import { cn } from '@/lib/utils'
 import { toast } from 'sonner'
 
 /** Element id of the marker at the end of the list. The page scrolls to it from the down arrow. */
@@ -28,40 +27,14 @@ function ReplyDot() {
 }
 
 /** Copy, read aloud and try again, shown in a row under each Sensei reply. */
-function ResponseActions({ text, onRetry, disabled, interrupted }: { text: string; onRetry: () => void; disabled: boolean; interrupted?: boolean }) {
-  const copy = async () => {
-    const copied = await copyText(text)
-    toast(copied ? 'Copied' : 'Could not copy')
-  }
-
-  const readAloud = () => {
-    if (!('speechSynthesis' in window)) return toast('Read aloud is not supported in this browser')
-    window.speechSynthesis.cancel()
-    window.speechSynthesis.speak(new SpeechSynthesisUtterance(text))
-  }
-
-  const action = (label: string, icon: React.ReactNode, onClick: () => void, disabledAction = false) => (
-    <Tooltip>
-      <TooltipTrigger
-        render={
-          <Button variant="ghost" size="icon-sm" aria-label={label} onClick={onClick} disabled={disabledAction}>
-            {icon}
-          </Button>
-        }
-      />
-      <TooltipContent>{label}</TooltipContent>
-    </Tooltip>
-  )
-
+function ResponseActions({ id, text, onRetry, disabled, interrupted }: { id: string; text: string; onRetry: () => void; disabled: boolean; interrupted?: boolean }) {
+  // A stopped reply is unfinished, so only trying again is offered.
   return (
-    <TooltipProvider>
-      <div className="flex items-center gap-1 text-muted-foreground">
-        {/* A stopped reply is unfinished, so only trying again is offered. */}
-        {!interrupted && action('Copy response', <Copy />, copy)}
-        {!interrupted && action('Read aloud', <Volume2 />, readAloud)}
-        {action('Try again', <RotateCcw />, onRetry, disabled)}
-      </div>
-    </TooltipProvider>
+    <ReplyActions text={text} speakId={id} hideCopyAndSpeech={interrupted}>
+      <ReplyAction label="Try again" onClick={onRetry} disabled={disabled}>
+        <RotateCcw />
+      </ReplyAction>
+    </ReplyActions>
   )
 }
 
@@ -176,7 +149,7 @@ export function Conversation({
           return (
             <Message key={message.id} id={message.id} align={isReply ? 'start' : 'end'} className="scroll-mt-6">
               {/* An interrupted reply takes the full row, so its checkpoint line runs across the chat. */}
-              <MessageContent className={message.interrupted ? 'w-full max-w-full' : undefined}>
+              <MessageContent className={cn(!isReply && 'group/user', message.interrupted ? 'w-full max-w-full' : undefined)}>
                 {!isReply && message.attachments?.length ? <MessageAttachments attachments={message.attachments} /> : null}
                 {!isReply && !message.content ? null : isWaiting ? (
                   <ReplyDot />
@@ -222,6 +195,7 @@ export function Conversation({
                     )}
                   </Bubble>
                 )}
+                {!isReply && message.content && <CopyMessage text={message.content} className="self-end" />}
                 {isReply && message.interrupted && (
                   // A line on both sides keeps the icon and label centred in the row.
                   <Checkpoint className="gap-2 py-1 [&>[data-slot=separator]]:flex-1">
@@ -232,7 +206,7 @@ export function Conversation({
                     <span className="shrink-0 text-sm font-medium">Interrupted</span>
                   </Checkpoint>
                 )}
-                {isReply && !isStreaming && <ResponseActions text={message.content} onRetry={onRetry} disabled={!!streamingId} interrupted={message.interrupted} />}
+                {isReply && !isStreaming && <ResponseActions id={message.id} text={message.content} onRetry={onRetry} disabled={!!streamingId} interrupted={message.interrupted} />}
               </MessageContent>
             </Message>
           )

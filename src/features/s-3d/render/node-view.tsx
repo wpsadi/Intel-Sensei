@@ -1,6 +1,6 @@
 import { Suspense, createContext, lazy, memo, useContext, useEffect, useLayoutEffect, useRef } from 'react'
 import type { CSSProperties, ReactNode } from 'react'
-import type { Doc, Fill, SNode } from '../types'
+import type { Doc, Fill, ImageAdjust, SNode } from '../types'
 import { shapePath, translatePath } from '../model'
 import { useFileUrl } from './use-file-url'
 
@@ -177,7 +177,7 @@ function TextContent({ n }: { n: SNode }) {
     minHeight: t.autoSize === 'fixed' ? '100%' : undefined,
     fontFamily: t.fontFamily, fontSize: t.fontSize, fontWeight: t.fontWeight, fontStyle: t.italic ? 'italic' : undefined,
     textDecoration: [t.underline && 'underline', t.strike && 'line-through'].filter(Boolean).join(' ') || undefined,
-    lineHeight: t.lineHeight, letterSpacing: `${t.letterSpacing}px`, textAlign: t.align, textTransform: t.transform,
+    lineHeight: t.lineHeight, letterSpacing: `${t.letterSpacing}px`, textAlign: t.align, textTransform: t.transform, writingMode: t.vertical ? 'vertical-rl' : undefined,
     whiteSpace: t.autoSize === 'width' ? 'pre' : 'pre-wrap', wordBreak: 'break-word', outline: 'none',
     display: 'flex', flexDirection: 'column', justifyContent: t.verticalAlign === 'middle' ? 'center' : t.verticalAlign === 'bottom' ? 'flex-end' : 'flex-start',
     cursor: editing ? 'text' : undefined, userSelect: editing ? 'text' : 'none', ...colorStyle,
@@ -199,12 +199,31 @@ function TextContent({ n }: { n: SNode }) {
   )
 }
 
+/** CSS filter string for an image adjustment; undefined when neutral. */
+export function adjustFilter(a?: ImageAdjust) {
+  if (!a) return undefined
+  const f: string[] = []
+  if (a.brightness) f.push(`brightness(${1 + a.brightness / 100})`)
+  if (a.contrast) f.push(`contrast(${1 + a.contrast / 100})`)
+  if (a.saturation) f.push(`saturate(${1 + a.saturation / 100})`)
+  if (a.temperature) f.push(`sepia(${Math.abs(a.temperature) / 250}) hue-rotate(${a.temperature > 0 ? -10 : 170}deg)`)
+  if (a.hue) f.push(`hue-rotate(${a.hue}deg)`)
+  if (a.grayscale) f.push(`grayscale(${a.grayscale / 100})`)
+  if (a.sepia) f.push(`sepia(${a.sepia / 100})`)
+  if (a.invert) f.push('invert(1)')
+  if (a.blur) f.push(`blur(${a.blur}px)`)
+  return f.join(' ') || undefined
+}
+
 function MediaContent({ n }: { n: SNode }) {
   const url = useFileUrl(n.src)
+  const maskUrl = useFileUrl(n.layerMask ?? '')
   if (!url) return <div style={{ position: 'absolute', inset: 0, display: 'grid', placeItems: 'center', fontSize: 11, color: '#888', background: '#eee' }}>{n.type}</div>
+  // The layer mask's alpha decides what shows; it is stretched to the node like the image itself.
+  const mask = maskUrl ? { maskImage: `url("${maskUrl}")`, maskSize: '100% 100%', WebkitMaskImage: `url("${maskUrl}")`, WebkitMaskSize: '100% 100%' } : undefined
   return n.type === 'image'
-    ? <img src={url} alt={n.name} draggable={false} style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} />
-    : <video src={url} autoPlay muted loop playsInline style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} />
+    ? <img src={url} alt={n.name} draggable={false} style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block', filter: adjustFilter(n.adjust), ...mask }} />
+    : <video src={url} autoPlay muted loop playsInline style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block', filter: adjustFilter(n.adjust) }} />
 }
 
 const ANIMATIONS = `

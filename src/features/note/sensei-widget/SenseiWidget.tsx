@@ -16,6 +16,7 @@ import type { WidgetChat } from '../db/types'
 import { compactSenseiChat, sendSensei, setNoteContext, stopSensei, useSenseiRuns } from './agent'
 import { WidgetComposer } from './WidgetComposer'
 import { ContextRing } from '@/components/context-ring'
+import { CopyMessage, ReplyActions } from '@/components/reply-actions'
 import { UserBubble } from '@/components/user-bubble'
 import { SNOTE_AGENT_CONTEXT_LIMIT, CHAT_MODEL } from '@/constants/ai'
 
@@ -124,13 +125,17 @@ export function SenseiWidget() {
               )}
               {messages.map((m) =>
                 m.role === 'user' ? (
-                  <UserBubble key={m.id} text={m.content} />
+                  <div key={m.id} className="group/user flex flex-col items-end">
+                    <UserBubble text={m.content} />
+                    <CopyMessage text={m.content} />
+                  </div>
                 ) : (
                   <div key={m.id} className="mr-4 flex flex-col text-sm">
                     <ChatReasoning reasoning={m.reasoning} steps={m.steps} isStreaming={busy && m === messages.at(-1) && !m.content} duration={m.reasoningSeconds} defaultOpen={false} className="mb-0" />
                     {!!m.searches?.length && <ChatSearches searches={m.searches} defaultOpen={false} className="mb-0" />}
-                    {m.content ? <Markdown>{m.content}</Markdown> : !m.error && busy && m === messages.at(-1) && !m.reasoning && !m.steps?.length && !m.searches?.length && <TypingDots className="h-3" />}
+                    {m.content ? <div id={`tts-${m.id}`}><Markdown>{m.content}</Markdown></div> : !m.error && busy && m === messages.at(-1) && !m.reasoning && !m.steps?.length && !m.searches?.length && <TypingDots className="h-3" />}
                     {m.error && <p className="rounded-md bg-destructive/10 px-2 py-1 text-xs text-destructive">{m.error}</p>}
+                    {m.content && !(busy && m === messages.at(-1)) && <ReplyActions text={m.content} speakId={`tts-${m.id}`} />}
                   </div>
                 ),
               )}

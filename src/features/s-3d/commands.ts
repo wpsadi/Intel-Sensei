@@ -23,6 +23,8 @@ const SH = isMac ? '⇧' : 'Shift+'
 const ALT = isMac ? '⌥' : 'Alt+'
 
 const tool = (t: Tool) => () => s().set({ tool: t, selection: t === 'select' ? s().selection : [] })
+/** Pixel tools keep the selection: they act on the image under the pointer or the selected one. */
+const raster = (t: Tool) => () => s().set({ tool: t })
 
 export const COMMANDS: Command[] = [
   { id: 'undo', label: 'Undo', shortcut: `${M}Z`, keys: ['mod+z'], run: () => s().undo(), enabled: () => s().past.length > 0 },
@@ -74,6 +76,19 @@ export const COMMANDS: Command[] = [
   { id: 'tool-text', label: 'Text', shortcut: 'T', keys: ['t'], run: tool('text') },
   { id: 'tool-comment', label: 'Comment', shortcut: 'C', keys: ['c'], run: tool('comment') },
   { id: 'tool-3d', label: '3D shape', shortcut: 'K', keys: ['k'], run: tool('shape3d') },
+  { id: 'tool-brush', label: 'Brush', shortcut: 'B', keys: ['b'], run: raster('brush') },
+  { id: 'tool-eraser', label: 'Eraser', shortcut: 'E', keys: ['e'], run: raster('eraser') },
+  { id: 'tool-clone', label: 'Clone stamp', shortcut: 'S', keys: ['s'], run: raster('clone') },
+  { id: 'tool-heal', label: 'Spot healing', shortcut: 'J', keys: ['j'], run: raster('heal') },
+  { id: 'tool-marquee', label: 'Marquee', shortcut: 'M', keys: ['m'], run: () => s().set({ tool: 'marquee', marqueeShape: 'rect' }) },
+  { id: 'tool-marquee-ellipse', label: 'Elliptical marquee', run: () => s().set({ tool: 'marquee', marqueeShape: 'ellipse' }) },
+  { id: 'tool-lasso', label: 'Lasso', shortcut: 'L', keys: ['l'], run: raster('lasso') },
+  { id: 'tool-wand', label: 'Magic wand', shortcut: 'W', keys: ['w'], run: raster('wand') },
+  { id: 'tool-quick', label: 'Quick selection', shortcut: 'Q', keys: ['q'], run: raster('quick') },
+  { id: 'tool-crop', label: 'Crop', shortcut: `${SH}C`, keys: ['shift+c'], run: raster('crop') },
+  { id: 'tool-eyedropper', label: 'Eyedropper', shortcut: 'I', keys: ['i'], run: raster('eyedropper') },
+  { id: 'tool-zoom', label: 'Zoom', shortcut: 'Z', keys: ['z'], run: raster('zoom') },
+  { id: 'swap-colors', label: 'Swap colours', shortcut: 'X', keys: ['x'], run: () => s().set({ foregroundColor: s().backgroundColor, backgroundColor: s().foregroundColor }) },
 ]
 
 export const cmd = (id: string) => COMMANDS.find((c) => c.id === id)!

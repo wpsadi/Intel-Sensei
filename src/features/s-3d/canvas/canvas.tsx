@@ -10,6 +10,8 @@ import type { Doc, NodeType, SNode } from '../types'
 import { Rulers } from './rulers'
 import { openSceneEditor } from '../scene-editor/edit'
 import { useCanvasShortcuts } from './use-shortcuts'
+import { toolCursor } from './tool-cursors'
+import { BRUSH_TOOLS, type RasterGesture, type XY, brushDiameter, cachedSize, commitRaster, isRaster, pixelToWorld, rectOf, startRaster } from '../raster/canvas-tools'
 
 type Handle = 'nw' | 'n' | 'ne' | 'e' | 'se' | 's' | 'sw' | 'w'
 const HANDLES: Handle[] = ['nw', 'n', 'ne', 'e', 'se', 's', 'sw', 'w']
@@ -28,6 +30,7 @@ type Gesture =
   | { kind: 'marquee'; start: { x: number; y: number }; additive: string[] }
   | { kind: 'create'; type: NodeType; start: { x: number; y: number }; parent: string }
   | { kind: 'pen-handle'; index: number }
+  | RasterGesture
 
 const snapTo = (v: number, grid: number) => Math.round(v / grid) * grid
 
@@ -66,6 +69,12 @@ function pickTarget(doc: Doc, deepId: string, selection: string[], deep: boolean
   return pick
 }
 
+/** #rrggbb and an opacity to an rgba() string, for the brush preview. */
+const hexAlpha = (hex: string, a: number) => {
+  const n = parseInt(hex.slice(1), 16)
+  return `rgba(${(n >> 16) & 255},${(n >> 8) & 255},${n & 255},${a})`
+}
+
 export function S3DCanvasEditor() {
   const s = useS3D
   const doc = useS3D((st) => st.doc)
@@ -74,6 +83,9 @@ export function S3DCanvasEditor() {
   const hovered = useS3D((st) => st.hovered)
   const camera = useS3D((st) => st.camera)
   const tool = useS3D((st) => st.tool)
+  const fg = useS3D((st) => st.foregroundColor)
+  const brush = useS3D((st) => st.brush)
+  const cloneSample = useS3D((st) => st.cloneSample)
   const editingTextId = useS3D((st) => st.editingTextId)
   const showRulers = useS3D((st) => st.showRulers)
   const showGrid = useS3D((st) => st.showGrid)
@@ -91,6 +103,9 @@ export function S3DCanvasEditor() {
   const [spaceDown, setSpaceDown] = useState(false)
   const [altDown, setAltDown] = useState(false)
   const [panning, setPanning] = useState(false)
+  const [trail, setTrail] = useState<XY[]>([])
+  const [strokePreview, setStrokePreview] = useState<XY[]>([])
+  const brushRef = useRef<HTMLDivElement>(null)
 
   const finishPen = useCallback((closed = false) => {
     setPen((points) => {
@@ -240,6 +255,16 @@ export function S3DCanvasEditor() {
       return
     }
 
+    if (st.tool === 'zoom' && e.button === 0) {
+      const rect = rootRef.current!.getBoundingClientRect()
+      st.zoomTo(st.camera.zoom * (e.altKey ? 0.5 : 2), e.clientX - rect.left, e.clientY - rect.top)
+      return
+    }
+    if (isRaster(st.tool)) {
+      if (e.button === 0) gesture.current = startRaster(st.tool, hitNode(e.target), w, { shift: e.shiftKey, alt: e.altKey })
+      return
+    }
+
     const handle = target.dataset.handle as Handle | 'rotate' | undefined
     if (e.button === 0 && handle && st.selection.length) {
       st.beginGesture()
@@ -320,6 +345,13 @@ export function S3DCanvasEditor() {
     const w = toWorld(e.clientX, e.clientY)
     broadcastPresence(w.x, w.y)
     if (st.tool === 'pen') setPenCursor(w)
+    if (BRUSH_TOOLS.includes(st.tool) && brushRef.current) {
+      const d = brushDiameter(st.doc, hitNode(e.target), st.selection, st.brush.size, st.camera.zoom)
+      const el = brushRef.current
+      el.style.display = 'block'
+      el.style.width = el.style.height = `${d}px`
+      el.style.transform = `translate(${w.x * st.camera.zoom + st.camera.x - d / 2}px, ${w.y * st.camera.zoom + st.camera.y - d / 2}px)`
+    }
     const g = gesture.current
     if (!g) {
       const h = hitNode(e.target)
@@ -393,6 +425,12 @@ export function S3DCanvasEditor() {
       const scope = containerAt(d, st.pageId, g.start.x, g.start.y)
       const hits = childrenOf(d, scope).filter((id) => d.nodes[id]?.visible && !d.nodes[id].locked && intersects(r, absRect(d, id)))
       st.set({ selection: [...new Set([...g.additive, ...hits])] })
+    } else if (g.kind === 'raster') {
+      g.points.push(w)
+      if (g.tool === 'marquee') setMarquee(rectOf(g.start, w))
+      else if (g.tool === 'crop') setDraft(rectOf(g.start, w))
+      else if (g.tool === 'lasso') setTrail(g.points.slice())
+      else if (BRUSH_TOOLS.includes(g.tool)) setStrokePreview(g.points.slice())
     } else if (g.kind === 'create') {
       let x2 = w.x
       let y2 = w.y
@@ -524,7 +562,15 @@ export function S3DCanvasEditor() {
     setPanning(false)
     setGuides([])
     setMarquee(null)
+    setStrokePreview([])
     if (!g) return
+    if (g.kind === 'raster') {
+      g.points.push(toWorld(e.clientX, e.clientY))
+      setTrail([])
+      setDraft(null)
+      void commitRaster(g)
+      return
+    }
     if (g.kind === 'move') {
       // Dropping onto a different frame reparents the nodes.
       if (g.moved) {
@@ -616,6 +662,9 @@ export function S3DCanvasEditor() {
   }), [doc, editingTextId, s])
 
   /* ---------- overlay geometry (screen space) ---------- */
+  const cloneNode = cloneSample ? doc.nodes[cloneSample.id] : undefined
+  const cloneDims = cloneNode ? cachedSize(cloneNode.src) : undefined
+  const cloneMarker = cloneNode && cloneDims && cloneSample ? pixelToWorld(doc, cloneNode, cloneDims, [cloneSample.x, cloneSample.y]) : null
   const toScreen = (x: number, y: number) => ({ x: x * camera.zoom + camera.x, y: y * camera.zoom + camera.y })
   const selRects = selection.filter((id) => doc.nodes[id]).map((id) => ({ id, ...absRect(doc, id), rot: doc.nodes[id].rotation }))
   const single = selRects.length === 1 ? selRects[0] : null
@@ -636,7 +685,7 @@ export function S3DCanvasEditor() {
     return step * camera.zoom
   })()
   const bg = page?.background ?? (dark ? '#1e1e1e' : '#f5f5f5')
-  const cursor = panning ? 'grabbing' : spaceDown || tool === 'hand' ? 'grab' : tool === 'select' ? 'default' : tool === 'text' ? 'text' : 'crosshair'
+  const cursor = panning ? 'grabbing' : spaceDown || tool === 'hand' ? 'grab' : tool === 'select' ? 'default' : tool === 'text' ? 'text' : tool === 'zoom' ? (altDown ? 'zoom-out' : 'zoom-in') : BRUSH_TOOLS.includes(tool) ? 'none' : toolCursor(tool)
 
   const topFrames = (page?.children ?? []).map((id) => doc.nodes[id]).filter((n): n is SNode => !!n && n.visible && (n.type === 'frame' || n.type === 'section' || n.type === 'shape3d' || n.type === 'model3d'))
   const pagePeers = Object.values(peers).filter((p) => p.pageId === page?.id && Date.now() - p.seen < 15000)
@@ -656,7 +705,10 @@ export function S3DCanvasEditor() {
         onPointerDown={onPointerDown}
         onPointerMove={onPointerMove}
         onPointerUp={onPointerUp}
-        onPointerLeave={() => s.getState().set({ hovered: null })}
+        onPointerLeave={() => {
+          if (brushRef.current) brushRef.current.style.display = 'none'
+          s.getState().set({ hovered: null })
+        }}
         onDoubleClick={onDoubleClick}
         onDragOver={(e) => e.preventDefault()}
         onDrop={onDrop}
@@ -696,6 +748,9 @@ export function S3DCanvasEditor() {
             const a = toScreen(marquee.x, marquee.y)
             return <rect x={a.x} y={a.y} width={marquee.w * camera.zoom} height={marquee.h * camera.zoom} fill="rgba(13,153,255,.08)" stroke="#0d99ff" />
           })()}
+          {strokePreview.length > 1 && <polyline points={strokePreview.map((p) => { const q = toScreen(p.x, p.y); return `${q.x},${q.y}` }).join(' ')} fill="none" stroke={tool === 'eraser' ? 'rgba(120,120,120,.6)' : hexAlpha(fg, brush.opacity)} strokeWidth={brushDiameter(doc, null, selection, brush.size, camera.zoom)} strokeLinecap="round" strokeLinejoin="round" />}
+          {cloneMarker && (() => { const q = toScreen(cloneMarker.x, cloneMarker.y); return <g stroke="#0d99ff" strokeWidth={1.5}><circle cx={q.x} cy={q.y} r={8} fill="none" /><path d={`M${q.x - 12},${q.y}H${q.x + 12}M${q.x},${q.y - 12}V${q.y + 12}`} /></g> })()}
+          {trail.length > 1 && <polyline points={trail.map((p) => { const q = toScreen(p.x, p.y); return `${q.x},${q.y}` }).join(' ')} fill="rgba(13,153,255,.08)" stroke="#0d99ff" />}
           {draft && (() => {
             const a = toScreen(draft.x, draft.y)
             return <rect x={a.x} y={a.y} width={draft.w * camera.zoom} height={draft.h * camera.zoom} fill="rgba(13,153,255,.06)" stroke="#0d99ff" strokeDasharray="4 3" rx={tool === 'ellipse' ? draft.w * camera.zoom / 2 : 0} />
@@ -707,6 +762,8 @@ export function S3DCanvasEditor() {
             </g>
           )}
         </svg>
+
+        <div ref={brushRef} className="pointer-events-none absolute left-0 top-0 rounded-full border border-black/60 shadow-[0_0_0_1px_rgba(255,255,255,0.7)]" style={{ display: 'none' }} />
 
         {/* Frame name labels: click to select the frame. */}
         {topFrames.map((n) => {

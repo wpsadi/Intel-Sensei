@@ -15,6 +15,7 @@ import type { AutoLayout, ConstraintH, ConstraintV, SNode, Shape3D, Sizing, Text
 import { Check, ColorField, IconBtn, MIXED, type Maybe, NumberField, Section, Sel, TextField, shared, update } from './fields'
 import { EffectsSection, FillSection, StrokeSection } from './paint-sections'
 import { ExportSection } from './export-section'
+import { ImageSection } from './image-section'
 
 const BLENDS = ['normal', 'multiply', 'screen', 'overlay', 'darken', 'lighten', 'color-dodge', 'color-burn', 'hard-light', 'soft-light', 'difference', 'exclusion', 'hue', 'saturation', 'color', 'luminosity']
 const FONTS = ['Inter Variable', 'Roboto Variable', 'system-ui', 'Arial', 'Helvetica', 'Georgia', 'Times New Roman', 'Courier New', 'monospace', 'serif', 'sans-serif', 'cursive']
@@ -391,6 +392,7 @@ export function DesignPanel() {
       <LayoutSection nodes={nodes} />
       <ShapeSection nodes={nodes} />
       {all(['text']) && <TypographySection nodes={nodes} />}
+      {all(['image', 'video']) && <ImageSection nodes={nodes} />}
       {all(['shape3d', 'model3d']) && <ThreeSection nodes={nodes} />}
       {paintable && <FillSection nodes={nodes} />}
       {paintable && <StrokeSection nodes={nodes} />}

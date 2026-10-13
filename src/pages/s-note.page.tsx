@@ -1,7 +1,7 @@
 import { ScrollArea } from '@/components/ui/scroll-area'
 import '@/features/note/snote.css'
 import { ChevronRightIcon, StarIcon } from 'lucide-react'
-import { Fragment, useEffect } from 'react'
+import { Fragment, useEffect, useLayoutEffect } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import { SidebarInset, SidebarProvider, SidebarTrigger } from '@/components/ui/sidebar'
 import { ensureWorkspace, startReminders } from '@/features/note/lib/bootstrap'
@@ -18,6 +18,7 @@ import { useNoteStore } from '@/features/note/note.store'
 import { NoteTools } from '@/features/note/webmcp/NoteTools'
 import { SenseiWidget } from '@/features/note/sensei-widget/SenseiWidget'
 import { useUndoShortcuts } from '@/features/note/editor/live-editors'
+import { SNoteSkeleton } from '@/features/note/components/SNoteSkeleton'
 function PageHeader({ pageId }: { pageId?: string }) {
   const chain = useAncestry(pageId) ?? []
   const page = usePage(pageId)
@@ -53,14 +54,18 @@ function PageHeader({ pageId }: { pageId?: string }) {
 function SNotePage() {
   const { pageId } = useParams()
   const navigate = useNavigate()
+  const ready = useNoteStore((s) => s.ready)
   useUndoShortcuts(pageId)
 
-  useEffect(() => {
+  // Layout effect: the redirect to the workspace page happens before paint, so the skeleton never shows the wrong page.
+  useLayoutEffect(() => {
     // Keep the query string (e.g. ?settings=open) when redirecting into the workspace page.
     if (!pageId) ensureWorkspace().then((id) => id && navigate({ pathname: `/s-note/${id}`, search: location.search }, { replace: true }))
   }, [pageId, navigate])
 
   useEffect(() => startReminders((id) => navigate(`/s-note/${id}`)), [navigate])
+
+  if (!ready) return <SNoteSkeleton />
 
   return (
     <SidebarProvider

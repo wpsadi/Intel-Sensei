@@ -14,7 +14,12 @@ import { downloadBlob, storeFile } from '../files'
 import { type DiscoverItem, OWNING_UNITS, searchModels } from '../discover/smithsonian'
 import { importRemoteModel } from '../io'
 import { askUser } from './ask-user'
-import type { Effect, Fill, Geometry3D, Keyframe3D, Light3D, Material3D, MeshData3D, NodeType, Obj3D, SNode, Scene3D, Vec3 } from '../types'
+import { removeBackground, restoreBackground } from '../remove-background'
+import { activeSelection, cropCanvas, decode, editPixels, extendCanvas, readPixels, resizeCanvas, revertImages, selectPixels, straightenCanvas, transformImages } from '../raster/bake'
+import { type Point, type Pixels, type RGB, type Selection, backgroundEraseStroke, cloneStroke, fillMask, healSpot, hexRgb, hueSaturation, maskSummary, paintStroke, pickColor, vibrance } from '../raster/pixels'
+import { translatePath } from '../model'
+import { exportNodes } from '../export/exporter'
+import type { Effect, Fill, Geometry3D, ImageAdjust, Keyframe3D, Light3D, Material3D, MeshData3D, NodeType, Obj3D, SNode, Scene3D, Vec3 } from '../types'
 
 const s = () => useS3D.getState()
 
@@ -26,6 +31,44 @@ const fillSpec = z.union([
   z.string().describe('Hex color, e.g. "#1e293b"'),
   z.object({ kind: z.enum(['linear', 'radial']), angle: z.number().optional(), stops: z.array(z.object({ offset: z.number(), color: z.string() })) }),
 ])
+
+/** A pixel selection shape in source pixels (the marquee, lasso and magic wand tools). */
+const selectionSpec = z.discriminatedUnion('type', [
+  z.object({ type: z.literal('rect'), x: z.number(), y: z.number(), w: z.number().positive(), h: z.number().positive() }).describe('Rectangular marquee'),
+  z.object({ type: z.literal('ellipse'), x: z.number(), y: z.number(), w: z.number().positive(), h: z.number().positive() }).describe('Elliptical marquee; x, y, w, h are the bounding box'),
+  z.object({ type: z.literal('lasso'), points: z.array(z.tuple([z.number(), z.number()])).min(3).describe('Polygon corners in source pixels') }).describe('Lasso'),
+  z.object({
+    type: z.literal('wand'),
+    x: z.number().describe('Seed pixel x'),
+    y: z.number().describe('Seed pixel y'),
+    tolerance: z.number().min(0).max(255).optional().describe('Colour difference allowed per channel (default 32)'),
+    contiguous: z.boolean().optional().describe('Only pixels connected to the seed (default true)'),
+  }).describe('Magic wand: selects pixels of similar colour to the seed'),
+])
+
+/** Selection spec with defaults applied (WebMCP calls skip zod parsing). */
+const toSelection = (spec: z.infer<typeof selectionSpec>): Selection =>
+  spec.type === 'wand' ? { type: 'wand', x: spec.x, y: spec.y, tolerance: spec.tolerance ?? 32, contiguous: spec.contiguous ?? true } : spec
+
+/** Default swatches, a small set of common colours (Photoshop's swatch panel starts from a similar grid). */
+export const SWATCHES = ['#000000', '#ffffff', '#ef4444', '#f97316', '#eab308', '#22c55e', '#06b6d4', '#3b82f6', '#8b5cf6', '#ec4899', '#78716c', '#e7e5e4']
+
+/** Photoshop-style custom shapes as paths on a 100×100 grid, scaled to the node size by add_shape. */
+const SHAPE_PATHS: Record<string, string> = {
+  heart: 'M50,90 C20,65 0,45 0,25 C0,10 12,0 27,0 C38,0 46,7 50,15 C54,7 62,0 73,0 C88,0 100,10 100,25 C100,45 80,65 50,90 Z',
+  arrow: 'M0,35 L60,35 L60,10 L100,50 L60,90 L60,65 L0,65 Z',
+  cross: 'M35,0 L65,0 L65,35 L100,35 L100,65 L65,65 L65,100 L35,100 L35,65 L0,65 L0,35 L35,35 Z',
+  lightning: 'M60,0 L15,55 L45,55 L35,100 L85,40 L55,40 L70,0 Z',
+  chevron: 'M0,20 L50,70 L100,20 L100,45 L50,95 L0,45 Z',
+  'speech-bubble': 'M10,0 L90,0 Q100,0 100,10 L100,70 Q100,80 90,80 L55,80 L30,100 L35,80 L10,80 Q0,80 0,70 L0,10 Q0,0 10,0 Z',
+  star: 'M50,0 L61,35 L98,35 L68,57 L79,91 L50,70 L21,91 L32,57 L2,35 L39,35 Z',
+  burst: 'M50,0 L58,22 L80,8 L76,33 L100,35 L84,52 L100,70 L76,71 L80,96 L58,82 L50,100 L42,82 L20,96 L24,71 L0,70 L16,52 L0,35 L24,33 L20,8 L42,22 Z',
+}
+
+const IMAGE_PRESETS: Record<string, ImageAdjust> = {
+  original: {}, vivid: { saturation: 40, contrast: 15 }, 'black-and-white': { grayscale: 100, contrast: 10 }, vintage: { sepia: 50, contrast: -10, brightness: 5 },
+  warm: { temperature: 40, saturation: 10 }, cool: { temperature: -40 }, faded: { contrast: -25, brightness: 10, saturation: -20 }, dramatic: { contrast: 40, saturation: -15, brightness: -10 },
+}
 
 const propsShape = {
   name: z.string().optional(),
@@ -42,10 +85,15 @@ const propsShape = {
   stroke: z.object({ color: z.string(), width: z.number().optional() }).optional(),
   shadow: z.object({ x: z.number().optional(), y: z.number().optional(), blur: z.number().optional(), color: z.string().optional() }).optional(),
   blur: z.number().optional().describe('Background blur (glass) radius'),
+  adjust: z.object({
+    brightness: z.number().optional(), contrast: z.number().optional(), saturation: z.number().optional(), temperature: z.number().optional(),
+    hue: z.number().optional(), blur: z.number().optional(), grayscale: z.number().optional(), sepia: z.number().optional(), invert: z.boolean().optional(),
+  }).optional().describe('Image/video adjustments: brightness, contrast, saturation, temperature in -100..100; hue -180..180 degrees; blur px; grayscale and sepia 0..100'),
   text: z.string().optional().describe('Text content (text nodes)'),
   fontSize: z.number().optional(),
   fontWeight: z.number().optional(),
   textAlign: z.enum(['left', 'center', 'right']).optional(),
+  textVertical: z.boolean().optional().describe('Vertical type: characters run top to bottom (Photoshop Vertical Type tool)'),
   lineHeight: z.number().optional(),
   autoLayout: z.object({
     direction: z.enum(['horizontal', 'vertical']),
@@ -196,6 +244,157 @@ export const schemas = {
   }),
   create_page: z.object({ name: z.string() }),
   select_nodes: z.object({ ids: z.array(z.string()) }),
+  remove_background: z.object({
+    ids: z.array(z.string()).optional().describe('Image node ids; defaults to the selection'),
+    restore: z.boolean().optional().describe('Bring back the original image instead of removing the background'),
+  }),
+  adjust_image: z.object({
+    ids: z.array(z.string()).optional().describe('Image or video node ids; defaults to the selection'),
+    preset: z.enum(['original', 'vivid', 'black-and-white', 'vintage', 'warm', 'cool', 'faded', 'dramatic']).optional().describe('Starting look; the other fields are applied on top'),
+    brightness: z.number().min(-100).max(100).optional(), contrast: z.number().min(-100).max(100).optional(),
+    saturation: z.number().min(-100).max(100).optional(), temperature: z.number().min(-100).max(100).optional().describe('Warm (+) to cool (-)'),
+    hue: z.number().min(-180).max(180).optional().describe('Degrees'), blur: z.number().min(0).max(40).optional().describe('px'),
+    grayscale: z.number().min(0).max(100).optional(), sepia: z.number().min(0).max(100).optional(), invert: z.boolean().optional(),
+    reset: z.boolean().optional().describe('Clear all adjustments first'),
+  }),
+  place_image: z.object({
+    src: z.string().describe('Image URL or data: URL to place. It is fetched and stored with the document.'),
+    name: z.string().optional(),
+    parentId: z.string().optional().describe('Frame to place it in; omit for the page'),
+    x: z.number().optional().describe('Relative to the parent'),
+    y: z.number().optional(),
+    w: z.number().positive().optional().describe('Width in design px; defaults to the image width in pixels'),
+    h: z.number().positive().optional().describe('Height in design px; defaults to the width times the image aspect'),
+  }),
+  inspect_image: z.object({ ids: z.array(z.string()).optional().describe('Image node ids; defaults to the selection') }),
+  crop_image: z.object({
+    ids: z.array(z.string()).optional().describe('Image node ids; defaults to the selection'),
+    x: z.number().min(0).describe('Left edge in source pixels (see inspect_image for the size)'),
+    y: z.number().min(0).describe('Top edge in source pixels'),
+    w: z.number().positive().describe('Width in source pixels'),
+    h: z.number().positive().describe('Height in source pixels'),
+  }),
+  straighten_image: z.object({
+    ids: z.array(z.string()).optional().describe('Image node ids; defaults to the selection'),
+    degrees: z.number().min(-45).max(45).describe('Rotation; positive turns counter-clockwise, as in Photoshop'),
+    crop: z.boolean().optional().describe('Trim to the largest upright rectangle so no transparent corners remain (default true)'),
+  }),
+  resize_image: z.object({
+    ids: z.array(z.string()).optional().describe('Image node ids; defaults to the selection'),
+    width: z.number().positive().optional().describe('New width in source pixels; the height follows the aspect when only one is given'),
+    height: z.number().positive().optional().describe('New height in source pixels'),
+    resample: z.boolean().optional().describe('true (default) changes the pixel count; false keeps the pixels and only changes the print size through resolution'),
+    smooth: z.boolean().optional().describe('Smooth resampling (default) or hard-edged nearest neighbour for pixel art'),
+    resolution: z.number().positive().optional().describe('Pixels per inch when resample is false (default 300)'),
+  }),
+  canvas_size: z.object({
+    ids: z.array(z.string()).optional().describe('Image node ids; defaults to the selection'),
+    width: z.number().optional().describe('New canvas width in source pixels; with relative, the amount to add (negative removes)'),
+    height: z.number().optional().describe('New canvas height in source pixels; with relative, the amount to add'),
+    anchor: z.enum(['top-left', 'top', 'top-right', 'left', 'center', 'right', 'bottom-left', 'bottom', 'bottom-right']).optional().describe('Where the image sits on the new canvas (default center)'),
+    relative: z.boolean().optional(),
+  }),
+  paint_image: z.object({
+    ids: z.array(z.string()).optional().describe('Image node ids; defaults to the selection'),
+    target: z.enum(['pixels', 'mask']).optional().describe('pixels (default) paints the image. mask paints its layer mask: opaque shows the image, transparent hides it, like Photoshop white and black on a mask.'),
+    initial: z.enum(['reveal', 'hide']).optional().describe('Mask only, when the mask is first created: reveal (default) shows everything'),
+    strokes: z.array(z.object({
+      mode: z.enum(['paint', 'erase']).describe('paint adds colour; erase removes pixels (eraser tool)'),
+      color: z.string().optional().describe('Hex colour for paint, e.g. "#ff0000"; ignored for erase and masks'),
+      key: z.string().optional().describe('Erase only: background eraser. Hex colour sampled from the background; only pixels close to it are removed'),
+      tolerance: z.number().min(0).max(255).optional().describe('Background eraser: colour difference allowed per channel (default 32)'),
+      size: z.number().positive().describe('Brush diameter in source pixels'),
+      hardness: z.number().min(0).max(1).optional().describe('0 soft edge to 1 hard edge (default 0.8)'),
+      opacity: z.number().min(0).max(1).optional().describe('Flow per stamp, 0 to 1 (default 1)'),
+      points: z.array(z.tuple([z.number(), z.number()])).min(1).describe('Stroke path in source pixels'),
+    })).min(1),
+  }),
+  clone_image: z.object({
+    ids: z.array(z.string()).optional().describe('Image node ids; defaults to the selection'),
+    strokes: z.array(z.object({
+      from: z.tuple([z.number(), z.number()]).describe('Sample point in source pixels (Alt-click in Photoshop); the clone keeps this offset'),
+      points: z.array(z.tuple([z.number(), z.number()])).min(1).describe('Where to paint, in source pixels'),
+      size: z.number().positive().describe('Brush diameter in source pixels'),
+      hardness: z.number().min(0).max(1).optional(),
+      opacity: z.number().min(0).max(1).optional(),
+    })).min(1),
+  }),
+  heal_image: z.object({
+    ids: z.array(z.string()).optional().describe('Image node ids; defaults to the selection'),
+    spots: z.array(z.object({
+      x: z.number().describe('Centre of the blemish in source pixels'),
+      y: z.number(),
+      size: z.number().positive().describe('Diameter of the blemish in source pixels'),
+    })).min(1),
+  }),
+  fill_image: z.object({
+    ids: z.array(z.string()).optional().describe('Image node ids; defaults to the selection'),
+    selection: selectionSpec.optional().describe('Area to fill; defaults to the active selection from select_pixels'),
+  }),
+  pick_color: z.object({
+    ids: z.array(z.string()).optional().describe('Image node ids; defaults to the selection (first one is used)'),
+    x: z.number().describe('Source pixel x'),
+    y: z.number().describe('Source pixel y'),
+  }),
+  vibrance_image: z.object({
+    ids: z.array(z.string()).optional().describe('Image node ids; defaults to the selection'),
+    amount: z.number().min(-100).max(100).describe('-100 desaturates; positive values boost muted colours more than saturated ones'),
+  }),
+  hue_saturation_image: z.object({
+    ids: z.array(z.string()).optional().describe('Image node ids; defaults to the selection'),
+    hue: z.number().min(-180).max(180).optional().describe('Degrees'),
+    saturation: z.number().min(-100).max(100).optional(),
+    lightness: z.number().min(-100).max(100).optional(),
+  }),
+  add_shape: z.object({
+    shape: z.enum(Object.keys(SHAPE_PATHS) as [string, ...string[]]).describe('Custom shape preset'),
+    name: z.string().optional(),
+    parentId: z.string().optional().describe('Frame to place it in; omit for the page'),
+    x: z.number().optional(),
+    y: z.number().optional(),
+    w: z.number().positive().optional().describe('Width in px (default 120)'),
+    h: z.number().positive().optional().describe('Height in px (default 120)'),
+    fill: z.string().optional().describe('Hex fill colour (default #111111)'),
+  }),
+  arrange_nodes: z.object({
+    ids: z.array(z.string()).optional().describe('Node ids; defaults to the selection'),
+    direction: z.enum(['forward', 'backward', 'front', 'back']).describe('Move one step forward/backward or to the front/back of the layer stack'),
+  }),
+  group_nodes: z.object({
+    ids: z.array(z.string()).optional().describe('Node ids; defaults to the selection'),
+    ungroup: z.boolean().optional().describe('Ungroup the given groups instead of grouping'),
+  }),
+  get_history: z.object({}),
+  set_colors: z.object({
+    foreground: z.string().optional().describe('Hex foreground colour, used by brush, shape and fill tools'),
+    background: z.string().optional().describe('Hex background colour'),
+    swap: z.boolean().optional().describe('Swap foreground and background (X in Photoshop)'),
+  }),
+  list_swatches: z.object({}),
+  revert_image: z.object({
+    ids: z.array(z.string()).optional().describe('Image node ids; defaults to the selection'),
+    layerMask: z.boolean().optional().describe('Remove only the layer mask and keep the pixel edits'),
+  }),
+  select_pixels: z.object({
+    ids: z.array(z.string()).optional().describe('Image node ids; defaults to the selection'),
+    mode: z.enum(['replace', 'add', 'subtract', 'intersect', 'invert', 'deselect', 'layerMask']).optional().describe('replace (default) makes a new selection; add, subtract and intersect combine with the current one; invert flips it (or selects everything when there is none); layerMask turns the selection into the layer mask (reveal selection) and clears it; deselect clears it'),
+    selection: selectionSpec.optional(),
+    refine: z.object({
+      grow: z.number().min(-50).max(50).optional().describe('Pixels to grow (positive) or contract (negative) the edge'),
+      feather: z.number().min(0).max(50).optional().describe('Soft edge radius in pixels'),
+    }).optional().describe('Select & Mask edge refinement, applied after the selection is combined'),
+  }),
+  undo: z.object({}),
+  redo: z.object({}),
+  set_view: z.object({
+    zoom: z.number().min(0.05).max(16).optional().describe('Zoom level, 1 is 100%'),
+    fit: z.boolean().optional().describe('Zoom to fit the selection, or the page when nothing is selected'),
+  }),
+  export_image: z.object({
+    ids: z.array(z.string()).optional().describe('Node ids; defaults to the selection'),
+    format: z.enum(['png', 'jpg', 'svg', 'pdf']).optional().describe('Default png'),
+    scale: z.number().positive().max(8).optional().describe('Pixel scale, default 1'),
+  }),
   set_page: z.object({ id: z.string() }),
   list_pages: z.object({}),
 
@@ -388,6 +587,7 @@ function toPatch(p: Props, base?: SNode): Partial<SNode> {
   for (const k of ['name', 'x', 'y', 'w', 'h', 'rotation', 'opacity', 'visible', 'sides', 'path', 'shape3d', 'modelColor'] as const) {
     if (p[k] !== undefined) (out as Record<string, unknown>)[k] = p[k]
   }
+  if (p.adjust) out.adjust = { ...base?.adjust, ...p.adjust }
   if (p.fills) out.fills = p.fills.map(toFill)
   if (p.fill !== undefined) out.fills = p.fill === 'none' ? [] : [toFill(p.fill)]
   if (p.radius !== undefined) out.radius = (typeof p.radius === 'number' ? [p.radius, p.radius, p.radius, p.radius] : p.radius) as SNode['radius']
@@ -410,6 +610,7 @@ function toPatch(p: Props, base?: SNode): Partial<SNode> {
         ...(p.fontSize && { fontSize: p.fontSize }),
         ...(p.fontWeight && { fontWeight: p.fontWeight }),
         ...(p.textAlign && { align: p.textAlign }),
+        ...(p.textVertical !== undefined && { vertical: p.textVertical }),
         ...(p.lineHeight && { lineHeight: p.lineHeight }),
       }
     }
@@ -732,7 +933,16 @@ async function placeOutput(sceneId: string, blob: Blob, name: string, type: 'ima
 /** Search results by id, so imports use the real download URL rather than one the model retyped. */
 const found = new Map<string, DiscoverItem>()
 
-export const impl = {
+/** Image node ids to act on: the given ones, else the selection. Throws when none are images. */
+const imageIds = (ids?: string[]) => {
+  const targets = (ids?.length ? ids : s().selection).filter((id) => s().doc.nodes[id]?.type === 'image')
+  if (!targets.length) throw new Error('No image nodes: pass ids or select an image')
+  return targets
+}
+
+const brushOf = (b: { size: number; hardness?: number; opacity?: number }) => ({ size: b.size, hardness: b.hardness ?? 0.8, opacity: b.opacity ?? 1 })
+
+const implFns = {
   get_document() {
     const { doc, pageId, selection } = s()
     const page = doc.pages.find((p) => p.id === pageId)!
@@ -789,6 +999,228 @@ export const impl = {
     s().addPage()
     s().renamePage(s().pageId, name)
     return { id: s().pageId }
+  },
+  async remove_background({ ids, restore }: z.infer<typeof schemas.remove_background>) {
+    const targets = (ids?.length ? ids : s().selection).filter((id) => s().doc.nodes[id]?.type === 'image')
+    if (!targets.length) throw new Error('No image nodes to process: pass ids or select one')
+    if (restore) return { restored: restoreBackground(targets) }
+    return { cutOut: await removeBackground(targets), note: 'Background is now transparent; the original is kept and can be restored with restore: true.' }
+  },
+  adjust_image({ ids, preset, reset, ...values }: z.infer<typeof schemas.adjust_image>) {
+    const targets = (ids?.length ? ids : s().selection).filter((id) => ['image', 'video'].includes(s().doc.nodes[id]?.type ?? ''))
+    if (!targets.length) throw new Error('No image or video nodes to adjust: pass ids or select one')
+    const base = preset ? IMAGE_PRESETS[preset] : undefined
+    s().updateNodes(targets, (n) => void (n.adjust = { ...(reset || base ? base : n.adjust), ...values }))
+    return { adjusted: targets, adjust: s().doc.nodes[targets[0]].adjust ?? {} }
+  },
+  async place_image({ src, name, parentId, x, y, w, h }: z.infer<typeof schemas.place_image>) {
+    const res = await fetch(src)
+    if (!res.ok) throw new Error(`Could not fetch the image (${res.status})`)
+    const blob = await res.blob()
+    if (!blob.type.startsWith('image/')) throw new Error(`The file is not an image (${blob.type || 'unknown type'})`)
+    const bitmap = await createImageBitmap(blob)
+    const natural = { width: bitmap.width, height: bitmap.height }
+    bitmap.close()
+    const width = w ?? natural.width
+    const height = h ?? (width * natural.height) / natural.width
+    const ref = await storeFile(blob, name ?? src.split('/').pop()?.split('?')[0] ?? 'image', s().doc.id)
+    const node = s().addNode('image', { name: name ?? 'Image', src: ref, x: x ?? 0, y: y ?? 0, w: width, h: height }, parentOk(parentId))
+    return { id: node.id, w: width, h: height, pixels: natural }
+  },
+  async inspect_image({ ids }: z.infer<typeof schemas.inspect_image>) {
+    const images = []
+    for (const id of imageIds(ids)) {
+      const n = s().doc.nodes[id]
+      const { canvas } = await readPixels(id)
+      const sel = activeSelection(id)
+      images.push({
+        id,
+        name: n.name,
+        pixels: { width: canvas.width, height: canvas.height },
+        scale: +(n.w / canvas.width).toFixed(4),
+        adjust: n.adjust ?? {},
+        hasLayerMask: !!n.layerMask,
+        hasOriginal: !!n.origSrc,
+        selection: sel ? maskSummary(sel) : null,
+      })
+    }
+    return { images }
+  },
+  async crop_image({ ids, x, y, w, h }: z.infer<typeof schemas.crop_image>) {
+    const cropped = await transformImages(imageIds(ids), (c) => {
+      const left = Math.floor(Math.min(x, c.width - 1))
+      const top = Math.floor(Math.min(y, c.height - 1))
+      const width = Math.floor(Math.min(w, c.width - left))
+      const height = Math.floor(Math.min(h, c.height - top))
+      if (width < 1 || height < 1) throw new Error('The crop is outside the image')
+      return cropCanvas(c, left, top, width, height)
+    })
+    return { cropped }
+  },
+  async straighten_image({ ids, degrees, crop }: z.infer<typeof schemas.straighten_image>) {
+    const straightened = await transformImages(imageIds(ids), (c) => straightenCanvas(c, degrees, crop ?? true))
+    return { straightened, degrees }
+  },
+  async resize_image({ ids, width, height, resample, smooth, resolution }: z.infer<typeof schemas.resize_image>) {
+    const targets = imageIds(ids)
+    if (resample === false) {
+      // Image size without resampling: the pixels stay, and the print size follows the resolution.
+      const dpi = resolution ?? 300
+      const sized = []
+      for (const id of targets) {
+        const canvas = await decode(s().doc.nodes[id].src)
+        s().updateNodes([id], { w: (canvas.width / dpi) * 96, h: (canvas.height / dpi) * 96 })
+        sized.push(id)
+      }
+      return { resized: sized, resolution: dpi }
+    }
+    if (!width && !height) throw new Error('Give a width or a height')
+    const resized = await transformImages(targets, (c) => {
+      const w = width ?? Math.round((c.width * (height as number)) / c.height)
+      const h = height ?? Math.round((c.height * width!) / c.width)
+      return resizeCanvas(c, Math.max(1, Math.round(w)), Math.max(1, Math.round(h)), smooth ?? true)
+    }, { keepSize: true })
+    return { resized }
+  },
+  async canvas_size({ ids, width, height, anchor, relative }: z.infer<typeof schemas.canvas_size>) {
+    const sized = await transformImages(imageIds(ids), (c) => {
+      const w = relative ? c.width + (width ?? 0) : (width ?? c.width)
+      const h = relative ? c.height + (height ?? 0) : (height ?? c.height)
+      if (w < 1 || h < 1) throw new Error('The canvas must stay at least 1 px')
+      return extendCanvas(c, w, h, anchor ?? 'center')
+    })
+    return { canvas: sized }
+  },
+  async paint_image({ ids, target, initial, strokes }: z.infer<typeof schemas.paint_image>) {
+    const painted = await editPixels(imageIds(ids), (px) => {
+      for (const st of strokes) {
+        if (st.mode === 'erase' && st.key) {
+          backgroundEraseStroke(px, st.points as Point[], brushOf(st), hexRgb(st.key), st.tolerance ?? 32)
+          continue
+        }
+        const color: RGB | undefined = st.mode === 'erase' ? undefined : target === 'mask' ? [255, 255, 255] : hexRgb(st.color ?? s().foregroundColor)
+        paintStroke(px, st.points as Point[], brushOf(st), color)
+      }
+    }, { target, initial })
+    return { painted, strokes: strokes.length, note: target === 'mask' ? 'Layer mask updated: opaque shows the image, transparent hides it.' : undefined }
+  },
+  async clone_image({ ids, strokes }: z.infer<typeof schemas.clone_image>) {
+    const cloned = await editPixels(imageIds(ids), (px) => {
+      for (const st of strokes) {
+        // Each stroke samples the pixels as they were before it, so a stroke never clones its own output.
+        const source: Pixels = { width: px.width, height: px.height, data: px.data.slice() }
+        cloneStroke(px, source, st.points as Point[], st.from as Point, brushOf(st))
+      }
+    })
+    return { cloned }
+  },
+  async heal_image({ ids, spots }: z.infer<typeof schemas.heal_image>) {
+    const healed = await editPixels(imageIds(ids), (px) => {
+      for (const sp of spots) healSpot(px, sp.x, sp.y, sp.size / 2)
+    })
+    return { healed, spots: spots.length }
+  },
+  async fill_image({ ids, selection }: z.infer<typeof schemas.fill_image>) {
+    const targets = imageIds(ids)
+    if (selection) for (const id of targets) await selectPixels(id, 'replace', toSelection(selection))
+    const withSelection = targets.filter((id) => activeSelection(id))
+    if (!withSelection.length) throw new Error('Nothing selected to fill: pass a selection or use select_pixels first')
+    const filled = await editPixels(withSelection, (px, sel) => {
+      if (sel) fillMask(px, sel)
+    })
+    return { filled, note: 'Smooth fill from the surroundings. For texture, use clone_image or heal_image.' }
+  },
+  async pick_color({ ids, x, y }: z.infer<typeof schemas.pick_color>) {
+    const [id] = imageIds(ids)
+    const { px } = await readPixels(id)
+    return { id, x, y, ...pickColor(px, Math.floor(x), Math.floor(y)) }
+  },
+  async vibrance_image({ ids, amount }: z.infer<typeof schemas.vibrance_image>) {
+    const adjusted = await editPixels(imageIds(ids), (px) => vibrance(px, amount))
+    return { adjusted }
+  },
+  async hue_saturation_image({ ids, hue, saturation, lightness }: z.infer<typeof schemas.hue_saturation_image>) {
+    const adjusted = await editPixels(imageIds(ids), (px) => hueSaturation(px, hue ?? 0, saturation ?? 0, lightness ?? 0))
+    return { adjusted }
+  },
+  add_shape({ shape, name, parentId, x, y, w, h, fill }: z.infer<typeof schemas.add_shape>) {
+    const width = w ?? 120
+    const height = h ?? 120
+    const node = s().addNode('vector', {
+      name: name ?? shape,
+      x: x ?? 0,
+      y: y ?? 0,
+      w: width,
+      h: height,
+      path: translatePath(SHAPE_PATHS[shape], 0, 0, width / 100, height / 100),
+      fills: [solid(fill ?? '#111111')],
+    }, parentOk(parentId))
+    return { id: node.id, w: width, h: height }
+  },
+  arrange_nodes({ ids, direction }: z.infer<typeof schemas.arrange_nodes>) {
+    const targets = ids?.length ? ids : s().selection
+    if (!targets.length) throw new Error('Nothing to arrange: pass ids or select nodes')
+    s().select(targets)
+    s().arrange(direction)
+    return { arranged: targets, direction }
+  },
+  group_nodes({ ids, ungroup }: z.infer<typeof schemas.group_nodes>) {
+    const targets = ids?.length ? ids : s().selection
+    if (!targets.length) throw new Error('Nothing to group: pass ids or select nodes')
+    s().select(targets)
+    if (ungroup) {
+      s().ungroup(targets)
+      return { ungrouped: targets }
+    }
+    s().group(targets)
+    return { grouped: s().selection }
+  },
+  get_history() {
+    return { undoSteps: s().past.length, redoSteps: s().future.length }
+  },
+  set_colors({ foreground, background, swap }: z.infer<typeof schemas.set_colors>) {
+    const st = s()
+    let fg = foreground ?? st.foregroundColor
+    let bg = background ?? st.backgroundColor
+    hexRgb(fg)
+    hexRgb(bg)
+    if (swap) [fg, bg] = [bg, fg]
+    st.set({ foregroundColor: fg, backgroundColor: bg })
+    return { foreground: fg, background: bg }
+  },
+  list_swatches() {
+    return { swatches: SWATCHES }
+  },
+  revert_image({ ids, layerMask }: z.infer<typeof schemas.revert_image>) {
+    return { reverted: revertImages(imageIds(ids), { mask: layerMask }) }
+  },
+  async select_pixels({ ids, mode, selection, refine }: z.infer<typeof schemas.select_pixels>) {
+    const results: Record<string, ReturnType<typeof maskSummary> | null> = {}
+    for (const id of imageIds(ids)) {
+      const mask = await selectPixels(id, mode ?? 'replace', selection && toSelection(selection), refine)
+      results[id] = mask ? maskSummary(mask) : null
+    }
+    return { selections: results, ...(mode === 'layerMask' && { layerMask: 'set from the selection' }) }
+  },
+  undo() {
+    s().undo()
+    return { undone: true }
+  },
+  redo() {
+    s().redo()
+    return { redone: true }
+  },
+  set_view({ zoom, fit }: z.infer<typeof schemas.set_view>) {
+    const st = s()
+    if (fit) st.zoomToFit(st.selection.length ? st.selection : undefined)
+    else if (zoom !== undefined) st.zoomTo(zoom)
+    return { zoom: s().camera.zoom }
+  },
+  async export_image({ ids, format, scale }: z.infer<typeof schemas.export_image>) {
+    const targets = ids?.length ? ids : s().selection
+    if (!targets.length) throw new Error('Nothing to export: pass ids or select nodes')
+    await exportNodes(targets, [{ id: uid(), format: format ?? 'png', scale: scale ?? 1, suffix: '' }])
+    return { exported: targets, format: format ?? 'png' }
   },
   select_nodes({ ids }: z.infer<typeof schemas.select_nodes>) {
     s().select(ids.filter((id) => s().doc.nodes[id]))
@@ -1139,6 +1571,22 @@ export const impl = {
   },
 }
 
+/** Records each tool call as a labelled undo step ("Crop image"), so the history list says what changed. */
+function withHistoryLabels<T extends Record<string, (...args: never[]) => unknown>>(fns: T): T {
+  const wrapped = Object.fromEntries(Object.entries(fns).map(([name, fn]) => [name, (...args: unknown[]) => {
+    const label = name.replace(/_/g, ' ').replace(/^./, (c) => c.toUpperCase())
+    const clear = () => useS3D.setState({ nextLabel: null })
+    useS3D.setState({ nextLabel: label })
+    const out = (fn as (...a: unknown[]) => unknown)(...args)
+    if (out instanceof Promise) return out.finally(clear)
+    clear()
+    return out
+  }]))
+  return wrapped as unknown as T
+}
+
+export const impl = withHistoryLabels(implFns)
+
 export const DESCRIPTIONS: Record<keyof typeof impl, string> = {
   verify_design: 'Check scenes and screens for problems: 3D objects sinking into the ground, outside the camera, zero-size, unlit scenes; 2D children spilling out of frames, empty or overlapping text. Returns ok, issues to fix (3D issues carry sceneId + object id) and warnings that may be intentional.',
   create_scene: 'Create a 3D scene viewport and build its objects in one call (meshes, groups with children, lights, GLB models). Objects without a y position rest on the ground; the camera frames everything unless given. Returns the sceneId and object ids.',
@@ -1177,6 +1625,33 @@ export const DESCRIPTIONS: Record<keyof typeof impl, string> = {
   create_screen: 'Create a top-level screen frame (preset device size) placed to the right of existing frames, with optional children. Use once per screen/variation.',
   create_page: 'Create a new page and switch to it.',
   select_nodes: 'Select nodes on the canvas by id.',
+  remove_background: 'Remove the background of image nodes: detects the subject and makes everything else transparent (runs in the browser, the first use downloads a model). Keeps the original so restore: true undoes it. Works on any photo; no need to see the picture.',
+  adjust_image: 'Non-destructively adjust images or videos (Photoshop-style adjustment layer): preset looks, brightness, contrast, saturation, temperature, hue, blur, grayscale, sepia, invert. Does not alter the source file.',
+  place_image: 'Place a picture on the page or in a frame from a URL or data: URL (Photoshop File > Place). It becomes an image node you can edit with the other image tools.',
+  inspect_image: 'Read an image\'s source size in pixels, its scale (design px per source pixel), adjustments, layer mask, original and active selection. Use it before any pixel-coordinate tool.',
+  crop_image: 'Crop images to a rectangle in source pixels (Photoshop Crop tool). The original is kept for revert_image.',
+  straighten_image: 'Rotate an image by degrees (positive counter-clockwise) and crop to the largest upright area (Photoshop Straighten).',
+  resize_image: 'Image Size. With resample (default) change the pixel count (smooth or nearest); with resample false keep the pixels and set the print size from resolution (ppi).',
+  canvas_size: 'Canvas Size: grow or shrink the image canvas with transparent space around it, placed by anchor. relative adds or removes pixels on each side.',
+  paint_image: 'Brush and eraser on pixels, or on the layer mask (target mask: opaque shows the image, transparent hides it). Strokes are lists of points in source pixels with a size, hardness and opacity. An erase stroke with key is the background eraser: it only removes pixels close to the sampled colour. Limited to the active selection.',
+  clone_image: 'Clone stamp: paint with pixels copied from a sample point (from) at the same offset. Points and from are in source pixels. Limited to the active selection.',
+  heal_image: 'Spot healing: remove small blemishes, scratches or spots by blending texture from a nearby matching area. Give each spot a centre and a diameter in source pixels.',
+  fill_image: 'Content-aware fill (smooth version): fill the selection from its surroundings to remove objects. Use the active selection from select_pixels, or pass one. Clean on plain backgrounds; use clone_image or heal_image for texture.',
+  pick_color: 'Eyedropper: the colour at a source pixel as hex, with its alpha.',
+  vibrance_image: 'Vibrance: boost muted colours without over-saturating the bright ones (negative desaturates). Limited to the active selection.',
+  revert_image: 'Undo all pixel edits and return to the original file, or remove only the layer mask with layerMask.',
+  select_pixels: 'Marquee, lasso, magic wand and quick selections in source pixels (quick is a wand with a larger tolerance). Modes replace, add, subtract, intersect, invert, deselect, or layerMask (reveal selection as the layer mask). refine grows or contracts the edge and feathers it (Select & Mask). The selection stays active for paint, clone, heal, fill and vibrance until deselected.',
+  hue_saturation_image: 'Hue/Saturation/Lightness on pixels: shift hue (degrees), change saturation and lightness (-100..100). Baked into the image (the original is kept for revert_image). Limited to the active selection.',
+  add_shape: 'Place a Photoshop-style custom shape (heart, arrow, cross, lightning, chevron, speech-bubble, star, burst) as an editable vector node with a fill colour.',
+  arrange_nodes: 'Change the layer order: forward or backward one step, or to the front or back of the stack.',
+  group_nodes: 'Group the nodes (Ctrl/Cmd+G), or ungroup the given groups with ungroup: true.',
+  get_history: 'Read the undo and redo history depth (how many steps can be undone or redone).',
+  set_colors: 'Set the foreground and background colours (hex), or swap them. Call with no arguments to read them. Brush, shape and fill tools use the foreground colour by default.',
+  list_swatches: 'List the swatch palette: a set of common colours to pick from for set_colors.',
+  undo: 'Undo the last edit (Ctrl/Cmd+Z).',
+  redo: 'Redo the last undone edit.',
+  set_view: 'Set the zoom (1 = 100%) or zoom to fit the selection or page.',
+  export_image: 'Export nodes as a file: png, jpg, svg or pdf, at a pixel scale. Downloads the file.',
   set_page: 'Switch to a page by id.',
   list_pages: 'List the pages of the document.',
 }
@@ -1220,6 +1695,12 @@ Animation, characters, images and video:
 - Other timed motion and camera moves: set_keyframes.
 - Before recording, check the motion with render_timeline and fix contacts or framing; make sure the camera frames the whole path of moving objects (set_scene frame, or a camera path).
 - When the user asks for a video/clip/recording, finish with record_video; for a picture/screenshot/render, capture_image. Both place the result on the canvas.
+
+Photos (pixel editing, Photoshop-style):
+- Image nodes can be placed (place_image), cropped, straightened, resized, canvas-resized, adjusted (adjust_image, vibrance_image), background-removed, painted (paint_image: brush and eraser, or the layer mask), cloned (clone_image), healed (heal_image) and filled (fill_image).
+- Pixel tools take source-pixel coordinates: call inspect_image first to get the size and the scale between pixels and design px.
+- Make a selection with select_pixels (rect, ellipse, lasso or magic wand); paint, clone, heal, fill and vibrance then only change the selected area until deselect.
+- Every pixel edit keeps the original file, so revert_image undoes them. Use pick_color for the eyedropper and export_image to save a PNG, JPG, SVG or PDF.
 
 Always:
 - Call get_document first when the user refers to "this"/the selection or to existing work.

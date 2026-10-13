@@ -1,4 +1,5 @@
-import { useEffect } from 'react'
+import { useLayoutEffect } from 'react'
+import { CanvasSkeleton } from '@/components/s-3d/canvas-skeleton'
 import { S3DCanvasEditor } from '@/features/s-3d/canvas/canvas'
 import { S3DDock } from '@/components/s-3d/s-3d-dock'
 import { S3DDialogs } from '@/features/s-3d/dialogs'
@@ -13,10 +14,11 @@ function SDesignPage() {
   const ready = useS3D((s) => s.ready && s.service === 'design')
   const mode = useS3D((s) => s.mode)
   const sceneOpen = useS3D((s) => !!s.sceneEdit)
-  useEffect(() => {
+  // Layout effect: the load starts before the first paint, so the skeleton is replaced as soon as the document is ready.
+  useLayoutEffect(() => {
     void useS3D.getState().init('design')
   }, [])
-  if (!ready) return <div className="flex flex-1 items-center justify-center text-xs text-muted-foreground">Loading S-Design…</div>
+  if (!ready) return <CanvasSkeleton variant="design" />
   return (
     <div className="relative flex-1">
       <div className="absolute inset-0">

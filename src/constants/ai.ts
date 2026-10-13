@@ -21,6 +21,8 @@ export const MINI_STUFF_MODEL = 'gemma-4-26b-a4b-it'
 export const SEARCH_MODEL = 'antigravity-preview-09-2026'
 /** Runs the S3D / S-Design agent, on Anthropic; Gemini does not model 3D well. */
 export const S3D_MODEL = 'claude-opus-5-5'
+/** Reads Sensei's replies aloud. */
+export const TTS_MODEL = 'gemini-3.8-flash-tts'
 export const LIVE_MODEL = 'gemini-3.8-live'
 /** Numbers per embedding. 768 keeps 100k vectors near 293 MiB. */
 export const EMBEDDING_DIMENSIONS = 768

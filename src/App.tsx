@@ -9,6 +9,7 @@ import SDesignPage from '@/pages/s-design.page'
 import ErrorPage from '@/pages/error.page'
 import { ThemeProvider } from 'next-themes'
 import { Suspense, lazy } from 'react'
+import { SNoteSkeleton } from '@/features/note/components/SNoteSkeleton'
 
 // The editor pulls in Tiptap, KaTeX, Mermaid and Leaflet; load it only on /s-note.
 const SNotePage = lazy(() => import('@/pages/s-note.page'))
@@ -26,8 +27,8 @@ const router = createBrowserRouter([
         element: <AskSenseiPage />,
         children: [{ index: true }, { path: ':chatId' }],
       },
-      { path: '/s-note', element: <Suspense><SNotePage /></Suspense> },
-      { path: '/s-note/:pageId', element: <Suspense><SNotePage /></Suspense> },
+      { path: '/s-note', element: <Suspense fallback={<SNoteSkeleton />}><SNotePage /></Suspense> },
+      { path: '/s-note/:pageId', element: <Suspense fallback={<SNoteSkeleton />}><SNotePage /></Suspense> },
       {
         path: '/s-design',
         element: <S3DLayout service="design" key="design" />,

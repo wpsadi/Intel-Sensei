@@ -19,6 +19,7 @@ import { type AgentMode, MODES, clearApprovals, loadApprovals, useAgentMode, use
 import { ApprovalDock } from './approval-dock'
 import { WorkedFor } from './worked-for'
 import { ContextRing } from '@/components/context-ring'
+import { CopyMessage, ReplyActions } from '@/components/reply-actions'
 import { UserBubble } from '@/components/user-bubble'
 import { S3D_AGENT_CONTEXT_LIMIT, S3D_MODEL } from '@/constants/ai'
 import { GoalBanner, VerificationCards } from './goal-ui'
@@ -218,7 +219,10 @@ export function AgentPanel() {
               )}
               {chat?.messages.map((m) =>
                 m.role === 'user' ? (
-                  <UserBubble key={m.id} markdown text={m.text} footer={!!m.attachments?.length && <div className="mt-1 text-xs opacity-80 [overflow-wrap:anywhere]">📎 {m.attachments.map((a) => a.name).join(', ')}</div>} />
+                  <div key={m.id} className="group/user flex flex-col items-end">
+                  <UserBubble markdown text={m.text} footer={!!m.attachments?.length && <div className="mt-1 text-xs opacity-80 [overflow-wrap:anywhere]">📎 {m.attachments.map((a) => a.name).join(', ')}</div>} />
+                  <CopyMessage text={m.text} />
+                  </div>
                 ) : (
                   <div key={m.id} className="mr-4 flex flex-col text-sm">
                     <WorkedFor startedAt={m.createdAt} seconds={m.workedSeconds} running={generating && m === last} />
@@ -235,13 +239,14 @@ export function AgentPanel() {
                         )}
                       </>
                     )}
-                    {m.text ? <Markdown>{m.text}</Markdown> : !m.error && generating && m === last && !m.reasoning && !m.steps?.length && <TypingDots className="h-3" />}
+                    {m.text ? <div id={`tts-${m.id}`}><Markdown>{m.text}</Markdown></div> : !m.error && generating && m === last && !m.reasoning && !m.steps?.length && <TypingDots className="h-3" />}
                     {m.error && (
                       <div className="flex flex-col gap-1 rounded-md bg-destructive/10 px-2 py-1 text-xs text-destructive">
                         <div className="flex gap-1"><AlertCircleIcon className="size-3.5 shrink-0" />{m.error}</div>
                         <Button variant="outline" size="xs" className="self-start" onClick={() => retry(m)} disabled={generating}>Retry</Button>
                       </div>
                     )}
+                    {m.text && !(generating && m === last) && <ReplyActions text={m.text} speakId={`tts-${m.id}`} />}
                     {m.changes !== undefined && (
                       <Button variant="ghost" size="xs" className="mt-1 self-start" onClick={() => void undo(m)} disabled={!canUndo(m)} title={canUndo(m) ? undefined : 'Other edits were made since; use Undo in the menu instead'}><Undo2Icon />Undo changes</Button>
                     )}

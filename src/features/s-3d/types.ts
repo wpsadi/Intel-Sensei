@@ -227,6 +227,8 @@ export interface TextStyle {
   verticalAlign: 'top' | 'middle' | 'bottom'
   transform: 'none' | 'uppercase' | 'lowercase' | 'capitalize'
   autoSize: 'fixed' | 'width' | 'height'
+  /** Vertical type: characters run top to bottom. */
+  vertical?: boolean
 }
 
 export interface Interaction {
@@ -253,6 +255,24 @@ export interface ExportSetting {
   format: 'png' | 'svg' | 'pdf' | 'jpg'
   scale: number
   suffix: string
+}
+
+/** Non-destructive image adjustments, Photoshop-style adjustment layer on one image/video node. Every key is optional; missing means neutral. */
+export interface ImageAdjust {
+  /** -100..100 */
+  brightness?: number
+  contrast?: number
+  saturation?: number
+  /** Warm (+) / cool (-) -100..100 */
+  temperature?: number
+  /** Degrees, -180..180 */
+  hue?: number
+  /** Blur radius in px, 0..40 */
+  blur?: number
+  /** 0..100 */
+  grayscale?: number
+  sepia?: number
+  invert?: boolean
 }
 
 export interface SNode {
@@ -293,6 +313,12 @@ export interface SNode {
   text: TextStyle | null
   /** image / video / model3d source: a `s3d-file:<id>` ref or URL. */
   src: string
+  /** image / video: non-destructive adjustments. */
+  adjust?: ImageAdjust
+  /** image: the source before background removal or other pixel edits, so it can be restored. */
+  origSrc?: string
+  /** image: a PNG layer mask; its alpha shows (opaque) or hides (transparent) the image, like Photoshop's layer mask. */
+  layerMask?: string
   shape3d: Shape3D
   modelColor: string
   /** shape3d nodes: a composed 3D scene; when set it replaces the single primitive. */
@@ -416,3 +442,14 @@ export type Tool =
   | 'text'
   | 'comment'
   | 'shape3d'
+  | 'brush'
+  | 'eraser'
+  | 'clone'
+  | 'heal'
+  | 'marquee'
+  | 'lasso'
+  | 'wand'
+  | 'quick'
+  | 'crop'
+  | 'eyedropper'
+  | 'zoom'

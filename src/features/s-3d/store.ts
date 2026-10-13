@@ -39,6 +39,13 @@ interface S3DState {
   /** The 3D scene open in the full-screen scene editor, with its selected object and gizmo mode. */
   sceneEdit: { nodeId: string; selected: string | null; gizmo: 'translate' | 'rotate' | 'scale' } | null
   tool: Tool
+  /** Pixel tools: fg and bg colours (X swaps), brush tip in source pixels, and the clone stamp's Alt-click sample. */
+  foregroundColor: string
+  backgroundColor: string
+  brush: { size: number; hardness: number; opacity: number }
+  cloneSample: { id: string; x: number; y: number } | null
+  /** Shape of the marquee tool: rectangle or ellipse. */
+  marqueeShape: 'rect' | 'ellipse'
   shape3d: Shape3D
   camera: Camera
   viewport: { w: number; h: number }
@@ -51,6 +58,12 @@ interface S3DState {
   saving: 'saved' | 'saving' | 'unsaved'
   past: Doc[]
   future: Doc[]
+  /** One label per `past` entry: what the edit was (e.g. "Crop image"). */
+  historyLabels: string[]
+  /** One label per `future` entry. */
+  redoLabels: string[]
+  /** Label for the next recorded edit; set by tool calls, cleared when they finish. */
+  nextLabel: string | null
   peers: Record<string, Peer>
   clipboard: { nodes: Record<string, SNode>; roots: string[] } | null
 
@@ -178,6 +191,8 @@ export const useS3D = create<S3DState>()((set, get) => {
       doc: next,
       past: history ? [...s.past, prev].slice(-HISTORY_LIMIT) : s.past,
       future: history ? [] : s.future,
+      historyLabels: history ? [...s.historyLabels, s.nextLabel ?? 'Edit'].slice(-HISTORY_LIMIT) : s.historyLabels,
+      redoLabels: history ? [] : s.redoLabels,
       selection: s.selection.filter((id) => next.nodes[id]),
     }))
     channel?.postMessage({ kind: 'doc', from: CLIENT_ID, doc: next, deleted } satisfies CollabMessage)
@@ -215,6 +230,11 @@ export const useS3D = create<S3DState>()((set, get) => {
     editingTextId: null,
     sceneEdit: null,
     tool: 'select',
+    foregroundColor: '#000000',
+    backgroundColor: '#ffffff',
+    brush: { size: 20, hardness: 0.8, opacity: 1 },
+    cloneSample: null,
+    marqueeShape: 'rect',
     shape3d: 'cube',
     camera: { x: 0, y: 0, zoom: 1 },
     viewport: { w: 800, h: 600 },
@@ -227,6 +247,9 @@ export const useS3D = create<S3DState>()((set, get) => {
     saving: 'saved',
     past: [],
     future: [],
+    historyLabels: [],
+    redoLabels: [],
+    nextLabel: null,
     peers: {},
     clipboard: null,
 
@@ -265,13 +288,13 @@ export const useS3D = create<S3DState>()((set, get) => {
     endGesture() {
       const base = gestureBase
       gestureBase = null
-      if (base && base !== get().doc) set((s) => ({ past: [...s.past, base].slice(-HISTORY_LIMIT), future: [] }))
+      if (base && base !== get().doc) set((s) => ({ past: [...s.past, base].slice(-HISTORY_LIMIT), future: [], historyLabels: [...s.historyLabels, s.nextLabel ?? 'Edit'].slice(-HISTORY_LIMIT), redoLabels: [] }))
     },
     undo() {
       const { past, doc } = get()
       const prev = past.at(-1)
       if (!prev) return
-      set((s) => ({ doc: prev, past: s.past.slice(0, -1), future: [doc, ...s.future] }))
+      set((s) => ({ doc: prev, past: s.past.slice(0, -1), future: [doc, ...s.future], historyLabels: s.historyLabels.slice(0, -1), redoLabels: [s.historyLabels.at(-1) ?? 'Edit', ...s.redoLabels] }))
       if (!prev.pages.some((p) => p.id === get().pageId)) set({ pageId: prev.pages[0].id })
       set((s) => ({ selection: s.selection.filter((id) => prev.nodes[id]) }))
       channel?.postMessage({ kind: 'doc', from: CLIENT_ID, doc: prev, deleted: Object.keys(doc.nodes).filter((id) => !prev.nodes[id]) })
@@ -281,7 +304,7 @@ export const useS3D = create<S3DState>()((set, get) => {
       const { future, doc } = get()
       const next = future[0]
       if (!next) return
-      set((s) => ({ doc: next, future: s.future.slice(1), past: [...s.past, doc] }))
+      set((s) => ({ doc: next, future: s.future.slice(1), past: [...s.past, doc], historyLabels: [...s.historyLabels, s.redoLabels[0] ?? 'Edit'], redoLabels: s.redoLabels.slice(1) }))
       if (!next.pages.some((p) => p.id === get().pageId)) set({ pageId: next.pages[0].id })
       channel?.postMessage({ kind: 'doc', from: CLIENT_ID, doc: next, deleted: Object.keys(doc.nodes).filter((id) => !next.nodes[id]) })
       scheduleSave()
@@ -297,7 +320,7 @@ export const useS3D = create<S3DState>()((set, get) => {
     },
     async loadDoc(doc) {
       if (get().saving !== 'saved' && get().ready) await get().saveNow()
-      set({ doc, pageId: doc.pages[0].id, selection: [], past: [], future: [], camera: { x: 0, y: 0, zoom: 1 }, editingTextId: null })
+      set({ doc, pageId: doc.pages[0].id, selection: [], past: [], future: [], historyLabels: [], redoLabels: [], camera: { x: 0, y: 0, zoom: 1 }, editingTextId: null })
       await settingsRepo.set(lastDocKey(get().service), doc.id)
       set({ docs: (await serviceDocs(get().service)).map(({ id, name, updatedAt }) => ({ id, name, updatedAt })) })
       requestAnimationFrame(() => get().zoomToFit())
