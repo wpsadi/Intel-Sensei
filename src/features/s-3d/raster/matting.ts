@@ -8,6 +8,8 @@ let matter: Promise<Matter> | null = null
 /** MODNet portrait/object matting, run in the browser. The model is downloaded once and cached by the browser. */
 function loadMatter() {
   matter ??= import('@huggingface/transformers').then(async (lib) => {
+    // The runtime wasm is >25 MiB (Cloudflare Pages' limit), so it is not bundled; load it from the CDN.
+    lib.env.backends.onnx.wasm!.wasmPaths = 'https://cdn.jsdelivr.net/npm/onnxruntime-web@1.31.0-dev.20260914-8d85527a0/dist/'
     const [model, processor] = await Promise.all([
       lib.AutoModel.from_pretrained('Xenova/modnet', { dtype: 'fp32' }),
       lib.AutoProcessor.from_pretrained('Xenova/modnet'),
