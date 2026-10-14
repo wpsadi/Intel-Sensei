@@ -14,6 +14,8 @@ export type ToWorker =
       /** Passed to the model as `providerOptions`; plain data only. */
       providerOptions?: Record<string, Record<string, unknown>>
       tools: Record<string, ToolSpec>
+      /** Offer only the tools the model picks for the request (dynamic tool selection), instead of all of them. */
+      toolSelect?: { alwaysInclude?: string[]; max?: number; minTools?: number }
       messages: ModelMessage[]
       /** Context window in tokens. When a step would come near it, older messages are summarized (compaction). */
       contextLimit?: number

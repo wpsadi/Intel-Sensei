@@ -60,7 +60,7 @@ const SKILLS: Record<string, string> = {
 - Check EVERY angle, not just the camera view: call render_views (front, side, back, left, top, iso in one sheet). Models often look right from one side and are wrong from another: a missing back, parts floating or poking through, a flat side, mirrored or misaligned parts. Fix what any angle shows.
 - Compare before and after: snapshot_view takes a picture from a chosen viewpoint under a label. Take one before an edit that matters (a baseline), make the edit, then call snapshot_view with the SAME label: you get before | after | changes, and how much changed. Use it to confirm the edit did what you meant from that angle and did not break anything else (changedPercent far above what the edit should touch means something else moved). Aim with look {object, azimuth, elevation} or an exact camera; reuse the label to reuse the camera.
 - Use get_scene bounds to check parts touch and nothing sinks into the ground or floats.
-- You are finished only when every to-do is completed AND the last verify_design is ok. The app also reviews your work automatically after each pass and sends problems back; do not wait for that, verify yourself.`,
+- You are finished only when every to-do is completed AND the last verify_design is ok. Nothing reviews your work for you: before you write your final answer, call verify_design (and render_views for 3D) yourself, fix what they report and verify again. Never end a reply with problems you know about.`,
 }
 
 const MODE_TEXT: Record<AgentMode, string> = {

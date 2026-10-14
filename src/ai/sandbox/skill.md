@@ -10,7 +10,7 @@ You have a private workspace in the browser: a `terminal` (shell commands), `wri
 4. **Do work in scripts, not in your head.** For counting, filtering, converting, tables or any calculation: save a script with `write_file` (for example `work/count.py`), run it with `python work/count.py`, and read its printed output. Fix the script and run it again when it fails; the error line says what is wrong. Short one-liners can use `python -c "..."`.
 5. **Keep intermediate results as files.** Write results to a file (`> out.txt`, or the script writes it) so later commands can reuse them instead of recomputing.
 6. **Get files you need.** A public https file: `curl -o name.ext "https://..."` (quote links with & or ?). Pure-Python packages: `pip install name`. Python packages bundled with Pyodide such as numpy and pandas load by themselves when a script imports them.
-7. **Scanned PDFs** have no text: `pdftotext` shows "(no text on this page...)". Say that the file is scanned pictures. Do not invent its content.
+7. **Scanned PDFs and pictures.** `pdftotext` shows "(no text on this page...)" for a scan: extract the page with `pdfimages -f 3 -l 3 file.pdf page` and look at `page-3-1.jpg` with `view_image`. Do not invent content. For a vector chart or drawing that `pdfimages` cannot extract, you may `pip install pymupdf` and render the page yourself in a script (a big download: only when really needed).
 
 ## When a download fails with a CORS error
 

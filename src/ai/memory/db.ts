@@ -6,14 +6,14 @@ import type { Episode, Procedure, SemanticFact, SessionNote, VectorRecord } from
 
 interface IMemoryDB extends DBSchema {
   semantic: { key: string; value: SemanticFact }
-  episodes: { key: string; value: Episode; indexes: { byChat: string; byCreated: number } }
+  episodes: { key: string; value: Episode; indexes: { byChat: string; byCreated: number; byScope: string } }
   procedures: { key: string; value: Procedure }
   session: { key: string; value: SessionNote; indexes: { byChat: string } }
   vectors: { key: string; value: VectorRecord; indexes: { byKind: string } }
 }
 
 const DB_NAME = 'sensei-memory'
-const DB_VERSION = 2
+const DB_VERSION = 3
 
 /** What version 1 stored: core facts, archival notes and conversations. */
 interface LegacyStore {
@@ -59,6 +59,14 @@ export function getMemoryDb() {
         }
         for (const name of ['core', 'notes', 'conversations'])
           (db as unknown as { deleteObjectStore(name: string): void }).deleteObjectStore(name)
+      }
+      if (oldVersion < 3) {
+        // Memory is kept per app: everything saved so far belongs to Ask Sensei.
+        for (const store of ['semantic', 'episodes', 'procedures'] as const) {
+          const objects = transaction.objectStore(store)
+          for (const item of await objects.getAll()) await objects.put({ ...item, scope: 'ask' } as never)
+        }
+        transaction.objectStore('episodes').createIndex('byScope', 'scope')
       }
     },
     blocking() {

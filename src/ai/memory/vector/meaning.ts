@@ -25,13 +25,14 @@ export async function searchByMeaning<T>(options: {
   const { kind, query, limit, load, fallback } = options
   if (GEMINI_KEY.value) {
     try {
-      const nearest = await vectorIndex.search(kind, await EMBEDDINGS.embed_v1(query, 'RETRIEVAL_QUERY'), limit)
+      const nearest = await vectorIndex.search(kind, await EMBEDDINGS.embed_v1(query, 'RETRIEVAL_QUERY'), limit * 4)
       const hits: MemoryHit<T>[] = []
       for (const { refId, score } of nearest) {
         const item = await load(refId)
         if (item) hits.push({ item, score })
       }
-      if (hits.length) return hits
+      // The index holds every app's memory; `load` drops what is out of scope, so look wider and keep the best.
+      if (hits.length) return hits.slice(0, limit)
     } catch {
       // Fall through to the keyword search.
     }

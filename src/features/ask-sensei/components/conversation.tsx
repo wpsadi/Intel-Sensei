@@ -66,14 +66,14 @@ function AttachedImage({ attachment, onOpen }: { attachment: ChatAttachment; onO
 }
 
 /** Files sent with a message: images as pictures, other files as chips. Clicking one opens it from Cache Storage in a new tab. */
-function MessageAttachments({ attachments }: { attachments: ChatAttachment[] }) {
+function MessageAttachments({ attachments, align = 'end' }: { attachments: ChatAttachment[]; align?: 'start' | 'end' }) {
   const open = async (attachment: ChatAttachment) => {
     const url = await resolveMedia(attachment.src)
     if (url) window.open(url, '_blank', 'noopener')
     else toast('This file is no longer saved in the browser')
   }
   return (
-    <div className="flex flex-wrap justify-end gap-2">
+    <div className={cn('flex flex-wrap gap-2', align === 'end' ? 'justify-end' : 'justify-start')}>
       {attachments.map((attachment) =>
         attachment.type.startsWith('image/') ? (
           <AttachedImage key={attachment.src} attachment={attachment} onOpen={() => void open(attachment)} />
@@ -164,7 +164,9 @@ export function Conversation({
             <Message key={message.id} id={message.id} align={isReply ? 'start' : 'end'} className="scroll-mt-6">
               {/* An interrupted reply takes the full row, so its checkpoint line runs across the chat. */}
               <MessageContent className={cn(!isReply && 'group/user', message.interrupted ? 'w-full max-w-full' : undefined)}>
-                {!isReply && message.attachments?.length ? <MessageAttachments attachments={message.attachments} /> : null}
+                {message.attachments?.length ? (
+                  <MessageAttachments attachments={message.attachments} align={isReply ? 'start' : 'end'} />
+                ) : null}
                 {!isReply && !message.content ? null : isWaiting ? (
                   <ReplyDot />
                 ) : (

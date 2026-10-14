@@ -133,6 +133,21 @@ describe('PDFs', () => {
     expect(await sh('head -n 1 guide.txt')).toBe('--- Page 1 ---\n')
   })
 
+  it('saves the pictures in a scanned page so the model can look at them', async () => {
+    // Pillow writes a one-page PDF that holds a single big picture, like a scan.
+    await sh("python -c \"from PIL import Image; Image.new('RGB', (800, 1000), 'red').save('scan.pdf')\"")
+    const out = await sh('pdfimages -s 300 scan.pdf pages/p')
+    expect(out).toContain('page 1: pages/p-1-1.jpg (240x300)')
+    // JPEG signature
+    expect(Array.from(readFile(py, 'pages/p-1-1.jpg').slice(0, 3))).toEqual([0xff, 0xd8, 0xff])
+  }, 120_000)
+
+  it('says a page with only text has no pictures, and what to do instead', async () => {
+    expect(await sh('pdfimages -f 1 -l 1 guide.pdf g')).toContain('no pictures (text or drawings only: read it with pdftotext)')
+    expect(await sh('pdfimages guide.pdf')).toContain('usage: pdfimages')
+    expect(await sh('pdfimages notes.txt x')).toContain('not a readable PDF')
+  }, 120_000)
+
   it('says plainly when the file is not a PDF', async () => {
     expect(await sh('pdftotext notes.txt')).toContain('not a readable PDF')
   })

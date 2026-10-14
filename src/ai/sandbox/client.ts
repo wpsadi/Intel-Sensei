@@ -9,8 +9,18 @@ type Request = SandboxRequest extends infer R ? (R extends SandboxRequest ? Omit
 const BOOT_TIMEOUT_MS = 180_000
 const TIMED_OUT = `The command was stopped after ${COMMAND_TIMEOUT_MS / 1000} seconds. The sandbox was reset to stop it: files you created are gone, and files attached to the chat are put back on the next command. Do less per command, for example one page range, head or grep instead of the whole file, then run it again.`
 
+/** After a failed start, wait this long before trying again. */
+const RETRY_AFTER_MS = 30_000
+
+export type SandboxStatus = 'idle' | 'booting' | 'ready' | 'unavailable'
+export const SANDBOX_BOOTING =
+  'Booting up the environment. It is not ready yet: carry on with what you can do without it, and try again in a few seconds.'
+export const SANDBOX_UNAVAILABLE = 'Not available at the moment.'
+
 let worker: Worker | null = null
 let booted: Promise<unknown> | null = null
+let status: SandboxStatus = 'idle'
+let failedAt = 0
 let nextId = 1
 const pending = new Map<number, Pending>()
 /** Files already put into the current worker, by where they came from. A restarted worker starts empty, so this resets too. */
@@ -26,6 +36,7 @@ function restart(reason: string) {
   worker?.terminate()
   worker = null
   booted = null
+  status = 'idle'
   mounted.clear()
   for (const id of [...pending.keys()]) fail(id, new Error(reason))
 }
@@ -74,14 +85,55 @@ function send(
   })
 }
 
+/** Where the environment stands. A failed start is retried after a pause, so it reads as idle again by then. */
+export function sandboxStatus(): SandboxStatus {
+  if (status === 'unavailable' && Date.now() - failedAt > RETRY_AFTER_MS) status = 'idle'
+  return status
+}
+
+/** Starts loading Python in the background, once. It never waits: ask `sandboxStatus` when it is ready. */
+export function warmSandbox() {
+  if (sandboxStatus() !== 'idle') return
+  status = 'booting'
+  const attempt: Promise<unknown> = send(
+    { op: 'ping' },
+    undefined,
+    [],
+    BOOT_TIMEOUT_MS,
+    'The sandbox could not start. Check the connection and try again.',
+  ).then(
+    (result) => {
+      if (booted === attempt) status = 'ready'
+      return result
+    },
+    (error) => {
+      if (booted === attempt) {
+        status = 'unavailable'
+        failedAt = Date.now()
+        booted = null
+      }
+      throw error
+    },
+  )
+  booted = attempt
+  attempt.catch(() => {})
+}
+
+/**
+ * What to tell the agent when the environment cannot be used right now, or null when it can. A tool calls this first,
+ * so a cold start answers at once ("booting up") instead of holding the whole reply while Python loads.
+ */
+export function sandboxUnavailable(): string | null {
+  warmSandbox()
+  const now = sandboxStatus()
+  return now === 'ready' ? null : now === 'unavailable' ? SANDBOX_UNAVAILABLE : SANDBOX_BOOTING
+}
+
 /** A command's clock starts once Pyodide is loaded, so a slow first load never eats into its time. */
 async function call(request: Request, signal?: AbortSignal, transfer: Transferable[] = []): Promise<SandboxResult> {
-  booted ??= send({ op: 'ping' }, undefined, [], BOOT_TIMEOUT_MS, 'The sandbox could not start. Check the connection and try again.')
-  const warm = booted
-  await warm.catch((error) => {
-    if (booted === warm) booted = null
-    throw error
-  })
+  if (sandboxStatus() === 'unavailable') throw new Error(SANDBOX_UNAVAILABLE)
+  warmSandbox()
+  await booted
   return send(request, signal, transfer, COMMAND_TIMEOUT_MS, TIMED_OUT)
 }
 

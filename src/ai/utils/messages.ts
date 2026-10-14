@@ -1,6 +1,7 @@
 import { GoogleGenAI } from '@google/genai'
 import type { ModelMessage } from 'ai'
 
+import { fileReference, isModelMedia } from '@/ai/sandbox/attachments'
 import { readMedia } from '@/features/note/db/media'
 import type { ChatAttachment, ChatMessage } from '@/features/note/db/types'
 
@@ -64,16 +65,31 @@ export async function uploadLargeFile(apiKey: string, blob: Blob, attachment: Ch
  * YouTube link in the text as a video part. `geminiKey` is set only when Gemini is the provider: only it
  * watches YouTube links and takes large files through its Files API.
  */
-export async function toModelMessage(geminiKey: string | undefined, turn: ChatTurn, withVideoLink: boolean): Promise<ModelMessage> {
+export async function toModelMessage(
+  geminiKey: string | undefined,
+  turn: ChatTurn,
+  withVideoLink: boolean,
+  /** The agent has the sandbox: only pictures, audio and video are sent. Every other file is a reference, read there by tools. */
+  sandbox = false,
+): Promise<ModelMessage> {
   const videoLink = withVideoLink && geminiKey && turn.role === 'user' ? YOUTUBE_URL.exec(turn.content)?.[0] : undefined
   if (turn.role === 'assistant' || (!turn.attachments?.length && !videoLink)) return { role: turn.role, content: turn.content }
   const parts: Exclude<Extract<ModelMessage, { role: 'user' }>['content'], string> = []
   if (turn.content) parts.push({ type: 'text', text: turn.content })
   if (videoLink) parts.push({ type: 'file', data: videoLink, mediaType: 'video/mp4' })
   for (const attachment of turn.attachments ?? []) {
+    // A file the model reads through the sandbox is never loaded here, so a big one costs nothing.
+    if (sandbox && attachment.type && !isModelMedia(attachment.type)) {
+      parts.push({ type: 'text', text: fileReference(attachment.name, attachment.type, attachment.size) })
+      continue
+    }
     const blob = await readMedia(attachment.src)
     if (!blob) continue
     const mediaType = attachment.type || blob.type || 'application/octet-stream'
+    if (sandbox && !isModelMedia(mediaType)) {
+      parts.push({ type: 'text', text: fileReference(attachment.name, mediaType, blob.size) })
+      continue
+    }
     if (mediaType.startsWith('text/') || mediaType === 'application/json') {
       parts.push({ type: 'text', text: `Attached file "${attachment.name}":\n${await blob.text()}` })
     } else if (blob.size > INLINE_FILE_LIMIT) {

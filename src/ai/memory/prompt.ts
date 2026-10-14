@@ -3,6 +3,7 @@ import { PROCEDURE_PROMPT_LIMIT, proceduralMemory } from './procedural/procedura
 import type { Scratchpad } from './scratchpad/scratchpad'
 import { semanticMemory } from './semantic/semantic'
 import { sessionMemory } from './session/session'
+import { ASK_SCOPE, type MemoryScope } from './types'
 
 /** Added to the agent's instructions so it knows which memory is which, and when to leave memory alone. */
 export const MEMORY_INSTRUCTIONS = `You have five kinds of memory. Use the memory tool for the first four and keep its use invisible: never mention the tool or its commands to the user.
@@ -18,13 +19,13 @@ Most messages need no memory call. Everything said in this chat and everything s
 Never call it for greetings, general knowledge, questions about this chat, or anything already shown below. Search at most once for one need, and if the overview says nothing is saved there, do not search.`
 
 /** What is saved beyond what is shown in the prompt, so the model knows when a search could find anything. */
-async function memoryOverview(chatId?: string) {
+async function memoryOverview(scope: MemoryScope, chatId?: string) {
   const db = await getMemoryDb()
   const [facts, episodes, thisChat, procedures] = await Promise.all([
-    db.getAll('semantic'),
-    db.count('episodes'),
+    semanticMemory.list(scope),
+    db.countFromIndex('episodes', 'byScope', scope),
     chatId ? db.countFromIndex('episodes', 'byChat', chatId) : 0,
-    db.count('procedures'),
+    proceduralMemory.list(scope).then((list) => list.length),
   ])
   const hiddenFacts = facts.filter((fact) => !fact.pinned).length
   const otherEpisodes = episodes - thisChat
@@ -38,13 +39,17 @@ async function memoryOverview(chatId?: string) {
 }
 
 /** The memory shown to the model before each step: pinned facts, procedures, this chat's notes, the scratchpad, and an overview of the rest. */
-export async function memoryPrompt({ chatId, scratchpad }: { chatId?: string; scratchpad?: Scratchpad } = {}) {
+export async function memoryPrompt({
+  chatId,
+  scratchpad,
+  scope = ASK_SCOPE,
+}: { chatId?: string; scratchpad?: Scratchpad; scope?: MemoryScope } = {}) {
   const blocks = await Promise.all([
-    semanticMemory.toPrompt(),
-    proceduralMemory.toPrompt(),
+    semanticMemory.toPrompt(scope),
+    proceduralMemory.toPrompt(scope),
     chatId ? sessionMemory.toPrompt(chatId) : '',
     scratchpad?.toPrompt() ?? '',
-    memoryOverview(chatId),
+    memoryOverview(scope, chatId),
   ])
   return blocks.filter(Boolean).join('\n\n')
 }

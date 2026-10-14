@@ -155,6 +155,7 @@ export const useAskSenseiStore = create<AskSenseiState>()((set, get) => {
               return turns
             },
             onUsage: (usage) => patchMessage(chatId, reply.id, { usage }),
+            onFile: (file) => patchMessage(chatId, reply.id, { attachments: [...(current()?.attachments ?? []), file] }),
             onAsk: (questions) =>
               new Promise<ChatAnswers>((resolve, reject) => {
                 patchMessage(chatId, reply.id, { questions: { questions } })
@@ -179,6 +180,7 @@ export const useAskSenseiStore = create<AskSenseiState>()((set, get) => {
     const usage = current()?.usage
     const searches = current()?.searches
     const questions = current()?.questions
+    const files = current()?.attachments
     pendingAnswers = null
     const interrupted = controller.signal.aborted || undefined
     if (abort === controller) abort = null
@@ -195,6 +197,7 @@ export const useAskSenseiStore = create<AskSenseiState>()((set, get) => {
       usage,
       searches,
       questions,
+      attachments: files,
     })
     await touchChat(chatId)
     if (!interrupted) void episodicMemory.append({ id: reply.id, chatId, role: 'assistant', content: finalText })

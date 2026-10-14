@@ -2,6 +2,7 @@ import { AudioLines, Mic, MicOff, PhoneOff, X } from 'lucide-react'
 import { type ClipboardEvent, type KeyboardEvent, type ReactNode, useEffect, useMemo, useRef, useState } from 'react'
 import { toast } from 'sonner'
 
+import { warmForFiles } from '@/ai/sandbox/attachments'
 import {
   Composer,
   ComposerActions,
@@ -96,6 +97,8 @@ export function ChatComposer({
       const saved = await Promise.all(
         files.map(async (file) => ({ src: await putMedia(file, file.name), name: file.name, type: file.type, size: file.size })),
       )
+      // Files the model reads through Python start the environment now, so it is ready by the time they are asked about.
+      warmForFiles(saved)
       setAttachments((prev) => [...prev, ...saved])
     } catch {
       toast('Could not save the attachment')

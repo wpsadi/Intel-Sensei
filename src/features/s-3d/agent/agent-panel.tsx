@@ -15,6 +15,7 @@ import {
 import { useEffect, useMemo, useRef, useState } from 'react'
 
 import { AI_MODELS } from '@/ai/providers'
+import { warmForFiles } from '@/ai/sandbox/attachments'
 import senseiLogo from '@/assets/sensei.svg'
 import { ContextRing } from '@/components/context-ring'
 import { QueuedMessages } from '@/components/queued-messages'
@@ -48,7 +49,7 @@ import { useAsking } from './ask-questions-store'
 import { GoalBanner, VerificationCards } from './goal-ui'
 import { type AgentMode, MODES, clearApprovals, loadApprovals, useAgentMode, useApprovals } from './modes'
 import { compactChat, runAgent, stopAgent, useAgentRun } from './runner'
-import { WorkedFor } from './worked-for'
+import { WorkedFor, WorkingNow } from './worked-for'
 
 /** Slash commands the chat box offers. */
 const COMMANDS = [{ id: 'goal', hint: 'Keep working until a goal is achieved' }]
@@ -198,6 +199,7 @@ export function AgentPanel() {
   const attach = async () => {
     const files = await pickFiles('image/*,video/*,application/pdf,.svg,.glb,.gltf', true)
     const added = await Promise.all(files.map(async (f) => ({ ref: await storeFile(f, f.name, docId), name: f.name, type: f.type })))
+    warmForFiles(added)
     setAttachments((a) => [...a, ...added])
   }
 
@@ -330,13 +332,12 @@ export function AgentPanel() {
                     )}
                   </>
                 )}
-                {m.text ? (
+                {m.text && (
                   <div id={`tts-${m.id}`}>
                     <Markdown>{m.text}</Markdown>
                   </div>
-                ) : (
-                  !m.error && generating && m === last && !m.reasoning && !m.steps?.length && <TypingDots className="h-3" />
                 )}
+                {!m.error && generating && m === last && <WorkingNow message={m} />}
                 {m.error && (
                   <div className="flex flex-col gap-1 rounded-md bg-destructive/10 px-2 py-1 text-xs text-destructive">
                     <div className="flex gap-1">
