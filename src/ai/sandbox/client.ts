@@ -324,6 +324,8 @@ export interface SandboxFile {
   key: string
   name: string
   load: () => Promise<Blob | null>
+  /** Replaced in place when it changes, and not writable from the terminal. */
+  readonly?: boolean
 }
 
 /** Puts files into a session's home folder, skipping any already there. Files over the size limit are skipped. */
@@ -331,15 +333,15 @@ export async function mountFiles(files: SandboxFile[], signal?: AbortSignal, ses
   const s = sessionOf(session)
   const fresh = files.filter((file) => !s.mounted.has(file.key))
   if (!fresh.length) return
-  const loaded: { key: string; name: string; bytes: Uint8Array }[] = []
+  const loaded: { key: string; name: string; bytes: Uint8Array; readonly?: boolean }[] = []
   for (const file of fresh) {
     const blob = await file.load()
     if (!blob || blob.size > FILE_MAX_BYTES) continue
-    loaded.push({ key: file.key, name: file.name, bytes: new Uint8Array(await blob.arrayBuffer()) })
+    loaded.push({ key: file.key, name: file.name, bytes: new Uint8Array(await blob.arrayBuffer()), readonly: file.readonly })
   }
   if (!loaded.length) return
   const { paths } = (await s.call(
-    { op: 'mount', files: loaded.map(({ name, bytes }) => ({ name, bytes })) },
+    { op: 'mount', files: loaded.map(({ name, bytes, readonly }) => ({ name, bytes, readonly })) },
     signal,
     loaded.map((file) => file.bytes.buffer),
     replay,

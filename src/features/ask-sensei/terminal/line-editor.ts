@@ -109,11 +109,10 @@ export class LineEditor {
       } else if (ch === '\x03') {
         if (changed) actions.push(this.redraw())
         changed = false
-        const had = this.line
         this.line = ''
         this.cursor = 0
         this.position = this.history.length
-        actions.push({ type: 'write', text: had ? '^C\r\n' : '' }, { type: 'interrupt' })
+        actions.push({ type: 'write', text: '^C\r\n' }, { type: 'interrupt' })
       } else if (ch === '\x0c') {
         actions.push({ type: 'clear' })
         changed = true
@@ -127,9 +126,10 @@ export class LineEditor {
         this.line = this.line.slice(this.cursor)
         this.cursor = 0
         changed = true
-      } else if (ch >= ' ' && ch !== '\x7f') {
-        this.line = this.line.slice(0, this.cursor) + ch + this.line.slice(this.cursor)
-        this.cursor++
+      } else if (ch >= ' ' || ch === '\t') {
+        // A pasted tab is a space, since the prompt has nothing to complete.
+        this.line = this.line.slice(0, this.cursor) + (ch === '\t' ? '  ' : ch) + this.line.slice(this.cursor)
+        this.cursor += ch === '\t' ? 2 : 1
         changed = true
       }
     }

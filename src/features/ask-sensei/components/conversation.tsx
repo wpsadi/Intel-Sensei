@@ -9,6 +9,7 @@ import { CopyMessage, ReplyAction, ReplyActions } from '@/components/reply-actio
 import { Bubble, Message, MessageContent } from '@/components/ui/chat'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { Separator } from '@/components/ui/separator'
+import { ArtifactCards, isArtifact } from '@/features/ask-sensei/artifact/artifact-cards'
 import { ChatPlanCard } from '@/features/ask-sensei/components/chat-plan'
 import { ChatQuestionsCard } from '@/features/ask-sensei/components/chat-questions'
 import { ChatReasoning } from '@/features/ask-sensei/components/chat-reasoning'
@@ -172,8 +173,11 @@ export function Conversation({
             <Message key={message.id} id={message.id} align={isReply ? 'start' : 'end'} className="scroll-mt-6">
               {/* An interrupted reply takes the full row, so its checkpoint line runs across the chat. */}
               <MessageContent className={cn(!isReply && 'group/user', message.interrupted ? 'w-full max-w-full' : undefined)}>
-                {message.attachments?.length ? (
-                  <MessageAttachments attachments={message.attachments} align={isReply ? 'start' : 'end'} />
+                {(isReply ? (message.attachments ?? []).filter((file) => !isArtifact(file)) : message.attachments)?.length ? (
+                  <MessageAttachments
+                    attachments={isReply ? (message.attachments ?? []).filter((file) => !isArtifact(file)) : (message.attachments ?? [])}
+                    align={isReply ? 'start' : 'end'}
+                  />
                 ) : null}
                 {!isReply && !message.content ? null : isWaiting ? (
                   <ReplyDot />
@@ -199,6 +203,8 @@ export function Conversation({
                           defaultOpen={false}
                           className="mb-3"
                         />
+                        {/* The documents Sensei made sit between the thinking and the final answer. */}
+                        <ArtifactCards files={(message.attachments ?? []).filter(isArtifact)} messageId={message.id} chatId={message.chatId} />
                       </>
                     )}
                     {isReply && message.parts?.length ? (

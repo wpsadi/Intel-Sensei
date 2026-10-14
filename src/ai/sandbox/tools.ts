@@ -1,7 +1,7 @@
 import { type Tool, tool } from 'ai'
 import { z } from 'zod'
 
-import { mediaInfo, putMedia, readMedia } from '@/features/note/db/media'
+import { mediaInfo, mediaRevision, putMedia, readMedia } from '@/features/note/db/media'
 import type { ChatAttachment } from '@/features/note/db/types'
 
 import {
@@ -44,9 +44,17 @@ export function formatExec(result: ExecResult) {
   return [output, note].filter(Boolean).join('\n') || '(no output)'
 }
 
+/** A file is mounted again after it is edited, so the terminal never holds an old copy. */
+export const mountKey = (src: string) => `${src}#${mediaRevision(src)}`
+
 /** Puts the files attached to the chat into the sandbox, once each. */
 async function syncAttachments(attachments: ChatAttachment[], signal?: AbortSignal, session?: string) {
-  const files: SandboxFile[] = attachments.map((file) => ({ key: file.src, name: file.name, load: () => readMedia(file.src) }))
+  const files: SandboxFile[] = attachments.map((file) => ({
+    key: mountKey(file.src),
+    name: file.name,
+    load: () => readMedia(file.src),
+    readonly: file.artifact,
+  }))
   await mountFiles(files, signal, session)
 }
 

@@ -63,7 +63,7 @@ export function TerminalPanel({ chatId, onClose }: { chatId: string; onClose: ()
   const activeId = active[chatId] ?? 'agent'
 
   return (
-    <section aria-label="Terminal" className="relative flex shrink-0 flex-col border-t bg-[#0b0d10] text-zinc-200" style={{ height }}>
+    <section aria-label="Terminal" className="relative flex shrink-0 flex-col border-t bg-zinc-100 text-zinc-800 dark:bg-[#161616] dark:text-zinc-200" style={{ height }}>
       <div
         role="separator"
         aria-orientation="horizontal"
@@ -79,13 +79,13 @@ export function TerminalPanel({ chatId, onClose }: { chatId: string; onClose: ()
         }}
         onPointerUp={() => void (drag.current = null)}
       />
-      <div className="flex h-9 shrink-0 items-center gap-1 border-b border-white/10 px-2">
+      <div className="flex h-9 shrink-0 items-center gap-1 border-b border-black/10 dark:border-white/10 px-2">
         {session?.terminals.map((tab) => (
           <div
             key={tab.id}
             className={cn(
               'group flex h-7 items-center gap-1 rounded-md px-2 text-xs',
-              tab.id === activeId ? 'bg-white/10 text-white' : 'text-zinc-400 hover:bg-white/5',
+              tab.id === activeId ? 'bg-black/10 text-black dark:bg-white/10 dark:text-white' : 'text-zinc-500 hover:bg-black/5 dark:text-zinc-400 dark:hover:bg-white/5',
             )}
           >
             <button type="button" className="flex items-center gap-1.5 truncate" onClick={() => setActive(chatId, tab.id)}>
@@ -95,7 +95,7 @@ export function TerminalPanel({ chatId, onClose }: { chatId: string; onClose: ()
               <button
                 type="button"
                 aria-label={`Close ${tab.title}`}
-                className="rounded p-0.5 opacity-60 hover:bg-white/10 hover:opacity-100"
+                className="rounded p-0.5 opacity-60 hover:bg-black/10 hover:opacity-100 dark:hover:bg-white/10"
                 onClick={() => closeTerminal(chatId, tab.id)}
               >
                 <XIcon className="size-3" />
@@ -107,13 +107,13 @@ export function TerminalPanel({ chatId, onClose }: { chatId: string; onClose: ()
           variant="ghost"
           size="icon-sm"
           aria-label="New terminal"
-          className="size-7 text-zinc-400 hover:bg-white/10 hover:text-white"
+          className="size-7 text-zinc-500 hover:bg-black/10 hover:text-black dark:text-zinc-400 dark:hover:bg-white/10 dark:hover:text-white"
           disabled={(session?.terminals.length ?? 0) >= MAX_TERMINALS}
           onClick={() => addTerminal(chatId)}
         >
           <PlusIcon />
         </Button>
-        <div className="ml-auto flex items-center gap-2 text-xs text-zinc-400">
+        <div className="ml-auto flex items-center gap-2 text-xs text-zinc-500 dark:text-zinc-400">
           <span className="flex items-center gap-1.5">
             <span className={cn('size-2 rounded-full', STATUS[status].dot)} />
             {STATUS[status].label}
@@ -123,7 +123,7 @@ export function TerminalPanel({ chatId, onClose }: { chatId: string; onClose: ()
             size="icon-sm"
             aria-label="Restart environment"
             title="Restart the environment and replay this chat's commands"
-            className="size-7 text-zinc-400 hover:bg-white/10 hover:text-white"
+            className="size-7 text-zinc-500 hover:bg-black/10 hover:text-black dark:text-zinc-400 dark:hover:bg-white/10 dark:hover:text-white"
             onClick={() => resetSandbox(chatId)}
           >
             <RotateCcwIcon />
@@ -132,7 +132,7 @@ export function TerminalPanel({ chatId, onClose }: { chatId: string; onClose: ()
             variant="ghost"
             size="icon-sm"
             aria-label="Close terminal"
-            className="size-7 text-zinc-400 hover:bg-white/10 hover:text-white"
+            className="size-7 text-zinc-500 hover:bg-black/10 hover:text-black dark:text-zinc-400 dark:hover:bg-white/10 dark:hover:text-white"
             onClick={onClose}
           >
             <XIcon />

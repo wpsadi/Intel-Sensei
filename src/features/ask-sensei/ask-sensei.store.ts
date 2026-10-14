@@ -12,6 +12,7 @@ import { useTerminals } from '@/features/ask-sensei/terminal/terminal.store'
 import { uid } from '@/features/note/db/idb'
 import { deleteMedia } from '@/features/note/db/media'
 import { chatMessagesRepo, chatsRepo } from '@/features/note/db/repo'
+import { artifactKind, useArtifacts } from '@/features/ask-sensei/artifact/artifact.store'
 import type { Chat, ChatAnswers, ChatAttachment, ChatMessage } from '@/features/note/db/types'
 
 /** Chats and their messages. IndexedDB is the source of truth; this store is the in-memory copy the UI reads. */
@@ -157,7 +158,23 @@ export const useAskSenseiStore = create<AskSenseiState>()((set, get) => {
             },
             onUsage: (usage) => patchMessage(chatId, reply.id, { usage }),
             onSteps: (steps) => patchMessage(chatId, reply.id, { steps }),
-            onFile: (file) => patchMessage(chatId, reply.id, { attachments: [...(current()?.attachments ?? []), file] }),
+            onFile: (file, callId) => {
+              const have = current()?.attachments ?? []
+              // A document written again under the same title is the same file: it keeps its one card.
+              patchMessage(chatId, reply.id, {
+                attachments: have.some((item) => item.src === file.src)
+                  ? have.map((item) => (item.src === file.src ? file : item))
+                  : [...have, file],
+              })
+              useArtifacts.getState().endDraft(callId)
+              // A document Sensei made opens beside the chat; a picture stays under the reply.
+              const kind = artifactKind(file)
+              if (kind && kind !== 'image') useArtifacts.getState().show(file, chatId)
+            },
+            onArtifactDraft: (draft) =>
+              draft.done
+                ? useArtifacts.getState().endDraft(draft.id)
+                : useArtifacts.getState().writeDraft({ ...draft, chatId, messageId: reply.id }),
             onAsk: (questions) =>
               new Promise<ChatAnswers>((resolve, reject) => {
                 patchMessage(chatId, reply.id, { questions: { questions } })
@@ -174,6 +191,8 @@ export const useAskSenseiStore = create<AskSenseiState>()((set, get) => {
         : `Sorry, Sensei could not reply: ${error instanceof Error ? error.message : 'unknown error'}`
     }
 
+    // A document cut off half way (the reply was stopped) is not shown as still being written.
+    useArtifacts.getState().endDraftsOf(reply.id)
     // Stopped while still thinking: the thinking time ends at the stop.
     endThinking()
     const thoughts = current()?.reasoning || undefined

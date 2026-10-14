@@ -59,6 +59,25 @@ describe('file names', () => {
   })
 })
 
+describe('read-only files', () => {
+  const text = (value: string) => new TextEncoder().encode(value)
+
+  it('go in a folder the terminal can read but not write to, and are replaced in place', async () => {
+    expect(mountFile(py, 'doc.md', text('# one\n'), true)).toBe('/home/user/artifacts/doc.md')
+    expect(await sh('cat artifacts/doc.md')).toBe('# one\n')
+    expect(await sh('ls artifacts')).toContain('doc.md')
+    await expect(sh('echo more >> artifacts/doc.md')).rejects.toThrow(/Permission denied/)
+    await expect(sh('echo new > artifacts/other.md')).rejects.toThrow(/Permission denied/)
+    expect(await sh('rm artifacts/doc.md')).toMatch(/Permission denied/)
+    expect(await sh('cat artifacts/doc.md')).toBe('# one\n')
+    expect(mountFile(py, 'doc.md', text('# two\n'), true)).toBe('/home/user/artifacts/doc.md')
+    expect(await sh('cat artifacts/doc.md')).toBe('# two\n')
+    // The rest of the home folder stays writable.
+    await sh('echo ok > free.txt')
+    expect(await sh('cat free.txt')).toBe('ok\n')
+  })
+})
+
 describe('shell', () => {
   it('lists, reads and searches files', async () => {
     expect(await sh('ls')).toContain('notes.txt')

@@ -158,6 +158,8 @@ export interface ChatAttachment {
   name: string
   type: string
   size: number
+  /** A file Sensei made for the user. In the terminal it is read-only, so only the editor beside the chat changes it. */
+  artifact?: boolean
 }
 
 /** A brief plan Sensei wrote when asked how to do something. It shows as a card in the reply. */

@@ -1,4 +1,4 @@
-import { type LanguageModelUsage, ToolLoopAgent } from 'ai'
+import { type LanguageModelUsage, ToolLoopAgent, parsePartialJson } from 'ai'
 
 import {
   MEMORY_INSTRUCTIONS,
@@ -16,7 +16,7 @@ import { SANDBOX_INSTRUCTIONS, createSandboxTools } from '@/ai/sandbox/tools'
 import { applySkillCommand } from '@/ai/skills/invoke'
 import { SKILLS_INSTRUCTIONS, createSkillTools, skillsPrompt } from '@/ai/skills/tools'
 import { ASK_INSTRUCTIONS, createAskTools } from '@/ai/tools/ask'
-import { EXPORT_INSTRUCTIONS, createExportFileTool } from '@/ai/tools/export-file'
+import { EXPORT_INSTRUCTIONS, createExportFileTool, documentName } from '@/ai/tools/export-file'
 import { PLAN_INSTRUCTIONS, createPlanTools } from '@/ai/tools/plan'
 import { createScrapeTool } from '@/ai/tools/scrape'
 import { createSearchTool, upsertSearch } from '@/ai/tools/search'
@@ -71,8 +71,10 @@ export async function chatWithSensei(
     /** Shows Sensei's questions and resolves with the user's answers. */ onAsk?: (questions: ChatQuestion[]) => Promise<ChatAnswers>
     /** Called before each step; returns the messages the user sent meanwhile, which join the conversation from that step on. */
     takeSteers?: () => Promise<ChatTurn[]>
-    /** Receives each file Sensei hands to the user; it shows with the reply. */
-    onFile?: (file: ChatAttachment) => void
+    /** Receives each file Sensei hands to the user, and the tool call that made it; it shows with the reply. */
+    onFile?: (file: ChatAttachment, callId: string) => void
+    /** Receives a document as Sensei writes it, so it can be shown while it streams. `done` ends the draft. */
+    onArtifactDraft?: (draft: { id: string; name: string; content: string; format: 'markdown' | 'html'; done?: boolean }) => void
     /** Receives the tool calls of this reply, in order, each time one starts or ends. */
     onSteps?: (steps: ChatToolStep[]) => void
   },
@@ -100,7 +102,11 @@ export async function chatWithSensei(
     ...createPlanTools(onPlan),
     ...createTodoTools(onTodos, scope?.todos),
     ...createAskTools(scope?.onAsk),
-    ...createExportFileTool((file) => scope?.onFile?.(file), scope?.chatId),
+    ...createExportFileTool(
+      (file, callId) => scope?.onFile?.(file, callId),
+      scope?.chatId,
+      () => messages.flatMap((turn) => turn.attachments ?? []),
+    ),
     ...createSkillTools(),
   }
   // What the model reads of a user message: a /skill-name message carries the skill's instructions, and @file mentions
@@ -188,8 +194,33 @@ export async function chatWithSensei(
         : [...toolSteps, { id, status: 'running', at: thinkingOnly(thoughts).length, ...created!, ...patch }]
       scope?.onSteps?.(toolSteps)
     }
+    // create_document writes its text inside the tool call, so it is read from the call's input as that streams in.
+    const documents = new Map<string, { input: string; shownAt: number }>()
+    const showDraft = async (id: string, input: string, done = false) => {
+      const draft = ((await parsePartialJson(input)).value ?? {}) as { title?: string; format?: string; content?: string }
+      if (typeof draft.content !== 'string') return
+      scope?.onArtifactDraft?.({
+        id,
+        name: documentName(draft.title ?? 'Document', draft.format === 'html' ? 'html' : 'markdown'),
+        content: draft.content,
+        format: draft.format === 'html' ? 'html' : 'markdown',
+        done,
+      })
+    }
     for await (const part of result.fullStream) {
-      if (part.type === 'text-delta') {
+      if (part.type === 'tool-input-start' && part.toolName === 'create_document') {
+        documents.set(part.id, { input: '', shownAt: 0 })
+      } else if (part.type === 'tool-input-delta' && documents.has(part.id)) {
+        const document = documents.get(part.id)!
+        document.input += part.delta
+        // Reading the JSON again for every few characters would cost more than the text it shows.
+        if (Date.now() - document.shownAt > 120) {
+          document.shownAt = Date.now()
+          await showDraft(part.id, document.input)
+        }
+      } else if (part.type === 'tool-input-end' && documents.has(part.id)) {
+        await showDraft(part.id, documents.get(part.id)!.input)
+      } else if (part.type === 'text-delta') {
         reply += part.text
         onText(reply)
       } else if (part.type === 'reasoning-delta') {
@@ -205,6 +236,8 @@ export async function chatWithSensei(
       } else if (part.type === 'tool-result') {
         setStep(part.toolCallId, { status: resultFailed(part.toolName, part.output) ? 'failed' : 'done' })
       } else if (part.type === 'tool-error') {
+        const draft = documents.get(part.toolCallId)
+        if (draft) scope?.onArtifactDraft?.({ id: part.toolCallId, name: '', content: '', format: 'markdown', done: true })
         setStep(part.toolCallId, { status: 'failed', detail: part.error instanceof Error ? part.error.message : String(part.error) })
       } else if (part.type === 'error' && !abortSignal?.aborted) {
         streamError = part.error

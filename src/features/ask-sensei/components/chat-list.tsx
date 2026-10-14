@@ -1,4 +1,4 @@
-import { ArrowLeftIcon, ChevronRightIcon, MoreVerticalIcon, Pencil, Plus, RefreshCcwIcon, Trash2Icon } from 'lucide-react'
+import { ArrowLeftIcon, ChevronRightIcon, MoreVerticalIcon, Pencil, Plus, RefreshCcwIcon, Settings2Icon, Trash2Icon } from 'lucide-react'
 import { useState } from 'react'
 import { Link } from 'react-router-dom'
 
@@ -160,6 +160,14 @@ export function ChatList({
         </ScrollArea>
       </SidebarContent>
       <SidebarFooter className="p-2">
+        <SidebarMenu>
+          <SidebarMenuItem>
+            <SidebarMenuButton render={<Link to="?settings=open" />}>
+              <Settings2Icon />
+              <span>Settings</span>
+            </SidebarMenuButton>
+          </SidebarMenuItem>
+        </SidebarMenu>
         <div className="flex items-center gap-2 px-2 py-1">
           <img src={senseiLogo} alt="" className="size-6 shrink-0 brightness-0 invert" />
           <div className="grid text-xs leading-tight">

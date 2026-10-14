@@ -6,7 +6,7 @@ export type SandboxRequest = { id: number } & (
   | { op: 'shell'; command: string }
   | { op: 'ping' }
   | { op: 'write'; path: string; text: string; append: boolean }
-  | { op: 'mount'; files: { name: string; bytes: Uint8Array }[] }
+  | { op: 'mount'; files: { name: string; bytes: Uint8Array; readonly?: boolean }[] }
   | { op: 'read'; path: string }
 )
 export type SandboxResult = ExecResult | { paths: string[] } | { bytes: Uint8Array } | { path: string }
@@ -52,7 +52,7 @@ self.onmessage = async (event: MessageEvent<SandboxRequest>) => {
     if (request.op === 'shell') result = await runShell(py, request.command)
     else if (request.op === 'ping') result = { paths: [] }
     else if (request.op === 'write') result = { path: writeTextFile(py, request.path, request.text, request.append) }
-    else if (request.op === 'mount') result = { paths: request.files.map((file) => mountFile(py, file.name, file.bytes)) }
+    else if (request.op === 'mount') result = { paths: request.files.map((file) => mountFile(py, file.name, file.bytes, file.readonly)) }
     else result = { bytes: readFile(py, request.path) }
     self.postMessage({ id: request.id, ok: true, result } satisfies SandboxResponse)
   } catch (error) {

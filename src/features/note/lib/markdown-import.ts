@@ -14,6 +14,38 @@ export function markdownToHtml(text: string): string | null {
   return BLOCK.test(html) || INLINE.test(html) ? html : null
 }
 
+/** A paragraph that holds only a picture or a link to a stored file is a media block in the editor. */
+const mediaBlock = (paragraph: Element) => {
+  const only =
+    paragraph.children.length === 1 && !paragraph.textContent?.trim().replace(paragraph.firstElementChild?.textContent ?? '', '')
+      ? paragraph.firstElementChild
+      : null
+  if (!only) return null
+  const src = only.getAttribute(only.tagName === 'IMG' ? 'src' : 'href') ?? ''
+  if (only.tagName === 'IMG') return { kind: 'image', src, name: only.getAttribute('alt') ?? '' }
+  if (only.tagName === 'A' && src.startsWith('snote-media:'))
+    return { kind: only.getAttribute('title') || 'file', src, name: only.textContent ?? '' }
+  return null
+}
+
+/**
+ * The editor's HTML for a Markdown document: Markdown as `markdownToHtml` reads it, and a picture or a link to a stored
+ * file on its own line as the editor's media block, so what was inserted in the editor comes back after a reload.
+ */
+export function documentHtml(markdown: string) {
+  const html = marked.parse(markdown, { gfm: true, async: false })
+  const doc = new DOMParser().parseFromString(html, 'text/html')
+  for (const paragraph of Array.from(doc.querySelectorAll('p'))) {
+    const media = mediaBlock(paragraph)
+    if (!media) continue
+    const block = doc.createElement('div')
+    block.setAttribute('data-type', 'media')
+    for (const [key, value] of Object.entries(media)) block.setAttribute(key, value)
+    paragraph.replaceWith(block)
+  }
+  return doc.body.innerHTML
+}
+
 type Mark = { type: string; attrs?: Record<string, unknown> }
 type InlineNode = { type: 'text'; text: string; marks?: Mark[] } | { type: 'hardBreak' }
 
