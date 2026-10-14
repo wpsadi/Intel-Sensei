@@ -3,12 +3,15 @@ import * as React from 'react'
 import { useSearchParams } from 'react-router-dom'
 
 import senseiLogo from '@/assets/sensei.svg'
-import { Bubble, Message, MessageContent } from '@/components/ui/chat'
+import { Shimmer } from '@/components/ai-elements/shimmer'
 import { Button } from '@/components/ui/button'
+import { Bubble, Message, MessageContent } from '@/components/ui/chat'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { useAskSenseiStore } from '@/features/ask-sensei/ask-sensei.store'
+import { ChatReasoning } from '@/features/ask-sensei/components/chat-reasoning'
+import { Markdown } from '@/features/ask-sensei/components/markdown'
 import { WidgetComposer } from '@/features/note/sensei-widget/WidgetComposer'
-import { cn } from '@/lib/utils'
+import { WorkedFor } from '@/features/s-3d/agent/worked-for'
 
 /** The browser assistant uses the same streaming Sensei runtime as S3D and Ask Sensei. */
 export function BrowserAgentPanel({ page }: { page: string | null }) {
@@ -27,14 +30,12 @@ export function BrowserAgentPanel({ page }: { page: string | null }) {
 
   const selectChat = React.useCallback(
     (id: string | null) =>
-      setSearchParams(
-        (current) => {
-          const next = new URLSearchParams(current)
-          if (id) next.set('chatId', id)
-          else next.delete('chatId')
-          return next
-        },
-      ),
+      setSearchParams((current) => {
+        const next = new URLSearchParams(current)
+        if (id) next.set('chatId', id)
+        else next.delete('chatId')
+        return next
+      }),
     [setSearchParams],
   )
 
@@ -84,7 +85,7 @@ export function BrowserAgentPanel({ page }: { page: string | null }) {
                   <button
                     key={suggestion}
                     type="button"
-                    onClick={() => setDraft(suggestion)}
+                    onClick={() => void send(suggestion)}
                     className="rounded-full border px-3 py-1.5 text-xs hover:bg-muted"
                   >
                     {suggestion}
@@ -95,22 +96,36 @@ export function BrowserAgentPanel({ page }: { page: string | null }) {
           )}
           {messages.map((message) => {
             const assistant = message.role === 'assistant'
-            const waiting = assistant && message.id === streamingId && !message.content && !message.reasoning
+            const isStreaming = message.id === streamingId
+            const waiting = assistant && isStreaming && !message.content && !message.reasoning && !message.steps?.length
             return (
               <Message key={message.id} align={assistant ? 'start' : 'end'}>
                 <MessageContent>
+                  {assistant && !waiting && (
+                    <>
+                      {message.steps?.length ? (
+                        <WorkedFor startedAt={message.createdAt} seconds={message.workedSeconds} running={isStreaming} />
+                      ) : null}
+                      <ChatReasoning
+                        reasoning={message.reasoning}
+                        steps={message.steps}
+                        isStreaming={isStreaming && !message.content}
+                        duration={message.reasoningSeconds ?? message.workedSeconds}
+                        toolCount={!message.steps?.length}
+                        defaultOpen={false}
+                        className="mb-2"
+                      />
+                    </>
+                  )}
                   {waiting ? (
-                    <Bubble variant="muted" className="flex gap-1 py-3" role="status" aria-label="Sensei is replying">
-                      <i className="size-1.5 animate-bounce rounded-full bg-current [animation-delay:-.2s]" />
-                      <i className="size-1.5 animate-bounce rounded-full bg-current [animation-delay:-.1s]" />
-                      <i className="size-1.5 animate-bounce rounded-full bg-current" />
-                    </Bubble>
-                  ) : (
+                    <p className="px-1 text-xs text-muted-foreground" role="status" aria-label="Sensei is replying">
+                      <Shimmer duration={1}>Working…</Shimmer>
+                    </p>
+                  ) : assistant && !message.content ? null : (
                     <Bubble variant={assistant ? 'muted' : 'default'}>
-                      {assistant ? message.content : <span className="whitespace-pre-wrap">{message.content}</span>}
+                      {assistant ? <Markdown>{message.content}</Markdown> : <span className="whitespace-pre-wrap">{message.content}</span>}
                     </Bubble>
                   )}
-                  {assistant && message.reasoning && !message.content && <p className="mt-1 px-2 text-xs text-muted-foreground">Thinking…</p>}
                 </MessageContent>
               </Message>
             )

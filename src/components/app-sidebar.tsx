@@ -1,6 +1,7 @@
 'use client'
 
 import {
+  ArrowLeftIcon,
   DollarSignIcon,
   DraftingCompassIcon,
   HomeIcon,
@@ -16,7 +17,15 @@ import { Link } from 'react-router-dom'
 
 import { NavMain } from '@/components/nav-main'
 import { NavSecondary } from '@/components/nav-secondary'
-import { Sidebar, SidebarContent, SidebarHeader, SidebarRail } from '@/components/ui/sidebar'
+import {
+  Sidebar,
+  SidebarContent,
+  SidebarHeader,
+  SidebarMenu,
+  SidebarMenuButton,
+  SidebarMenuItem,
+  SidebarRail,
+} from '@/components/ui/sidebar'
 
 const data = {
   navMain: [
@@ -70,6 +79,14 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
   return (
     <Sidebar className="border-r-0" {...props}>
       <SidebarHeader>
+        <SidebarMenu>
+          <SidebarMenuItem>
+            <SidebarMenuButton render={<Link to="/" />}>
+              <ArrowLeftIcon />
+              <span>Back to home</span>
+            </SidebarMenuButton>
+          </SidebarMenuItem>
+        </SidebarMenu>
         <Link to="/" className="flex items-center gap-2 px-2 py-2 text-sm font-semibold tracking-tight">
           <span className="flex size-6 items-center justify-center rounded-md bg-sidebar-primary text-sidebar-primary-foreground">
             <TerminalIcon className="size-3.5" />

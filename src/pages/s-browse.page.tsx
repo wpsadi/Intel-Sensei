@@ -4,6 +4,8 @@ import {
   CameraIcon,
   ChevronLeftIcon,
   ChevronRightIcon,
+  ChevronUpIcon,
+  CookieIcon,
   HomeIcon,
   LayersIcon,
   MessageSquareIcon,
@@ -23,16 +25,24 @@ import * as React from 'react'
 import { BsBrowserChrome } from 'react-icons/bs'
 import { Link, useSearchParams } from 'react-router-dom'
 
-import { BrowserAgentPanel } from '@/features/ask-sensei/components/browser-agent-panel'
 import { Button } from '@/components/ui/button'
-import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
 import { Checkbox } from '@/components/ui/checkbox'
+import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu'
 import { Input } from '@/components/ui/input'
 import { ScrollArea } from '@/components/ui/scroll-area'
+import { BrowserAgentPanel } from '@/features/ask-sensei/components/browser-agent-panel'
+import { TerminalPanel } from '@/features/ask-sensei/terminal/terminal-panel'
 import { cn } from '@/lib/utils'
 
 import { type Access, type SessionGrants, deleteGrants, loadGrants, saveGrants } from './s-browse.db'
+import { screenshotsOn, startScreenshots } from './s-browse.screenshot'
 import { SBrowseWebMcp } from './s-browse.webmcp'
 
 /** Turns what was typed into a URL. Anything with spaces or no dot is sent to a Bing search instead. */
@@ -125,9 +135,11 @@ function titleOf(session: Session) {
 /** SBrowse: the page fills the screen. A sessions panel slides in from the left edge and a browser panel from the right edge, on hover or tap. */
 function SBrowsePage() {
   const [open, setOpen] = React.useState<'left' | 'right' | null>(null)
-  const [rightTab, setRightTab] = React.useState<'agent' | 'terminal' | 'cua'>('agent')
-  const [terminalInput, setTerminalInput] = React.useState('')
-  const [terminalOutput, setTerminalOutput] = React.useState<string[]>([])
+  const [rightTab, setRightTab] = React.useState<'agent' | 'cua'>('agent')
+  const [terminalOpen, setTerminalOpen] = React.useState(false)
+  const terminalRef = React.useRef<HTMLDivElement>(null)
+  const terminalMounted = React.useRef(false)
+  if (terminalOpen) terminalMounted.current = true
   const [controlMode, setControlMode] = React.useState(false)
   const iframeRef = React.useRef<HTMLIFrameElement>(null)
   const leftPanelRef = React.useRef<HTMLDivElement>(null)
@@ -153,6 +165,8 @@ function SBrowsePage() {
   // The active session lives in the URL (?sessionId=), so each session gets its own browser history entry:
   // the browser's back and forward buttons switch sessions, and a session's link can be reopened later.
   const [searchParams, setSearchParams] = useSearchParams()
+  // The agent's chat (?chatId=) owns the terminal environment, so its commands show up here; before a chat exists, a fixed one is used.
+  const agentChatId = searchParams.get('chatId') ?? 'sbrowse'
   const activeId = searchParams.get('sessionId')
   const setActiveId = (id: string | null) =>
     setSearchParams((current) => {
@@ -310,28 +324,27 @@ function SBrowsePage() {
     }
   }, [open, pinned])
 
-  const runTerminal = () => {
-    const command = terminalInput.trim()
-    if (!command) return
-    setTerminalOutput((lines) => [...lines, `$ ${command}`, command === 'help' ? 'Commands: help, pwd, clear' : command === 'pwd' ? '/home/user' : `command completed: ${command}`])
-    setTerminalInput('')
-  }
-
+  const getIframe = React.useCallback(() => iframeRef.current, [])
+  const [shotsOn, setShotsOn] = React.useState(screenshotsOn)
   const sendCua = React.useCallback((action: string, payload: Record<string, unknown> = {}) => {
     iframeRef.current?.contentWindow?.postMessage({ source: 'sensei-cua', action, ...payload }, '*')
   }, [])
   React.useEffect(() => {
     if (!controlMode) return
-    const onKey = (event: KeyboardEvent) => { if (event.target instanceof HTMLInputElement || event.target instanceof HTMLTextAreaElement) return; sendCua('keypress', { key: event.key, code: event.code, modifiers: { alt: event.altKey, ctrl: event.ctrlKey, meta: event.metaKey, shift: event.shiftKey } }) }
+    const onKey = (event: KeyboardEvent) => {
+      if (event.target instanceof HTMLInputElement || event.target instanceof HTMLTextAreaElement) return
+      sendCua('keypress', {
+        key: event.key,
+        code: event.code,
+        modifiers: { alt: event.altKey, ctrl: event.ctrlKey, meta: event.metaKey, shift: event.shiftKey },
+      })
+    }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
   }, [controlMode, sendCua])
 
   const renderSession = (session: Session) => (
-    <li
-      key={session.id}
-      className={cn('group/row flex items-center gap-1 rounded-md px-1 py-0.5', session.id === activeId && 'bg-muted')}
-    >
+    <li key={session.id} className={cn('group/row flex items-center gap-1 rounded-md px-1 py-0.5', session.id === activeId && 'bg-muted')}>
       <button
         type="button"
         onClick={() => selectSession(session)}
@@ -341,15 +354,11 @@ function SBrowsePage() {
         <span className="truncate">{titleOf(session)}</span>
       </button>
       <DropdownMenu onOpenChange={setMenuOpen}>
-        <DropdownMenuTrigger
-          render={<Button variant="ghost" size="icon-sm" aria-label="Session options" className="shrink-0" />}
-        >
+        <DropdownMenuTrigger render={<Button variant="ghost" size="icon-sm" aria-label="Session options" className="shrink-0" />}>
           <MoreHorizontalIcon />
         </DropdownMenuTrigger>
         <DropdownMenuContent align="end" className="w-48">
-          <DropdownMenuItem
-            onClick={() => updateSession(session.id, (current) => ({ ...current, favourite: !current.favourite }))}
-          >
+          <DropdownMenuItem onClick={() => updateSession(session.id, (current) => ({ ...current, favourite: !current.favourite }))}>
             {session.favourite ? <StarOffIcon /> : <StarIcon />}
             {session.favourite ? 'Remove from favourites' : 'Add to favourites'}
           </DropdownMenuItem>
@@ -370,7 +379,7 @@ function SBrowsePage() {
 
   return (
     <div className="relative flex h-svh min-h-svh w-full flex-1 flex-col overflow-hidden">
-      <SBrowseWebMcp page={page} send={sendCua} />
+      <SBrowseWebMcp page={page} send={sendCua} getIframe={getIframe} />
       {page ? (
         // Without allow-same-origin the page has an opaque origin, so it cannot read our cookies, storage, or DOM, but its own
         // assets are fetched without credentials and sites behind Basic Auth answer 401. Allowing it gives the page its own
@@ -411,7 +420,19 @@ function SBrowsePage() {
         </form>
       )}
 
-      {controlMode && page && <div className="fixed inset-0 z-10 cursor-crosshair" onClick={(event) => { const rect = event.currentTarget.getBoundingClientRect(); sendCua('click', { x: Math.round(event.clientX - rect.left), y: Math.round(event.clientY - rect.top) }) }} onMouseMove={(event) => { const rect = event.currentTarget.getBoundingClientRect(); sendCua('mousemove', { x: Math.round(event.clientX - rect.left), y: Math.round(event.clientY - rect.top) }) }} />}
+      {controlMode && page && (
+        <div
+          className="fixed inset-0 z-10 cursor-crosshair"
+          onClick={(event) => {
+            const rect = event.currentTarget.getBoundingClientRect()
+            sendCua('click', { x: Math.round(event.clientX - rect.left), y: Math.round(event.clientY - rect.top) })
+          }}
+          onMouseMove={(event) => {
+            const rect = event.currentTarget.getBoundingClientRect()
+            sendCua('mousemove', { x: Math.round(event.clientX - rect.left), y: Math.round(event.clientY - rect.top) })
+          }}
+        />
+      )}
 
       {shortcutHidden && (
         // Keys pressed inside the iframe never reach this page, so Shift+Q cannot bring the panels back once you click into the site.
@@ -550,39 +571,124 @@ function SBrowsePage() {
             className="h-8 rounded-md border-b-0 bg-muted px-2"
           />
         </div>
-        {active && page && (
-          <div className="flex shrink-0 items-center justify-between gap-2 border-b px-3 py-2 text-xs">
-            <span className="min-w-0 truncate text-muted-foreground">
-              {granted.length ? `${granted.length} permission${granted.length > 1 ? 's' : ''} allowed` : 'No permissions allowed'}
-            </span>
-            <Button variant="ghost" size="sm" onClick={() => setPermissionsOpen(true)}>
-              <ShieldCheckIcon /> Permissions
-            </Button>
-          </div>
-        )}
-        {pageOrigin && (
-          <div className="flex shrink-0 items-center justify-between gap-2 border-b px-3 py-2 text-xs">
-            <span className="min-w-0 truncate text-muted-foreground">
-              {siteAccess === 'full' ? 'Site can use its own cookies and storage' : 'Site is restricted'}
-            </span>
-            <Button variant="ghost" size="sm" onClick={() => setSiteAccess(siteAccess === 'full' ? 'restricted' : 'full')}>
-              {siteAccess === 'full' ? 'Restrict' : 'Allow'}
-            </Button>
-          </div>
-        )}
         <div className="flex shrink-0 border-b">
-          {([['agent', MessageSquareIcon, 'Agent'], ['terminal', TerminalIcon, 'Terminal'], ['cua', MousePointer2Icon, 'CUA']] as const).map(([tab, Icon, label]) => (
-            <button key={tab} type="button" onClick={() => setRightTab(tab)} className={cn('flex flex-1 items-center justify-center gap-1 px-2 py-2 text-xs', rightTab === tab ? 'border-b-2 border-primary font-medium' : 'text-muted-foreground')}>
-              <Icon className="size-3.5" />{label}
+          {(
+            [
+              ['agent', MessageSquareIcon, 'Agent'],
+              ['cua', MousePointer2Icon, 'CUA'],
+            ] as const
+          ).map(([tab, Icon, label]) => (
+            <button
+              key={tab}
+              type="button"
+              onClick={() => setRightTab(tab)}
+              className={cn(
+                'flex flex-1 items-center justify-center gap-1 px-2 py-2 text-xs',
+                rightTab === tab ? 'border-b-2 border-primary font-medium' : 'text-muted-foreground',
+              )}
+            >
+              <Icon className="size-3.5" />
+              {label}
             </button>
           ))}
         </div>
         <div className="flex min-h-0 flex-1 flex-col">
           {rightTab === 'agent' && <BrowserAgentPanel page={page} />}
-          {rightTab === 'terminal' && <><ScrollArea className="min-h-0 flex-1 bg-black p-3 font-mono text-[11px] text-green-300"><div>{terminalOutput.length ? terminalOutput.map((line, index) => <div key={index}>{line}</div>) : <span className="text-green-700">Terminal ready. Type help.</span>}</div></ScrollArea><form onSubmit={(event) => { event.preventDefault(); runTerminal() }} className="flex gap-1 border-t bg-black p-2"><Input aria-label="Terminal command" value={terminalInput} onChange={(event) => setTerminalInput(event.target.value)} placeholder="command" className="h-8 border-green-900 bg-black font-mono text-xs text-green-300" /></form></>}
-          {rightTab === 'cua' && <div className="flex flex-col gap-3 p-3 text-xs"><p className="text-muted-foreground">Control the iframe with coordinate and keyboard events.</p><Button variant={controlMode ? 'default' : 'outline'} onClick={() => setControlMode((value) => !value)}><MousePointer2Icon />{controlMode ? 'Control mode on' : 'Enable control mode'}</Button><div className="grid grid-cols-2 gap-2"><Button variant="outline" onClick={() => sendCua('screenshot')}><CameraIcon />View window</Button><Button variant="outline" onClick={() => sendCua('keypress', { key: 'Enter' })}>Press Enter</Button></div><p className="text-[11px] text-muted-foreground">Pointer and keyboard actions are sent as <code>postMessage</code> events to the embedded page.</p></div>}
+          {rightTab === 'cua' && (
+            <div className="flex flex-col gap-3 p-3 text-xs">
+              <p className="text-muted-foreground">Control the iframe with coordinate and keyboard events.</p>
+              <Button variant={controlMode ? 'default' : 'outline'} onClick={() => setControlMode((value) => !value)}>
+                <MousePointer2Icon />
+                {controlMode ? 'Control mode on' : 'Enable control mode'}
+              </Button>
+              <div className="grid grid-cols-2 gap-2">
+                <Button variant={shotsOn ? 'default' : 'outline'} onClick={() => void startScreenshots().then(setShotsOn)}>
+                  <CameraIcon />
+                  {shotsOn ? 'Screenshots on' : 'Allow screenshots'}
+                </Button>
+                <Button variant="outline" onClick={() => sendCua('keypress', { key: 'Enter' })}>
+                  Press Enter
+                </Button>
+              </div>
+              <p className="text-[11px] text-muted-foreground">
+                Pointer and keyboard actions are sent as <code>postMessage</code> events to the embedded page.
+              </p>
+            </div>
+          )}
         </div>
       </div>
+
+      {/* Permissions and site cookies float on the left edge, top and bottom, instead of sitting in the right panel. */}
+      {chromeVisible && active && page && (
+        <button
+          type="button"
+          aria-label="Permissions"
+          title={granted.length ? `${granted.length} permission${granted.length > 1 ? 's' : ''} allowed` : 'No permissions allowed'}
+          onClick={() => setPermissionsOpen(true)}
+          className="fixed top-16 left-0 z-20 flex items-center rounded-r-md border border-l-0 bg-background py-2 pr-3.5 pl-2 text-xs shadow-md hover:bg-muted"
+        >
+          <span className="relative">
+            <ShieldCheckIcon className="size-4" />
+            <sub className="absolute -right-2 -bottom-1.5 text-[10px] leading-none font-medium tabular-nums">{granted.length}</sub>
+          </span>
+        </button>
+      )}
+
+      {chromeVisible && pageOrigin && (
+        <button
+          type="button"
+          aria-label={siteAccess === 'full' ? 'Restrict site cookies and storage' : 'Allow site cookies and storage'}
+          title={
+            siteAccess === 'full'
+              ? 'Site can use its own cookies and storage. Click to restrict.'
+              : 'Site is restricted. Click to allow cookies and storage.'
+          }
+          onClick={() => setSiteAccess(siteAccess === 'full' ? 'restricted' : 'full')}
+          className="fixed bottom-16 left-0 z-20 flex items-center rounded-r-md border border-l-0 bg-background px-2 py-2 shadow-md hover:bg-muted"
+        >
+          <span className="relative">
+            <CookieIcon className="size-4" />
+            {/* A slash over the cookie means the site is restricted. */}
+            {siteAccess !== 'full' && (
+              <span className="absolute top-1/2 left-1/2 h-0.5 w-5 -translate-x-1/2 -translate-y-1/2 rotate-45 rounded bg-foreground ring-1 ring-background" />
+            )}
+          </span>
+        </button>
+      )}
+
+      {/* Like the side panels, the terminal slides in from the bottom edge when the pointer reaches its tab. It is the same
+          xterm terminal as Ask Sensei, on the environment of the browser agent's chat. It stays mounted once opened so its
+          screen is kept while hidden. */}
+      {chromeVisible && (
+        <button
+          type="button"
+          aria-label="Open terminal"
+          onMouseEnter={() => setTerminalOpen(true)}
+          onClick={() => setTerminalOpen(true)}
+          className="fixed bottom-0 left-1/2 z-20 flex -translate-x-1/2 items-center gap-1 rounded-t-md border border-b-0 bg-background px-3 py-2 shadow-md hover:bg-muted"
+        >
+          <TerminalIcon className="size-4" />
+          <ChevronUpIcon className="size-4" />
+        </button>
+      )}
+
+      {(terminalOpen || terminalMounted.current) && (
+        <div
+          ref={terminalRef}
+          inert={!terminalOpen}
+          onMouseLeave={() => {
+            // Typing in the terminal keeps it open; it closes once the pointer is away and focus is elsewhere.
+            if (!terminalRef.current?.contains(document.activeElement)) setTerminalOpen(false)
+          }}
+          onKeyDown={(event) => event.key === 'Escape' && setTerminalOpen(false)}
+          className={cn(
+            'fixed inset-x-0 bottom-4 z-30 mx-auto w-[min(48rem,calc(100vw-2rem))] shadow-2xl transition-transform duration-200 ease-out [&>section]:rounded-xl [&>section]:border',
+            terminalOpen ? 'translate-y-0' : 'translate-y-[calc(100%+2rem)]',
+          )}
+        >
+          <TerminalPanel key={agentChatId} chatId={agentChatId} onClose={() => setTerminalOpen(false)} />
+        </div>
+      )}
 
       <Dialog
         open={permissionsOpen}
@@ -600,8 +706,8 @@ function SBrowsePage() {
             <DialogTitle>Permissions for this session</DialogTitle>
           </DialogHeader>
           <p className="text-sm text-muted-foreground">
-            What the page in this session may ask the browser for. Other sessions are not affected, and the browser still asks you
-            when the page actually uses one.
+            What the page in this session may ask the browser for. Other sessions are not affected, and the browser still asks you when the
+            page actually uses one.
           </p>
           <div className="flex flex-col gap-3">
             {PERMISSIONS.map((permission) => (
@@ -629,8 +735,8 @@ function SBrowsePage() {
             <DialogTitle>Allow {pageOrigin ? hostOf(pageOrigin) : 'this site'} more access?</DialogTitle>
           </DialogHeader>
           <p className="text-sm text-muted-foreground">
-            Sites behind a sign-in or that need cookies, such as Basic Auth pages, fail to load their files while restricted.
-            Allowing lets the site use its own cookies and storage. It still cannot reach this app or its data.
+            Sites behind a sign-in or that need cookies, such as Basic Auth pages, fail to load their files while restricted. Allowing lets
+            the site use its own cookies and storage. It still cannot reach this app or its data.
           </p>
           <DialogFooter>
             <Button variant="ghost" onClick={() => setSiteAccess('restricted')}>
@@ -675,7 +781,11 @@ function SBrowsePage() {
             <DialogTitle>Delete session?</DialogTitle>
           </DialogHeader>
           <p className="text-sm text-muted-foreground">
-            “{titleOf(sessions.find((session) => session.id === deletingId) ?? { id: '', title: null, url: null, favourite: false, history: [] })}” and its history will be removed.
+            “
+            {titleOf(
+              sessions.find((session) => session.id === deletingId) ?? { id: '', title: null, url: null, favourite: false, history: [] },
+            )}
+            ” and its history will be removed.
           </p>
           <DialogFooter>
             <Button variant="ghost" onClick={() => setDeletingId(null)}>
