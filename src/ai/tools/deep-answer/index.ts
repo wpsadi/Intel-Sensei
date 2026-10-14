@@ -1,9 +1,8 @@
 import { tool } from 'ai'
 import { z } from 'zod'
 
-import { chatWithGemini } from '@/ai/inference/chat'
+import { chatWithSensei } from '@/ai/inference/chat'
 import { writeNarration } from '@/ai/narration'
-import { GEMINI_KEY } from '@/ai/utils/gemini-key'
 import type { ChatTurn } from '@/ai/utils/messages'
 import type { ChatPlan, ChatSearch, ChatTodoList } from '@/features/note/db/types'
 
@@ -35,10 +34,7 @@ export function createDeepAnswerTool({ chatId, history, onAnswer, onPlan, onTodo
       "Write a detailed answer on the user's screen for a question that needs depth: an explanation, walkthrough, code, comparison, table or research. Use it only for those, not for simple questions or small talk. Returns a short script to say aloud.",
     inputSchema: z.object({ question: z.string().describe("The user's question, with the context needed to answer it in depth") }),
     execute: async ({ question }, { toolCallId, abortSignal }) => {
-      const apiKey = GEMINI_KEY.value
-      if (!apiKey) throw new Error('Add your Gemini API key in Settings → AI features.')
-      const answer = await chatWithGemini(
-        apiKey,
+      const answer = await chatWithSensei(
         [
           ...history(),
           {

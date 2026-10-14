@@ -17,7 +17,7 @@ export class EMBEDDINGS {
   /** Embeds a text with gemini-embedding-001. */
   static async embed_v1(value: string, taskType: EmbeddingTask = 'RETRIEVAL_DOCUMENT') {
     const apiKey = GEMINI_KEY.value
-    if (!apiKey) throw new Error('Add your Gemini API key in Settings → AI features to use embeddings.')
+    if (!apiKey) throw new Error('Add your Gemini API key in Settings → AI providers to use embeddings.')
     const { embedding, usage } = await embed({
       model: createGoogle({ apiKey }).embedding('gemini-embedding-001'),
       value,
@@ -30,7 +30,7 @@ export class EMBEDDINGS {
   /** Embeds a text with gemini-embedding-2. */
   static async embed_v2(value: string, taskType: EmbeddingTask = 'RETRIEVAL_DOCUMENT') {
     const apiKey = GEMINI_KEY.value
-    if (!apiKey) throw new Error('Add your Gemini API key in Settings → AI features to use embeddings.')
+    if (!apiKey) throw new Error('Add your Gemini API key in Settings → AI providers to use embeddings.')
     const { embedding, usage } = await embed({
       model: createGoogle({ apiKey }).embedding('gemini-embedding-2'),
       value,

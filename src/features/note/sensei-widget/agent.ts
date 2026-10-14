@@ -3,14 +3,15 @@ import { type ModelMessage, type Tool, asSchema } from 'ai'
 import { create } from 'zustand'
 
 import { generateChatTitle } from '@/ai/inference/title'
+import { AI_MODELS, type ResolvedModel } from '@/ai/providers'
 import { SANDBOX_INSTRUCTIONS, createSandboxTools } from '@/ai/sandbox/tools'
+import { type PendingMessage, demoteSteering, removePending, submitWhileBusy, takeNextPending, useSendQueue } from '@/ai/send-queue'
 import { createScrapeTool } from '@/ai/tools/scrape'
 import { createSearchTool, upsertSearch } from '@/ai/tools/search'
 import { currentTimePrompt } from '@/ai/utils/current-time'
-import { GEMINI_KEY } from '@/ai/utils/gemini-key'
 import { thinkingOnly } from '@/ai/utils/thinking'
 import { type ToolSpec, streamInWorker } from '@/ai/worker/client'
-import { CHAT_MODEL, SNOTE_AGENT_CONTEXT_LIMIT } from '@/constants/ai'
+import { SNOTE_AGENT_CONTEXT_LIMIT } from '@/constants/ai'
 
 import { widgetChatsRepo } from '../db/repo'
 import type { ChatSearch, ChatToolStep, WidgetChat, WidgetMessage } from '../db/types'
@@ -115,6 +116,8 @@ export const useSenseiRuns = create<{ live: Record<string, WidgetChat>; viewedId
 }))
 
 const aborts = new Map<string, () => void>()
+/** Sends a message into the running reply of a chat, by chat id. */
+const steerers = new Map<string, (message: PendingMessage) => void>()
 export const stopSensei = (chatId: string) => aborts.get(chatId)?.()
 
 /** Tools read the latest route when they run, so a reply that opens another note keeps working on it. */
@@ -136,8 +139,13 @@ async function save(c: WidgetChat) {
 /** Starts a reply in `base` (a new chat when null) and shows it. */
 export async function sendSensei(text: string, base: WidgetChat | null, noteTitle: string | undefined) {
   const question = text.trim()
-  if (!question || (base && useSenseiRuns.getState().live[base.id])) return
-  const apiKey = GEMINI_KEY.value
+  if (!question) return
+  // A reply is running: the message waits for it, or steers it (Settings → Chat).
+  if (base && useSenseiRuns.getState().live[base.id]) {
+    submitWhileBusy(base.id, { text: question }, steerers.get(base.id))
+    return
+  }
+  const picked = AI_MODELS.chat
   const assistantId = crypto.randomUUID()
   const current = base ?? { id: crypto.randomUUID(), title: question.slice(0, 40), messages: [], updatedAt: Date.now() }
   const history: WidgetMessage[] = [...current.messages, { id: crypto.randomUUID(), role: 'user', content: question }]
@@ -147,8 +155,8 @@ export async function sendSensei(text: string, base: WidgetChat | null, noteTitl
     useSenseiRuns.setState((s) => ({ live: { ...s.live, [c.id]: c } }))
   }
   useSenseiRuns.setState({ viewedId: c.id })
-  if (!apiKey) {
-    patch({ error: 'Add your Gemini API key in Settings first.' })
+  if (!picked.key) {
+    patch({ error: 'Add a key for your chat provider in Settings first.' })
     await save(c)
     useSenseiRuns.setState((s) => ({ live: without(s.live, c.id) }))
     return
@@ -158,7 +166,7 @@ export async function sendSensei(text: string, base: WidgetChat | null, noteTitl
   await save(c)
   // A new chat keeps the start of the question as its title until Gemini has named it, as in Ask Sensei.
   if (!base)
-    void generateChatTitle(apiKey, `User: ${question}`)
+    void generateChatTitle(`User: ${question}`)
       .then(async (title) => {
         if (!title) return
         if (useSenseiRuns.getState().live[c.id]) {
@@ -177,7 +185,17 @@ export async function sendSensei(text: string, base: WidgetChat | null, noteTitl
   const started = Date.now()
   let thinking = true
   void runSensei({
-    apiKey,
+    picked,
+    onRun: (run) => steerers.set(c.id, (message) => run.steer(message.id, message.text)),
+    // The model took a steering message in: it shows in the chat, above the reply it is steering.
+    onSteered: (id) => {
+      const pending = useSendQueue.getState().items[c.id]?.find((item) => item.id === id)
+      if (!pending) return
+      removePending(c.id, id)
+      const at = c.messages.findIndex((m) => m.id === assistantId)
+      c = { ...c, messages: [...c.messages.slice(0, at), { id, role: 'user', content: pending.text }, ...c.messages.slice(at)] }
+      useSenseiRuns.setState((s) => ({ live: { ...s.live, [c.id]: c } }))
+    },
     messages: [
       ...(current.summary
         ? [{ role: 'user' as const, content: `Summary of the earlier conversation (compacted):\n\n${current.summary.text}` }]
@@ -209,8 +227,13 @@ export async function sendSensei(text: string, base: WidgetChat | null, noteTitl
     })
     .finally(async () => {
       aborts.delete(c.id)
+      steerers.delete(c.id)
       await save(c)
       useSenseiRuns.setState((s) => ({ live: without(s.live, c.id) }))
+      // The next message sent meanwhile goes now; steering messages the reply never took are sent like queued ones.
+      demoteSteering()
+      const next = takeNextPending(c.id)
+      if (next) void sendSensei(next.message.text, c, noteTitle)
     })
 }
 
@@ -219,7 +242,9 @@ export async function sendSensei(text: string, base: WidgetChat | null, noteTitl
  * `onText` and each tool call into `onSteps`. Resolves with the reply text.
  */
 async function runSensei({
-  apiKey,
+  picked,
+  onRun,
+  onSteered,
   messages,
   noteTitle,
   onText,
@@ -229,7 +254,9 @@ async function runSensei({
   onUsage,
   signal,
 }: {
-  apiKey: string
+  picked: ResolvedModel
+  onRun: (run: { steer: (id: string, text: string) => void }) => void
+  onSteered: (id: string) => void
   messages: ModelMessage[]
   noteTitle?: string
   onText: (soFar: string) => void
@@ -284,20 +311,23 @@ async function runSensei({
   }
   const result = await streamInWorker(
     {
-      provider: 'google',
-      key: apiKey,
-      model: CHAT_MODEL,
+      provider: picked.provider,
+      key: picked.key,
+      baseURL: picked.baseURL,
+      model: picked.model,
       instructions: instructions(noteTitle),
       tools,
       messages,
       contextLimit: SNOTE_AGENT_CONTEXT_LIMIT,
       // Gemini leaves out its thought summaries unless asked for them.
-      providerOptions: {
-        google: { thinkingConfig: { thinkingLevel: 'high', includeThoughts: true } } satisfies GoogleLanguageModelOptions,
-      },
+      providerOptions:
+        picked.provider === 'google'
+          ? { google: { thinkingConfig: { thinkingLevel: 'high', includeThoughts: true } } satisfies GoogleLanguageModelOptions }
+          : undefined,
     },
     {
       signal,
+      onRun,
       execTool: (name, args) => {
         const call = calls[name]
         if (!call) throw new Error(`Unknown tool ${name}`)
@@ -337,7 +367,8 @@ async function runSensei({
         } else if (part.type === 'tool-error') {
           console.warn(LOG, 'tool error', part.toolName, part.error)
           setStep({ id: part.toolCallId, name: part.toolName, label: stepLabel(part.toolName), detail: part.error, status: 'failed' })
-        } else if (part.type === 'usage') onUsage({ contextTokens: part.contextTokens })
+        } else if (part.type === 'steered') onSteered(part.id)
+        else if (part.type === 'usage') onUsage({ contextTokens: part.contextTokens })
         else if (part.type === 'compacted') {
           compactions++
           onUsage({ compactions })
@@ -358,8 +389,8 @@ async function runSensei({
 
 /** Compacts a widget chat on request: later replies see a summary of everything so far plus newer messages. */
 export async function compactSenseiChat(chat: WidgetChat) {
-  const apiKey = GEMINI_KEY.value
-  if (!apiKey) throw new Error('Add your Gemini API key in Settings first.')
+  const picked = AI_MODELS.chat
+  if (!picked.key) throw new Error('Add a key for your chat provider in Settings first.')
   const last = chat.messages.at(-1)
   if (!last) return chat
   const cut = chat.summary ? chat.messages.findIndex((m) => m.id === chat.summary!.uptoId) + 1 : 0
@@ -372,9 +403,10 @@ export async function compactSenseiChat(chat: WidgetChat) {
   let err: string | undefined
   const res = await streamInWorker(
     {
-      provider: 'google',
-      key: apiKey,
-      model: CHAT_MODEL,
+      provider: picked.provider,
+      key: picked.key,
+      baseURL: picked.baseURL,
+      model: picked.model,
       tools: {},
       instructions:
         'Compress this notes-assistant conversation so it can continue. Keep the user requests word for word, decisions, the notes and pages mentioned (titles and ids), what was done and what is still open. Write compact markdown.',

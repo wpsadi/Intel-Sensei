@@ -61,10 +61,11 @@ export async function uploadLargeFile(apiKey: string, blob: Blob, attachment: Ch
  * One turn as the AI SDK wants it: the text first, then the files. Text files go in as text, so any
  * text type works. Other files (images, PDFs, audio, video) go in as file parts with their media type,
  * read from Cache Storage. A file missing from the cache is skipped. `withVideoLink` adds the first
- * YouTube link in the text as a video part.
+ * YouTube link in the text as a video part. `geminiKey` is set only when Gemini is the provider: only it
+ * watches YouTube links and takes large files through its Files API.
  */
-export async function toModelMessage(apiKey: string, turn: ChatTurn, withVideoLink: boolean): Promise<ModelMessage> {
-  const videoLink = withVideoLink && turn.role === 'user' ? YOUTUBE_URL.exec(turn.content)?.[0] : undefined
+export async function toModelMessage(geminiKey: string | undefined, turn: ChatTurn, withVideoLink: boolean): Promise<ModelMessage> {
+  const videoLink = withVideoLink && geminiKey && turn.role === 'user' ? YOUTUBE_URL.exec(turn.content)?.[0] : undefined
   if (turn.role === 'assistant' || (!turn.attachments?.length && !videoLink)) return { role: turn.role, content: turn.content }
   const parts: Exclude<Extract<ModelMessage, { role: 'user' }>['content'], string> = []
   if (turn.content) parts.push({ type: 'text', text: turn.content })
@@ -76,7 +77,8 @@ export async function toModelMessage(apiKey: string, turn: ChatTurn, withVideoLi
     if (mediaType.startsWith('text/') || mediaType === 'application/json') {
       parts.push({ type: 'text', text: `Attached file "${attachment.name}":\n${await blob.text()}` })
     } else if (blob.size > INLINE_FILE_LIMIT) {
-      parts.push({ type: 'file', data: new URL(await uploadLargeFile(apiKey, blob, attachment)), mediaType, filename: attachment.name })
+      if (!geminiKey) throw new Error(`${attachment.name} is too large for this provider. Choose Gemini for chat in Settings.`)
+      parts.push({ type: 'file', data: new URL(await uploadLargeFile(geminiKey, blob, attachment)), mediaType, filename: attachment.name })
     } else {
       parts.push({ type: 'file', data: new Uint8Array(await blob.arrayBuffer()), mediaType, filename: attachment.name })
     }

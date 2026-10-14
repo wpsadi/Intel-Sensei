@@ -106,7 +106,7 @@ export class LiveCall {
 
   async start() {
     const key = GEMINI_KEY.value
-    if (!key) throw new Error('Add your Gemini API key in Settings → AI features to start a live call.')
+    if (!key) throw new Error('Add your Gemini API key in Settings → AI providers to start a live call.')
 
     this.mic = await navigator.mediaDevices.getUserMedia({
       audio: { channelCount: 1, echoCancellation: true, noiseSuppression: true },

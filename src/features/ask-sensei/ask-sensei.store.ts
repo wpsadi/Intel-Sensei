@@ -1,10 +1,11 @@
 import { toast } from 'sonner'
 import { create } from 'zustand'
 
-import { chatWithGemini } from '@/ai/inference/chat'
+import { chatWithSensei } from '@/ai/inference/chat'
 import { generateChatTitle } from '@/ai/inference/title'
 import { episodicMemory, sessionMemory } from '@/ai/memory'
-import { GEMINI_KEY } from '@/ai/utils/gemini-key'
+import { AI_MODELS } from '@/ai/providers'
+import { type PendingMessage, demoteSteering, removePending, submitWhileBusy, takeNextPending } from '@/ai/send-queue'
 import { currentTodos, messageText } from '@/ai/utils/messages'
 import type { ChatTurn } from '@/ai/utils/messages'
 import { uid } from '@/features/note/db/idb'
@@ -46,7 +47,7 @@ interface AskSenseiState {
   deleteChat(id: string): Promise<void>
 }
 
-const NO_KEY_REPLY = 'Add your Gemini API key in Settings → AI features to chat with Sensei.'
+const NO_KEY_REPLY = 'Add a key for your chat provider in Settings → AI providers to chat with Sensei.'
 const DEFAULT_TITLE = 'New chat'
 
 const historyOf = (messages: ChatMessage[]): ChatTurn[] =>
@@ -81,6 +82,10 @@ export const useAskSenseiStore = create<AskSenseiState>()((set, get) => {
 
   /** Aborts the reply that is streaming now. */
   let abort: AbortController | null = null
+  /** The chat the streaming reply belongs to. */
+  let runChatId: string | null = null
+  /** Messages sent to steer the streaming reply that it has not taken yet. */
+  let steerBox: PendingMessage[] = []
   /** Resolves the questions the streaming reply is waiting on. */
   let pendingAnswers: ((answers: ChatAnswers) => void) | null = null
 
@@ -96,6 +101,8 @@ export const useAskSenseiStore = create<AskSenseiState>()((set, get) => {
 
     const controller = new AbortController()
     abort = controller
+    runChatId = chatId
+    steerBox = []
     const current = () => get().messages[chatId]?.find((message) => message.id === reply.id)
     // Thinking runs from the request until the first words of the reply.
     const startedAt = Date.now()
@@ -109,12 +116,10 @@ export const useAskSenseiStore = create<AskSenseiState>()((set, get) => {
 
     let finalText = ''
     try {
-      const key = GEMINI_KEY.value
-      if (!key) {
+      if (!AI_MODELS.chat.key) {
         finalText = NO_KEY_REPLY
       } else {
-        finalText = await chatWithGemini(
-          key,
+        finalText = await chatWithSensei(
           history,
           (soFar) => {
             endThinking()
@@ -129,6 +134,26 @@ export const useAskSenseiStore = create<AskSenseiState>()((set, get) => {
             chatId,
             messageId: reply.id,
             todos,
+            takeSteers: async () => {
+              const taken = steerBox.splice(0)
+              const turns: ChatTurn[] = []
+              for (const pending of taken) {
+                removePending(chatId, pending.id)
+                const message: ChatMessage = {
+                  id: uid(),
+                  chatId,
+                  role: 'user',
+                  content: pending.text,
+                  attachments: pending.attachments,
+                  createdAt: Date.now(),
+                }
+                await addMessage(message)
+                void episodicMemory.append({ id: message.id, chatId, role: 'user', content: pending.text })
+                turns.push({ role: 'user', content: pending.text, attachments: pending.attachments })
+              }
+              if (taken.length) await touchChat(chatId)
+              return turns
+            },
             onUsage: (usage) => patchMessage(chatId, reply.id, { usage }),
             onAsk: (questions) =>
               new Promise<ChatAnswers>((resolve, reject) => {
@@ -173,11 +198,20 @@ export const useAskSenseiStore = create<AskSenseiState>()((set, get) => {
     })
     await touchChat(chatId)
     if (!interrupted) void episodicMemory.append({ id: reply.id, chatId, role: 'assistant', content: finalText })
+
+    // The next message sent meanwhile goes now; steering messages the reply never took are sent like queued ones.
+    runChatId = null
+    steerBox = []
+    demoteSteering()
+    const next = takeNextPending(
+      chatId,
+      get().chats.map((item) => item.id),
+    )
+    if (next) void get().sendMessage(next.chatId, next.message.text, next.message.attachments)
   }
 
-  /** Names the chat with Gemini from its first few messages. Does nothing without a key or messages. */
+  /** Names the chat with the title provider from its first few messages. Does nothing without a key or messages. */
   async function nameChat(id: string) {
-    const key = GEMINI_KEY.value
     const transcript = (get().messages[id] ?? [])
       .slice(0, 6)
       .map(
@@ -185,8 +219,8 @@ export const useAskSenseiStore = create<AskSenseiState>()((set, get) => {
           `${message.role === 'user' ? 'User' : 'Sensei'}: ${message.content || message.attachments?.map((file) => file.name).join(', ') || ''}`,
       )
       .join('\n')
-    if (!key || !transcript.trim()) return
-    const title = await generateChatTitle(key, transcript)
+    if (!AI_MODELS.title.key || !transcript.trim()) return
+    const title = await generateChatTitle(transcript)
     if (title) await get().renameChat(id, title)
   }
 
@@ -229,6 +263,11 @@ export const useAskSenseiStore = create<AskSenseiState>()((set, get) => {
       const text = content.trim()
       if (!text && !attachments?.length) return null
       const chat = get().chats.find((item) => item.id === chatId) ?? (await get().createChat())
+      // A reply is running: the message waits for it, or steers it when it belongs to this chat.
+      if (get().streamingId) {
+        submitWhileBusy(chat.id, { text, attachments }, chat.id === runChatId ? (pending) => steerBox.push(pending) : undefined)
+        return chat.id
+      }
       const isFirstMessage = (get().messages[chat.id] ?? []).length === 0
       const userMessage: ChatMessage = { id: uid(), chatId: chat.id, role: 'user', content: text, attachments, createdAt: Date.now() }
       await addMessage(userMessage)
@@ -282,9 +321,8 @@ export const useAskSenseiStore = create<AskSenseiState>()((set, get) => {
     },
 
     async regenerateTitle(id) {
-      const key = GEMINI_KEY.value
-      if (!key) {
-        toast('Add your Gemini API key in Settings → AI features to name chats')
+      if (!AI_MODELS.title.key) {
+        toast('Add a key for the title provider in Settings → AI providers to name chats')
         return
       }
       try {

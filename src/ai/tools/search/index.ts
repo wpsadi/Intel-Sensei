@@ -18,7 +18,7 @@ interface FirecrawlResult {
 
 /**
  * Searches the web with Firecrawl. Works without a key on Firecrawl's free keyless tier, which is
- * rate-limited per IP; a key from Settings → AI features is sent when saved. Used by the
+ * rate-limited per IP; a key from Settings → AI providers is sent when saved. Used by the
  * search tool below.
  */
 export async function searchWeb(query: string, abortSignal?: AbortSignal): Promise<WebSearchResult> {

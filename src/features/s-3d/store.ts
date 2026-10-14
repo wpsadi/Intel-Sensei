@@ -14,9 +14,11 @@ import {
   createPage,
   descendants,
   isContainer,
+  isPlaceholderName,
   pageOf,
   setChildren,
   unionRect,
+  uniqueName,
 } from './model'
 import type { BooleanOp, Doc, NodeType, Page, SNode, Service, Shape3D, Tool } from './types'
 
@@ -101,7 +103,10 @@ interface S3DState {
   openDoc(id: string): Promise<void>
   loadDoc(doc: Doc): Promise<void>
   deleteDoc(id: string): Promise<void>
+  /** A rename by the user: the name is locked, so the AI will not replace it. */
   renameDoc(name: string): void
+  /** The AI names a file that still has its placeholder name; does nothing if the user named it. */
+  autoNameDoc(docId: string, title: string): Promise<void>
   saveNow(label?: string): Promise<void>
   restoreVersion(doc: Doc): void
 
@@ -281,7 +286,7 @@ export const useS3D = create<S3DState>()((set, get) => {
       const lastId = await settingsRepo.get<string>(lastDocKey(service), '')
       const doc = docs.find((d) => d.id === lastId) ?? docs[0]
       if (doc) await get().loadDoc(doc)
-      else await get().newDoc('Untitled')
+      else await get().newDoc()
       set({ ready: true })
       if (!first) return
       channel?.addEventListener('message', (e: MessageEvent<CollabMessage>) => {
@@ -351,8 +356,10 @@ export const useS3D = create<S3DState>()((set, get) => {
       scheduleSave()
     },
 
-    async newDoc(name = 'Untitled') {
-      await get().loadDoc({ ...createDoc(name), kind: get().service })
+    async newDoc(name) {
+      const taken = (await serviceDocs(get().service)).map((d) => d.name)
+      // A name the user typed is theirs; the automatic "Untitled" gets the next free number.
+      await get().loadDoc({ ...createDoc(name ?? uniqueName('Untitled', taken)), kind: get().service, ...(name && { nameLocked: true }) })
       await get().saveNow()
     },
     async openDoc(id) {
@@ -386,7 +393,24 @@ export const useS3D = create<S3DState>()((set, get) => {
       set({ docs: (await serviceDocs(get().service)).map(({ id, name, updatedAt }) => ({ id, name, updatedAt })) })
     },
     renameDoc(name) {
-      get().mutate((d) => void (d.name = name))
+      get().mutate((d) => {
+        d.name = name
+        d.nameLocked = true
+      })
+    },
+    async autoNameDoc(docId, title) {
+      const service = get().service
+      const others = (await serviceDocs(service)).filter((d) => d.id !== docId).map((d) => d.name)
+      const name = uniqueName(title, others)
+      const current = get().doc
+      if (current.id === docId) {
+        if (current.nameLocked || !isPlaceholderName(current.name)) return
+        get().mutate((d) => void (d.name = name), { history: false })
+        return
+      }
+      const doc = await docsRepo.get(docId)
+      if (doc && !doc.nameLocked && isPlaceholderName(doc.name)) await docsRepo.put({ ...doc, name })
+      set({ docs: (await serviceDocs(service)).map(({ id, name, updatedAt }) => ({ id, name, updatedAt })) })
     },
     async saveNow(label) {
       clearTimeout(saveTimer)

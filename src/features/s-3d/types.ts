@@ -387,6 +387,8 @@ export interface Doc {
   nodes: Record<string, SNode>
   /** Which service owns the file: S-Design (2D) or S3D. Missing means 'design' (files made before the split). */
   kind?: Service
+  /** True once the user named the file themselves, so the AI never renames it. Missing means the name is still automatic. */
+  nameLocked?: boolean
   createdAt: number
   updatedAt: number
 }

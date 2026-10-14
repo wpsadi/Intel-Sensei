@@ -47,7 +47,13 @@ function agentWorker() {
  */
 export function streamInWorker(
   start: Start,
-  opts: { signal: AbortSignal; onPart: (p: StreamPart) => void; execTool: (name: string, args: unknown) => unknown },
+  opts: {
+    signal: AbortSignal
+    onPart: (p: StreamPart) => void
+    execTool: (name: string, args: unknown) => unknown
+    /** Called as the pass starts, with a way to steer it. The pass then reports each one it took as a `steered` part. */
+    onRun?: (run: { steer: (id: string, text: string) => void }) => void
+  },
 ): Promise<Done> {
   const runId = crypto.randomUUID()
   return new Promise((done) => {
@@ -66,6 +72,7 @@ export function streamInWorker(
     }
     passes.set(runId, { onPart, execTool: opts.execTool, done })
     const w = agentWorker()
+    opts.onRun?.({ steer: (id, text) => w.postMessage({ type: 'steer', runId, id, text } satisfies ToWorker) })
     w.postMessage({ type: 'start', runId, ...start } satisfies ToWorker)
     if (opts.signal.aborted) w.postMessage({ type: 'abort', runId } satisfies ToWorker)
     else opts.signal.addEventListener('abort', () => w.postMessage({ type: 'abort', runId } satisfies ToWorker), { once: true })

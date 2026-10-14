@@ -469,7 +469,7 @@ function OpenBody() {
                     onBlur={async (e) => {
                       const name = e.target.value.trim() || d.name
                       if (d.id === current) useS3D.getState().renameDoc(name)
-                      else await docsRepo.put({ ...d, name })
+                      else await docsRepo.put({ ...d, name, nameLocked: true })
                       setRenaming(null)
                       setTimeout(reload, 50)
                     }}

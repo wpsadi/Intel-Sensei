@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { toast } from 'sonner'
 
 import { generateReplySpeech } from '@/ai/inference/speech'
-import { GEMINI_KEY } from '@/ai/utils/gemini-key'
+import { AI_MODELS } from '@/ai/providers'
 
 const HIGHLIGHT = 'tts-word'
 
@@ -11,24 +11,26 @@ const CACHE_TTL_MS = 10 * 60 * 1000
 const audioCache = new Map<string, { url: string; timer: ReturnType<typeof setTimeout> }>()
 
 /** Audio for the text, from the cache while it is fresh. The key is the text itself, so an edited or retried reply is never stale. */
-async function speechUrl(apiKey: string, text: string, signal: AbortSignal) {
-  const hit = audioCache.get(text)
+async function speechUrl(text: string, signal: AbortSignal) {
+  // The voice that made it is part of the key, so changing the provider or model never replays old audio.
+  const id = `${AI_MODELS.tts.provider}:${AI_MODELS.tts.model}:${text}`
+  const hit = audioCache.get(id)
   if (hit) {
     clearTimeout(hit.timer)
-    hit.timer = setTimeout(() => evict(text), CACHE_TTL_MS)
+    hit.timer = setTimeout(() => evict(id), CACHE_TTL_MS)
     return hit.url
   }
-  const url = URL.createObjectURL(await generateReplySpeech(apiKey, text, signal))
-  audioCache.set(text, { url, timer: setTimeout(() => evict(text), CACHE_TTL_MS) })
+  const url = URL.createObjectURL(await generateReplySpeech(text, signal))
+  audioCache.set(id, { url, timer: setTimeout(() => evict(id), CACHE_TTL_MS) })
   return url
 }
 
-function evict(text: string) {
-  const entry = audioCache.get(text)
+function evict(id: string) {
+  const entry = audioCache.get(id)
   if (!entry) return
   clearTimeout(entry.timer)
   URL.revokeObjectURL(entry.url)
-  audioCache.delete(text)
+  audioCache.delete(id)
 }
 
 /** Stops whichever reply is playing, so starting another reply cuts the first off. */
@@ -79,8 +81,7 @@ export function useReadAloud() {
       if (wasThis) return
       const root = document.getElementById(id)
       if (!root) return
-      const apiKey = GEMINI_KEY.value
-      if (!apiKey) return void toast('Add your Gemini API key in Settings to read aloud')
+      if (!AI_MODELS.tts.key) return void toast('Add a key for your text to speech provider in Settings to read aloud')
       const { words, text } = collectWords(root)
       if (!text) return
 
@@ -95,7 +96,7 @@ export function useReadAloud() {
       stopCurrent = stop
       setState({ id, status: 'loading' })
       try {
-        const url = await speechUrl(apiKey, text, controller.signal)
+        const url = await speechUrl(text, controller.signal)
         if (controller.signal.aborted) return
         audio = new Audio(url)
         audio.onended = stop

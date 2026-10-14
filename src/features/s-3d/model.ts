@@ -108,7 +108,19 @@ export function createPage(name = 'Page 1'): Page {
   return { id: uid(), name, children: [], background: '#f5f5f5' }
 }
 
-export function createDoc(name = 'Untitled'): Doc {
+const UNTITLED = 'Untitled'
+
+/** True for the placeholder names a new file gets: "Untitled", "Untitled (1)"… */
+export const isPlaceholderName = (name: string) => /^Untitled( \(\d+\))?$/.test(name.trim())
+
+/** `base` if no other file has it, else "base (1)", "base (2)"… the first free number. */
+export function uniqueName(base: string, taken: string[]) {
+  const names = new Set(taken.map((n) => n.trim().toLowerCase()))
+  if (!names.has(base.toLowerCase())) return base
+  for (let i = 1; ; i++) if (!names.has(`${base} (${i})`.toLowerCase())) return `${base} (${i})`
+}
+
+export function createDoc(name = UNTITLED): Doc {
   return { id: uid(), name, pages: [createPage()], nodes: {}, createdAt: Date.now(), updatedAt: Date.now() }
 }
 

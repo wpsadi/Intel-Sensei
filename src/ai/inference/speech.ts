@@ -1,18 +1,13 @@
-import { createGoogle } from '@ai-sdk/google'
 import { experimental_generateSpeech as generateSpeech } from 'ai'
 
-import { TTS_MODEL } from '@/constants/ai'
+import { AI_MODELS } from '@/ai/providers'
 
 /** The voice that reads replies aloud. */
 const TTS_VOICE = 'Kore'
 
-/** Speech for a piece of text from Gemini, as a playable audio blob. */
-export async function generateReplySpeech(apiKey: string, text: string, abortSignal?: AbortSignal) {
-  const { audio } = await generateSpeech({
-    model: createGoogle({ apiKey }).speech(TTS_MODEL),
-    text,
-    voice: TTS_VOICE,
-    abortSignal,
-  })
+/** Speech for a piece of text from the provider picked for text to speech, as a playable audio blob. */
+export async function generateReplySpeech(text: string, abortSignal?: AbortSignal) {
+  if (!AI_MODELS.tts.key) throw new Error('Add a key for your text to speech provider in Settings → AI providers.')
+  const { audio } = await generateSpeech({ model: AI_MODELS.ttsModel, text, voice: TTS_VOICE, abortSignal })
   return new Blob([audio.uint8Array as BlobPart], { type: audio.mediaType })
 }

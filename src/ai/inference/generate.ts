@@ -5,10 +5,10 @@ import { recordSdkUsage } from '@/ai/usage'
 import { GEMINI_KEY } from '@/ai/utils/gemini-key'
 import { GEMINI_MODEL } from '@/constants/ai'
 
-/** Generates text for the notes page with the AI SDK. Uses the user's own key from Settings → AI features. */
+/** Generates text for the notes page with the AI SDK. Uses the user's own key from Settings → AI providers. */
 export async function generateText(prompt: string, context = '') {
   const key = GEMINI_KEY.value
-  if (!key) throw new Error('Add your Gemini API key in Settings → AI features to use AI.')
+  if (!key) throw new Error('Add your Gemini API key in Settings → AI providers to use AI.')
   const google = createGoogle({ apiKey: key })
   const { text, usage } = await generateWithModel({
     model: google(GEMINI_MODEL),

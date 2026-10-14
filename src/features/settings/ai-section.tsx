@@ -1,14 +1,14 @@
 import { useState } from 'react'
 
-import { chatWithGemini } from '@/ai/inference/chat'
-import { chatWithAnthropic, chatWithOpenAI } from '@/ai/inference/test-chat'
+import { testChat } from '@/ai/inference/test-chat'
+import { PROVIDER_NAMES, type Provider } from '@/ai/providers'
 import { ANTHROPIC_BASE_URL, ANTHROPIC_KEY } from '@/ai/utils/anthropic-key'
 import { FIRECRAWL_KEY } from '@/ai/utils/firecrawl-key'
 import { GEMINI_KEY } from '@/ai/utils/gemini-key'
 import { OPENAI_BASE_URL, OPENAI_KEY } from '@/ai/utils/openai-key'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
-import { ANTHROPIC_TEST_MODEL, OPENAI_TEST_MODEL, TEST_MODEL } from '@/constants/ai'
+import { TITLE_MODELS } from '@/constants/ai'
 
 import { ProviderTestDialog } from './provider-test-dialog'
 
@@ -154,30 +154,30 @@ function ProviderCard({
 /** Where the user adds the keys for each inference provider. Every request goes straight from this browser to the provider. */
 export function AiSection() {
   // The provider under test and what was typed for it; null when no test is open.
-  const [test, setTest] = useState<{ provider: 'gemini' | 'anthropic' | 'openai'; key: string; baseURL: string } | null>(null)
+  const [test, setTest] = useState<{ provider: Provider; key: string; baseURL: string } | null>(null)
 
   return (
     <div className="flex flex-col gap-4 text-sm">
       <p className="text-xs text-muted-foreground">
-        Add the keys for the models Sensei runs on. Keys are stored only in this browser, and requests go directly from your browser to the
-        provider.
+        Add the API keys for the providers you want to use, then choose which models they run in AI models. Keys are stored only in this
+        browser, and requests go directly from your browser to the provider.
       </p>
 
       <ProviderCard
         name="Gemini"
-        powers="Chat, notes AI, voice typing, read aloud, live calls and embeddings."
+        powers="Live calls and embeddings always, plus chat, titles, text to speech and speech to text when picked in AI models."
         required
         keyStore={GEMINI_KEY}
         keyPlaceholder="AIza…"
         keyHelp="From Google AI Studio. Used by most AI features across the app."
-        onTest={(key, baseURL) => setTest({ provider: 'gemini', key, baseURL })}
+        onTest={(key, baseURL) => setTest({ provider: 'google', key, baseURL })}
       />
       <ProviderCard
         name="Anthropic"
-        powers="The S3D and S-Design agent (Claude), because Gemini models do not perform well at 3D modelling."
+        powers="Claude for chat (Ask Sensei, S-Note, S3D, S-Design) and titles, when picked in AI models."
         keyStore={ANTHROPIC_KEY}
         keyPlaceholder="sk-ant-…"
-        keyHelp="Needed only if you use S3D or S-Design."
+        keyHelp="Needed only if you pick Anthropic in AI models."
         urlStore={ANTHROPIC_BASE_URL}
         urlPlaceholder="https://api.anthropic.com/v1"
         urlHelp="For a proxy or custom gateway. Leave empty for api.anthropic.com. It must allow requests from this browser (CORS)."
@@ -192,10 +192,10 @@ export function AiSection() {
       />
       <ProviderCard
         name="OpenAI"
-        powers="Kept for OpenAI-compatible endpoints. The S3D agent no longer uses it."
+        powers="Chat, titles, text to speech and speech to text when picked in AI models, and any OpenAI-compatible endpoint."
         keyStore={OPENAI_KEY}
         keyPlaceholder="sk-…"
-        keyHelp="Optional."
+        keyHelp="Needed only if you pick OpenAI in AI models."
         urlStore={OPENAI_BASE_URL}
         urlPlaceholder="https://api.openai.com/v1"
         urlHelp="For a proxy or any OpenAI-compatible endpoint (Azure, OpenRouter, a local server…). Leave empty for api.openai.com."
@@ -203,13 +203,9 @@ export function AiSection() {
       />
 
       <ProviderTestDialog
-        provider={test?.provider === 'anthropic' ? 'Claude' : test?.provider === 'openai' ? 'OpenAI' : 'Gemini'}
-        model={test?.provider === 'anthropic' ? ANTHROPIC_TEST_MODEL : test?.provider === 'openai' ? OPENAI_TEST_MODEL : TEST_MODEL}
-        chat={(history, onText) => {
-          if (test?.provider === 'anthropic') return chatWithAnthropic(test.key, test.baseURL, history, onText)
-          if (test?.provider === 'openai') return chatWithOpenAI(test.key, test.baseURL, history, onText)
-          return chatWithGemini(test?.key ?? '', history, onText)
-        }}
+        provider={PROVIDER_NAMES[test?.provider ?? 'google']}
+        model={TITLE_MODELS[test?.provider ?? 'google']}
+        chat={(history, onText) => testChat(test?.provider ?? 'google', test?.key ?? '', test?.baseURL ?? '', history, onText)}
         open={test !== null}
         onOpenChange={(open) => !open && setTest(null)}
       />

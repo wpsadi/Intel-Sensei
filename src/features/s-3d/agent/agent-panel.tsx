@@ -14,8 +14,10 @@ import {
 } from 'lucide-react'
 import { useEffect, useMemo, useRef, useState } from 'react'
 
+import { AI_MODELS } from '@/ai/providers'
 import senseiLogo from '@/assets/sensei.svg'
 import { ContextRing } from '@/components/context-ring'
+import { QueuedMessages } from '@/components/queued-messages'
 import { CopyMessage, ReplyActions } from '@/components/reply-actions'
 import { TypingDots } from '@/components/typing-dots'
 import { Button } from '@/components/ui/button'
@@ -29,7 +31,7 @@ import {
 } from '@/components/ui/dropdown-menu'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { UserBubble } from '@/components/user-bubble'
-import { S3D_AGENT_CONTEXT_LIMIT, S3D_MODEL } from '@/constants/ai'
+import { S3D_AGENT_CONTEXT_LIMIT } from '@/constants/ai'
 import { ChatPlanCard, ChatTodoQueue } from '@/features/ask-sensei/components/chat-plan'
 import { ChatReasoning } from '@/features/ask-sensei/components/chat-reasoning'
 import { Markdown } from '@/features/ask-sensei/components/markdown'
@@ -391,6 +393,7 @@ export function AgentPanel() {
         {chat && <QuestionsDock chatId={chat.id} />}
         {generating && last && <GoalBanner message={last} />}
         {showTodos && <ChatTodoQueue todos={todos} open={todosOpen} onOpenChange={setTodosOpen} />}
+        {chat && <QueuedMessages chatId={chat.id} />}
         <WidgetComposer
           onSend={(text) => run(text, attachments)}
           suggest={suggest}
@@ -414,7 +417,7 @@ export function AgentPanel() {
                 }
                 used={contextUsed}
                 max={S3D_AGENT_CONTEXT_LIMIT}
-                modelId={`anthropic:${S3D_MODEL}`}
+                modelId={AI_MODELS.chatId}
                 compactions={chat?.messages.reduce((n, m) => n + (m.compactions ?? 0), 0)}
               />
               <DropdownMenu>

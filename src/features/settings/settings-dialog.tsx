@@ -1,6 +1,15 @@
 'use client'
 
-import { DatabaseBackupIcon, DollarSignIcon, type LucideIcon, Paintbrush, ShieldIcon, Sparkles } from 'lucide-react'
+import {
+  DatabaseBackupIcon,
+  DollarSignIcon,
+  KeyRoundIcon,
+  type LucideIcon,
+  MessageSquareIcon,
+  Paintbrush,
+  ShieldIcon,
+  Sparkles,
+} from 'lucide-react'
 import { useState } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
 
@@ -20,16 +29,20 @@ import {
   SidebarProvider,
 } from '@/components/ui/sidebar'
 
+import { AiModelsSection } from './ai-models-section'
 import { AiSection } from './ai-section'
 import { AppearanceSection } from './appearance-section'
 import { BackupSection } from './backup-section'
+import { ChatSection } from './chat-section'
 import { SecuritySection } from './security-section'
 
 const SETTINGS_PARAM = 'settings'
 const SECTION_PARAM = 'section'
 
 const SECTIONS = [
-  { id: 'ai', name: 'AI features', icon: Sparkles },
+  { id: 'ai', name: 'AI providers', icon: KeyRoundIcon },
+  { id: 'models', name: 'AI models', icon: Sparkles },
+  { id: 'chat', name: 'Chat', icon: MessageSquareIcon },
   { id: 'security', name: 'Security', icon: ShieldIcon },
   { id: 'backup', name: 'Backup', icon: DatabaseBackupIcon },
   { id: 'appearance', name: 'Appearance', icon: Paintbrush },
@@ -138,6 +151,8 @@ export function SettingsDialog() {
             <ScrollArea className="min-h-0 flex-1">
               <div className="flex flex-col gap-4 p-4 pt-2 md:pt-0">
                 {section === 'ai' && <AiSection />}
+                {section === 'models' && <AiModelsSection />}
+                {section === 'chat' && <ChatSection />}
                 {section === 'security' && <SecuritySection />}
                 {section === 'backup' && <BackupSection />}
                 {section === 'appearance' && <AppearanceSection />}

@@ -1,5 +1,6 @@
-import { Models } from '@opencode-ai/models'
 import type { ProviderMap } from '@opencode-ai/models'
+
+import { fetchProviders } from '@/ai/models-dev'
 
 import type { UsageLog } from './db'
 
@@ -52,8 +53,7 @@ let pending: Promise<PriceTable> | null = null
 export function loadPrices(): Promise<PriceTable> {
   const saved = cached()
   if (saved && Date.now() - saved.at < MAX_AGE) return Promise.resolve(saved.table)
-  pending ??= Models.make()
-    .providers({ signal: AbortSignal.timeout(10_000) })
+  pending ??= fetchProviders()
     .then((providers) => {
       const table = slim(providers)
       try {

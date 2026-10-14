@@ -38,7 +38,7 @@ function triggerAt(draft: string, caret: number) {
 
 /**
  * The widget's message box, styled like the Ask Sensei composer: type or dictate (Gemini transcribes the voice note
- * into the draft), Enter sends, and the send button turns into stop while Sensei replies.
+ * into the draft), Enter sends, and the send button turns into stop while Sensei replies and nothing is typed. A message typed meanwhile is queued or steers the reply (Settings → Chat).
  */
 export function WidgetComposer({
   onSend,
@@ -79,7 +79,7 @@ export function WidgetComposer({
 
   const send = () => {
     const text = draft.trim()
-    if (!text || streaming || disabled) return
+    if (!text || disabled) return
     onSend(text)
     setDraft('')
     setRecall(null)
@@ -252,9 +252,9 @@ export function WidgetComposer({
             <ComposerActions>
               <ComposerVoiceButton active={false} aria-label="Start voice input" onClick={() => void startVoice()} />
               <ComposerSend
-                streaming={streaming}
+                streaming={streaming && !hasText}
                 idle={!hasText && !streaming}
-                onClick={streaming ? onStop : send}
+                onClick={streaming && !hasText ? onStop : send}
                 disabled={(!hasText || !!disabled) && !streaming}
               />
             </ComposerActions>

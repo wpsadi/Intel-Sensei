@@ -2,16 +2,17 @@ import { type ModelMessage, asSchema } from 'ai'
 import { toast } from 'sonner'
 import { create } from 'zustand'
 
-import { generateChatTitle } from '@/ai/inference/title'
-import { ANTHROPIC_BASE_URL, ANTHROPIC_KEY } from '@/ai/utils/anthropic-key'
-import { GEMINI_KEY } from '@/ai/utils/gemini-key'
+import { generateChatTitle, generateFileTitle } from '@/ai/inference/title'
+import { AI_MODELS, type Provider } from '@/ai/providers'
+import { type PendingMessage, demoteSteering, removePending, submitWhileBusy, takeNextPending, useSendQueue } from '@/ai/send-queue'
 import { thinkingOnly } from '@/ai/utils/thinking'
 import { type ToolSpec, streamInWorker } from '@/ai/worker/client'
-import { S3D_AGENT_CONTEXT_LIMIT, S3D_MODEL } from '@/constants/ai'
+import { S3D_AGENT_CONTEXT_LIMIT } from '@/constants/ai'
 import type { ChatPlan, ChatQuestion, ChatTodoList, ChatToolStep } from '@/features/note/db/types'
 
 import { chatsRepo, uid } from '../db'
 import { readFile } from '../files'
+import { isPlaceholderName } from '../model'
 import { useS3D } from '../store'
 import type { AgentAttachment, AgentChat, AgentMessage } from '../types'
 import { agentDescriptions, agentSchemas } from './agent-tools'
@@ -39,17 +40,19 @@ const MAX_ANGLE_CHECKS = 3
 const MAX_REVIEWS = 8
 
 /**
- * Claude Haiku 5.5 thinks adaptively by default; `effort` sets how deep. Its thinking text is omitted by default,
- * so nothing extra is sent back and forth.
+ * How hard the chat model thinks, in the provider's own terms. Claude thinks adaptively and `effort` sets how deep; its
+ * summarized thinking streams while the model works, so a long think shows progress instead of a silent pause. Gemini
+ * takes a thinking level. Other providers use their defaults.
  */
-const anthropicOptions = (effort: 'low' | 'medium' | 'high' | 'max') => ({
-  anthropic: {
-    // Summarized thinking streams while the model works, so a long think shows progress instead of a silent pause.
-    thinking: { type: 'adaptive', display: 'summarized' },
-    effort,
-    // Each step resends the instructions, tools and history; caching them makes later steps much faster and cheaper.
-  },
-})
+const agentOptions = (
+  provider: Provider,
+  effort: 'low' | 'medium' | 'high' | 'max',
+): Record<string, Record<string, unknown>> | undefined =>
+  provider === 'anthropic'
+    ? { anthropic: { thinking: { type: 'adaptive', display: 'summarized' }, effort } }
+    : provider === 'google'
+      ? { google: { thinkingConfig: { thinkingLevel: effort === 'max' ? 'high' : effort, includeThoughts: true } } }
+      : undefined
 
 /** A pass that sends nothing (only keep-alive pings) for this long, while no tool is running, has stalled. */
 const STALL_MS = 150_000
@@ -75,6 +78,10 @@ export const useAgentRun = create<{ live: Record<string, AgentChat>; viewedId: s
 }))
 
 const aborts = new Map<string, () => void>()
+/** Sends a message into the running reply of a chat, by chat id. */
+const steerers = new Map<string, (message: PendingMessage) => void>()
+/** What a queued message needs to run later, by its pending id: its files, the access mode and the @mention context. */
+const queuedExtras = new Map<string, { files: AgentAttachment[]; mode: AgentMode; context?: string }>()
 
 /**
  * Runs live in the tab that started them, but every tab of the app shows them: the running tab broadcasts each
@@ -310,7 +317,18 @@ export async function runAgent(
   mode: AgentMode,
   context?: string,
 ) {
-  if (!text.trim() || (base && useAgentRun.getState().live[base.id])) return
+  if (!text.trim()) return
+  // A reply is running: the message waits for it, or steers it (Settings → Chat). Files and /goal runs always wait.
+  if (base && useAgentRun.getState().live[base.id]) {
+    const steerable = !files.length && !/^\/goal\b/i.test(text.trim())
+    const pending = submitWhileBusy(
+      base.id,
+      { text },
+      steerable ? (message) => steerers.get(base.id)?.({ ...message, text: context ? `${text}\n\n${context}` : text }) : undefined,
+    )
+    queuedExtras.set(pending.id, { files, mode, context })
+    return
+  }
   // "/goal <what to achieve>" keeps the agent working until it declares the goal achieved.
   const slash = /^\/goal(?:\s+([\s\S]*))?$/i.exec(text.trim())
   const goal = slash ? (slash[1] ?? '').trim() : undefined
@@ -322,9 +340,8 @@ export async function runAgent(
     toast.info(`/goal builds things, so it needs Edit or Full access mode (now ${mode}).`)
     return
   }
-  // S3D runs on Anthropic: Gemini models do not handle 3D modelling well.
-  const key = ANTHROPIC_KEY.value
-  const baseURL = ANTHROPIC_BASE_URL.value || undefined
+  // Same chat model as Ask Sensei and S-Note, from Settings → AI models.
+  const ai = AI_MODELS.chat
   const userMsg: AgentMessage = {
     id: uid(),
     role: 'user',
@@ -349,9 +366,9 @@ export async function runAgent(
     useAgentRun.setState((s) => ({ live: { ...s.live, [c.id]: c } }))
     if (aborts.has(c.id)) broadcastLive(c)
   }
-  if (!key) {
+  if (!ai.key) {
     useAgentRun.setState({ viewedId: c.id })
-    update({ error: 'Add your Anthropic API key in Settings → AI features to use the S3D agent.' })
+    update({ error: 'Add a key for your chat provider in Settings → AI providers to use the S3D agent.' })
     await save(c)
     useAgentRun.setState((s) => ({ live: without(s.live, c.id) }))
     return
@@ -361,9 +378,9 @@ export async function runAgent(
   await save(c)
   // A new chat keeps the start of the request as its title until it is named, as in Ask Sensei. Titles use the
   // quick Gemini model, so without a Gemini key the chat keeps the start of the request.
-  const geminiKey = GEMINI_KEY.value
-  if (!base && geminiKey)
-    void generateChatTitle(geminiKey, `User: ${goal ?? text}`)
+  const titleKey = AI_MODELS.title.key
+  if (!base && titleKey)
+    void generateChatTitle(`User: ${goal ?? text}`)
       .then(async (title) => {
         if (!title) return
         if (useAgentRun.getState().live[c.id]) {
@@ -375,6 +392,13 @@ export async function runAgent(
           if (saved) await save({ ...saved, title })
         }
       })
+      .catch(() => {})
+  // The file is named from the same request, as its own call to the title provider, but only while it still has its automatic
+  // "Untitled" name and the user has never renamed it.
+  const openDoc = useS3D.getState().doc
+  if (titleKey && openDoc.id === docId && !openDoc.nameLocked && isPlaceholderName(openDoc.name))
+    void generateFileTitle(goal ?? text)
+      .then((title) => (title ? useS3D.getState().autoNameDoc(docId, title) : undefined))
       .catch(() => {})
   void work()
 
@@ -468,15 +492,15 @@ export async function runAgent(
           let err: string | undefined
           const res = await streamInWorker(
             {
-              provider: 'anthropic',
-              key,
-              baseURL,
-              model: S3D_MODEL,
+              provider: ai.provider,
+              key: ai.key,
+              baseURL: ai.baseURL,
+              model: ai.model,
               instructions: verifierInstructions,
               maxSteps: 30,
               tools: vtools,
               messages: vMessages,
-              providerOptions: anthropicOptions('medium'),
+              providerOptions: agentOptions(ai.provider, 'medium'),
               contextLimit: S3D_AGENT_CONTEXT_LIMIT,
             },
             {
@@ -570,19 +594,28 @@ export async function runAgent(
         }, 5000)
         const result = await streamInWorker(
           {
-            provider: 'anthropic',
-            key,
-            baseURL,
-            model: S3D_MODEL,
+            provider: ai.provider,
+            key: ai.key,
+            baseURL: ai.baseURL,
+            model: ai.model,
             instructions,
             maxSteps: MAX_STEPS,
             tools,
             messages,
-            providerOptions: anthropicOptions('medium'),
+            providerOptions: agentOptions(ai.provider, 'medium'),
             contextLimit: S3D_AGENT_CONTEXT_LIMIT,
           },
           {
             signal: passCtl.signal,
+            onRun: (run) => {
+              const send = (message: PendingMessage) => {
+                const extras = queuedExtras.get(message.id)
+                run.steer(message.id, extras?.context ? `${message.text}\n\n${extras.context}` : message.text)
+              }
+              steerers.set(c.id, send)
+              // Steering messages sent between passes, or taken by none, go into this one.
+              for (const message of useSendQueue.getState().items[c.id] ?? []) if (message.steer) send(message)
+            },
             execTool: async (name, args) => {
               toolsRunning++
               try {
@@ -645,6 +678,24 @@ export async function runAgent(
                   detail: `${Math.round(part.beforeTokens / 1000)}k → ${Math.round(part.afterTokens / 1000)}k tokens`,
                   status: 'done',
                 })
+              } else if (part.type === 'steered') {
+                // The model took a steering message in: it shows in the chat, above the reply it is steering.
+                const pending = useSendQueue.getState().items[c.id]?.find((item) => item.id === part.id)
+                if (!pending) return
+                removePending(c.id, pending.id)
+                const extras = queuedExtras.get(pending.id)
+                queuedExtras.delete(pending.id)
+                const steered: AgentMessage = {
+                  id: pending.id,
+                  role: 'user',
+                  text: pending.text,
+                  createdAt: Date.now(),
+                  ...(extras?.context && { context: extras.context }),
+                }
+                const at = c.messages.findIndex((m) => m.id === assistant.id)
+                c = { ...c, messages: [...c.messages.slice(0, at), steered, ...c.messages.slice(at)] }
+                useAgentRun.setState((s) => ({ live: { ...s.live, [c.id]: c } }))
+                if (aborts.has(c.id)) broadcastLive(c)
               } else if (part.type === 'error') streamError = part.error
             },
           },
@@ -821,6 +872,15 @@ export async function runAgent(
       await save(c)
       broadcastEnd(c.id)
       useAgentRun.setState((s) => ({ live: without(s.live, c.id) }))
+      steerers.delete(c.id)
+      // The next message sent meanwhile goes now; steering messages the run never took are sent like queued ones.
+      demoteSteering()
+      const next = takeNextPending(c.id)
+      if (next) {
+        const extras = queuedExtras.get(next.message.id)
+        queuedExtras.delete(next.message.id)
+        void runAgent(next.message.text, extras?.files ?? [], c, docId, extras?.mode ?? mode, extras?.context)
+      }
     }
   }
 }
@@ -830,8 +890,8 @@ export async function runAgent(
  * newer messages. The chat itself still shows every message.
  */
 export async function compactChat(chat: AgentChat) {
-  const key = ANTHROPIC_KEY.value
-  if (!key) throw new Error('Add your Anthropic API key in Settings first.')
+  const ai = AI_MODELS.chat
+  if (!ai.key) throw new Error('Add a key for your chat provider in Settings first.')
   if (useAgentRun.getState().live[chat.id]) throw new Error('Wait for the reply to finish, or stop it, before compacting.')
   const last = chat.messages.at(-1)
   if (!last) return chat
@@ -849,15 +909,15 @@ export async function compactChat(chat: AgentChat) {
   let err: string | undefined
   const res = await streamInWorker(
     {
-      provider: 'anthropic',
-      key,
-      baseURL: ANTHROPIC_BASE_URL.value || undefined,
-      model: S3D_MODEL,
+      provider: ai.provider,
+      key: ai.key,
+      baseURL: ai.baseURL,
+      model: ai.model,
       tools: {},
       instructions:
         'Compress this design-agent conversation so the agent can continue it. Keep the user requests and goals word for word, decisions, constraints, every scene/object/node id mentioned with what it is, what is done, what is still to do, open problems and the to-do state. Write compact markdown.',
       messages: [{ role: 'user', content: `${chat.summary ? `Earlier summary:\n${chat.summary.text}\n\n` : ''}${transcript}` }],
-      providerOptions: anthropicOptions('low'),
+      providerOptions: agentOptions(ai.provider, 'low'),
     },
     {
       signal: new AbortController().signal,

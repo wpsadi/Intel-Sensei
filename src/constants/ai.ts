@@ -1,4 +1,4 @@
-/** localStorage key for the Gemini API key entered in Settings → AI features. Stays in this browser only. */
+/** localStorage key for the Gemini API key entered in Settings → AI providers. Stays in this browser only. */
 export const GEMINI_KEY_STORAGE = 'sensei.gemini_api_key'
 /** localStorage key for the Firecrawl API key that web search uses. Stays in this browser only. */
 export const FIRECRAWL_KEY_STORAGE = 'sensei.firecrawl_api_key'
@@ -13,21 +13,37 @@ export const ANTHROPIC_BASE_URL_STORAGE = 'sensei.anthropic_base_url'
 /** Writes text for the notes page. */
 export const GEMINI_MODEL = 'gemini-3.5-flash-lite'
 export const TRANSCRIBE_MODEL = 'gemini-3.5-transcribe'
-export const TEST_MODEL = 'gemini-3.5-flash-lite'
-/** Used by the OpenAI key test in Settings. */
-export const OPENAI_TEST_MODEL = 'gpt-6-luna'
-/** Used by the Anthropic key test in Settings. */
-export const ANTHROPIC_TEST_MODEL = 'claude-haiku-5-5'
+/** localStorage key prefixes for the provider and model picked for each job in Settings → AI models. Not secrets. */
+export const PROVIDER_CHOICE_STORAGE = 'sensei.provider.'
+export const MODEL_CHOICE_STORAGE = 'sensei.model.'
+/** localStorage key for what sending does while a reply is running: queue the message or steer the reply. Not a secret. */
+export const SEND_MODE_STORAGE = 'sensei.send_mode'
 /** Runs the chat. */
 export const CHAT_MODEL = 'gemini-3.5-flash-lite'
 export const MINI_STUFF_MODEL = 'gemma-4-26b-a4b-it'
-/** Runs the web search sub-agent with Google Search. */
-export const SEARCH_MODEL = 'antigravity-preview-09-2026'
-/** Runs the S3D / S-Design agent, on Anthropic; Gemini does not model 3D well. */
-export const S3D_MODEL = 'claude-opus-5-5'
+/**
+ * The default model each provider uses for titles and other small tasks. It is also what the key test in
+ * Settings talks to, so it is the same whichever provider is picked.
+ */
+export const TITLE_MODELS = {
+  google: 'gemini-3.5-flash-lite',
+  anthropic: 'claude-haiku-5-5',
+  openai: 'gpt-6-luna',
+} as const
 /** Reads Sensei's replies aloud. */
 export const TTS_MODEL = 'gemini-3.8-flash-tts'
 export const LIVE_MODEL = 'gemini-3.8-live'
+/**
+ * The default model of each provider for a job. Settings → AI models lists every compatible model from models.dev and
+ * starts on these; they are also the list when models.dev cannot be reached. A provider missing from a job cannot do it
+ * (models.dev has no OpenAI or Anthropic speech models). Live calls are not listed: they always use LIVE_MODEL on Gemini.
+ */
+export const DEFAULT_MODELS = {
+  title: TITLE_MODELS,
+  chat: { google: CHAT_MODEL, anthropic: 'claude-sonnet-5-5', openai: 'gpt-6-luna' },
+  tts: { google: TTS_MODEL },
+  transcribe: { google: TRANSCRIBE_MODEL },
+} as const satisfies Record<string, Partial<Record<'google' | 'anthropic' | 'openai', string>>>
 /** Numbers per embedding. 768 keeps 100k vectors near 293 MiB. */
 export const EMBEDDING_DIMENSIONS = 768
 /** Context window of the S3D / S-Design agent; older messages are compacted at 80% of it. */

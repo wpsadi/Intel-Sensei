@@ -97,6 +97,9 @@ const s = () => useS3D.getState()
 
 /* ---------- schemas ---------- */
 
+/** An [x, y] pair. Not z.tuple: that becomes a tuple schema (`items` as an array), which Gemini and OpenAI reject. */
+const pair = z.array(z.number()).length(2)
+
 const NODE_TYPES = ['frame', 'section', 'group', 'rect', 'ellipse', 'polygon', 'star', 'vector', 'text', 'shape3d'] as const
 
 const fillSpec = z.union([
@@ -119,10 +122,7 @@ const selectionSpec = z.discriminatedUnion('type', [
   z
     .object({
       type: z.literal('lasso'),
-      points: z
-        .array(z.tuple([z.number(), z.number()]))
-        .min(3)
-        .describe('Polygon corners in source pixels'),
+      points: z.array(pair).min(3).describe('Polygon corners in source pixels'),
     })
     .describe('Lasso'),
   z
@@ -138,7 +138,11 @@ const selectionSpec = z.discriminatedUnion('type', [
 
 /** Selection spec with defaults applied (WebMCP calls skip zod parsing). */
 const toSelection = (spec: z.infer<typeof selectionSpec>): Selection =>
-  spec.type === 'wand' ? { type: 'wand', x: spec.x, y: spec.y, tolerance: spec.tolerance ?? 32, contiguous: spec.contiguous ?? true } : spec
+  spec.type === 'wand'
+    ? { type: 'wand', x: spec.x, y: spec.y, tolerance: spec.tolerance ?? 32, contiguous: spec.contiguous ?? true }
+    : spec.type === 'lasso'
+      ? { type: 'lasso', points: spec.points as Point[] }
+      : spec
 
 /** Default swatches, a small set of common colours (Photoshop's swatch panel starts from a similar grid). */
 export const SWATCHES = [
@@ -533,10 +537,7 @@ export const schemas = {
           size: z.number().positive().describe('Brush diameter in source pixels'),
           hardness: z.number().min(0).max(1).optional().describe('0 soft edge to 1 hard edge (default 0.8)'),
           opacity: z.number().min(0).max(1).optional().describe('Flow per stamp, 0 to 1 (default 1)'),
-          points: z
-            .array(z.tuple([z.number(), z.number()]))
-            .min(1)
-            .describe('Stroke path in source pixels'),
+          points: z.array(pair).min(1).describe('Stroke path in source pixels'),
         }),
       )
       .min(1),
@@ -547,12 +548,10 @@ export const schemas = {
       .array(
         z.object({
           from: z
-            .tuple([z.number(), z.number()])
+            .array(z.number())
+            .length(2)
             .describe('Sample point in source pixels (Alt-click in Photoshop); the clone keeps this offset'),
-          points: z
-            .array(z.tuple([z.number(), z.number()]))
-            .min(1)
-            .describe('Where to paint, in source pixels'),
+          points: z.array(pair).min(1).describe('Where to paint, in source pixels'),
           size: z.number().positive().describe('Brush diameter in source pixels'),
           hardness: z.number().min(0).max(1).optional(),
           opacity: z.number().min(0).max(1).optional(),

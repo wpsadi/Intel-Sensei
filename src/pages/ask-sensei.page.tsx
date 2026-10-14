@@ -3,6 +3,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 
 import { currentTodos } from '@/ai/utils/messages'
+import { QueuedMessages } from '@/components/queued-messages'
 import { Button } from '@/components/ui/button'
 import { SidebarInset, SidebarProvider, SidebarTrigger } from '@/components/ui/sidebar'
 import { Toaster } from '@/components/ui/sonner'
@@ -139,6 +140,7 @@ function AskSenseiPage() {
                 onOpenChange={(open) => void setTodosCollapsed(activeChat.id, !open)}
               />
             )}
+            <QueuedMessages chatId={activeChat?.id ?? null} />
             <ChatComposer
               chatId={activeChat?.id ?? null}
               onChatOpened={openChat}

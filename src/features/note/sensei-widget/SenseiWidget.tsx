@@ -2,8 +2,10 @@ import { HistoryIcon, PlusIcon, Trash2Icon, XIcon } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
 import { matchPath, useLocation, useNavigate } from 'react-router-dom'
 
+import { AI_MODELS } from '@/ai/providers'
 import senseiLogo from '@/assets/sensei.svg'
 import { ContextRing } from '@/components/context-ring'
+import { QueuedMessages } from '@/components/queued-messages'
 import { CopyMessage, ReplyActions } from '@/components/reply-actions'
 import { TypingDots } from '@/components/typing-dots'
 import { Button } from '@/components/ui/button'
@@ -17,7 +19,7 @@ import {
 } from '@/components/ui/dropdown-menu'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { UserBubble } from '@/components/user-bubble'
-import { CHAT_MODEL, SNOTE_AGENT_CONTEXT_LIMIT } from '@/constants/ai'
+import { SNOTE_AGENT_CONTEXT_LIMIT } from '@/constants/ai'
 import { ChatReasoning } from '@/features/ask-sensei/components/chat-reasoning'
 import { ChatSearches } from '@/features/ask-sensei/components/chat-searches'
 import { Markdown } from '@/features/ask-sensei/components/markdown'
@@ -178,6 +180,7 @@ export function SenseiWidget() {
           </ScrollArea>
 
           <div className="border-t p-2">
+            <QueuedMessages chatId={chat?.id ?? null} />
             <WidgetComposer
               onSend={send}
               streaming={busy}
@@ -194,7 +197,7 @@ export function SenseiWidget() {
                         : (usage?.contextTokens ?? Math.ceil(messages.reduce((n, m) => n + m.content.length, 0) / 4))
                     }
                     max={SNOTE_AGENT_CONTEXT_LIMIT}
-                    modelId={`google:${CHAT_MODEL}`}
+                    modelId={AI_MODELS.chatId}
                     compactions={messages.reduce((n, m) => n + (m.compactions ?? 0), 0)}
                   />
                 </div>

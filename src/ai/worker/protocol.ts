@@ -19,6 +19,8 @@ export type ToWorker =
       contextLimit?: number
     }
   | { type: 'abort'; runId: string }
+  /** A message for the running pass; it joins the history before the pass's next model step. */
+  | { type: 'steer'; runId: string; id: string; text: string }
   | { type: 'tool-result'; callId: string; result?: unknown; error?: string }
 
 export interface ToolSpec {
@@ -48,6 +50,8 @@ export type StreamPart =
       cachedTokens?: number
       cacheWriteTokens?: number
     }
+  /** A steering message was added to the history, so the model has seen it. `id` is the one sent. */
+  | { type: 'steered'; id: string }
   /** Older messages were summarized to make room. */
   | { type: 'compacted'; beforeTokens: number; afterTokens: number }
 

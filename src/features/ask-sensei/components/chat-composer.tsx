@@ -46,7 +46,7 @@ export function ChatComposer({
   streaming = false,
   onStop,
 }: {
-  /** True while Sensei's reply streams in; the send button turns into stop. */
+  /** True while Sensei's reply streams in; with nothing typed the send button turns into stop, and a message typed meanwhile is queued or steers the reply (Settings → Chat). */
   streaming?: boolean
   onStop?: () => void
   /** Shown at the start of the toolbar, such as the context usage ring. */
@@ -148,7 +148,7 @@ export function ChatComposer({
       if (!text || call.state !== 'live') return
       call.sendText(text)
     } else {
-      if (streaming || (!text && !attachments.length)) return
+      if (!text && !attachments.length) return
       onSend(text, attachments)
       setAttachments([])
     }
@@ -294,9 +294,9 @@ export function ChatComposer({
               </Button>
               <ComposerSend
                 className={cn('absolute inset-0', !hasText && !streaming && 'invisible')}
-                streaming={streaming}
+                streaming={streaming && !hasText}
                 idle={false}
-                onClick={streaming ? onStop : send}
+                onClick={streaming && !hasText ? onStop : send}
                 tabIndex={hasText || streaming ? undefined : -1}
               />
             </div>

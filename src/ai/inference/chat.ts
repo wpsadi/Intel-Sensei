@@ -1,4 +1,4 @@
-import { type GoogleLanguageModelOptions, createGoogle } from '@ai-sdk/google'
+import type { GoogleLanguageModelOptions } from '@ai-sdk/google'
 import { type LanguageModelUsage, ToolLoopAgent } from 'ai'
 
 import {
@@ -10,6 +10,7 @@ import {
   disposeScratchpad,
   memoryPrompt,
 } from '@/ai/memory'
+import { AI_MODELS } from '@/ai/providers'
 import { SANDBOX_INSTRUCTIONS, createSandboxTools } from '@/ai/sandbox/tools'
 import { ASK_INSTRUCTIONS, createAskTools } from '@/ai/tools/ask'
 import { PLAN_INSTRUCTIONS, createPlanTools } from '@/ai/tools/plan'
@@ -20,7 +21,6 @@ import { recordSdkUsage } from '@/ai/usage'
 import { currentTimePrompt } from '@/ai/utils/current-time'
 import { type ChatTurn, toModelMessage } from '@/ai/utils/messages'
 import { thinkingOnly } from '@/ai/utils/thinking'
-import { CHAT_MODEL } from '@/constants/ai'
 import type { ChatAnswers, ChatPlan, ChatQuestion, ChatSearch, ChatTodoList, ChatUsage } from '@/features/note/db/types'
 
 /**
@@ -30,12 +30,11 @@ import type { ChatAnswers, ChatPlan, ChatQuestion, ChatSearch, ChatTodoList, Cha
 export const SENSEI_SYSTEM_PROMPT = `You are Sensei, a patient, friendly study helper. Address the user directly as "you" and keep replies clear.`
 
 /**
- * Streams a conversation through the AI SDK. `onText` receives the reply as it grows, and
- * `onReasoning` receives Gemini's thought summary as it grows. Uses the key passed in, so it works
- * before the key is saved. Resolves with the full reply.
+ * Streams a conversation through the AI SDK with the provider picked for chat in Settings. `onText`
+ * receives the reply as it grows, and `onReasoning` receives Gemini's thought summary as it grows.
+ * Resolves with the full reply.
  */
-export async function chatWithGemini(
-  apiKey: string,
+export async function chatWithSensei(
   messages: ChatTurn[],
   onText: (soFar: string) => void,
   onReasoning?: (soFar: string) => void,
@@ -54,17 +53,20 @@ export async function chatWithGemini(
     /** Receives the token counts Gemini reported once the reply is done. */ onUsage?: (usage: ChatUsage) => void
     /** The to-do list earlier replies left, for this reply to carry on. */ todos?: ChatTodoList
     /** Shows Sensei's questions and resolves with the user's answers. */ onAsk?: (questions: ChatQuestion[]) => Promise<ChatAnswers>
+    /** Called before each step; returns the messages the user sent meanwhile, which join the conversation from that step on. */
+    takeSteers?: () => Promise<ChatTurn[]>
   },
 ) {
   const scratchpad = scope ? createScratchpad(scope.chatId, scope.messageId) : undefined
-  const google = createGoogle({ apiKey })
+  const { provider, key, model } = AI_MODELS.chat
+  if (!key) throw new Error('Add a key for the chat provider in Settings → AI providers.')
   let searches: ChatSearch[] = []
   const webSearch = createSearchTool((search) => {
     searches = upsertSearch(searches, search)
     onSearches?.(searches)
   })
   const agent = new ToolLoopAgent({
-    model: google(CHAT_MODEL),
+    model: AI_MODELS.chatModel,
     instructions: SENSEI_SYSTEM_PROMPT,
     tools: {
       webSearch,
@@ -78,28 +80,43 @@ export async function chatWithGemini(
       ...createAskTools(scope?.onAsk),
     },
     // Memory is read again before every step, so a fact saved or a scratchpad note written in one step is seen by the next.
-    prepareStep: async () => ({
-      instructions: [
-        SENSEI_SYSTEM_PROMPT,
-        currentTimePrompt(),
-        await memoryPrompt({ chatId: scope?.chatId, scratchpad }),
-        MEMORY_INSTRUCTIONS,
-        SCRATCHPAD_INSTRUCTIONS,
-        PLAN_INSTRUCTIONS,
-        TODO_INSTRUCTIONS,
-        ASK_INSTRUCTIONS,
-        SANDBOX_INSTRUCTIONS,
-      ]
-        .filter(Boolean)
-        .join('\n\n'),
-    }),
+    prepareStep: async ({ messages: stepMessages }) => {
+      const steered = (await scope?.takeSteers?.()) ?? []
+      return {
+        // Steering messages join the history here and stay in it for the steps after.
+        ...(steered.length && {
+          messages: [
+            ...stepMessages,
+            ...(await Promise.all(steered.map((turn) => toModelMessage(provider === 'google' ? key : undefined, turn, false)))),
+          ],
+        }),
+        instructions: [
+          SENSEI_SYSTEM_PROMPT,
+          currentTimePrompt(),
+          await memoryPrompt({ chatId: scope?.chatId, scratchpad }),
+          MEMORY_INSTRUCTIONS,
+          SCRATCHPAD_INSTRUCTIONS,
+          PLAN_INSTRUCTIONS,
+          TODO_INSTRUCTIONS,
+          ASK_INSTRUCTIONS,
+          SANDBOX_INSTRUCTIONS,
+        ]
+          .filter(Boolean)
+          .join('\n\n'),
+      }
+    },
     // Gemini leaves out its thought summaries unless asked for them.
-    providerOptions: { google: { thinkingConfig: { thinkingLevel: 'high', includeThoughts: true } } satisfies GoogleLanguageModelOptions },
+    providerOptions:
+      provider === 'google'
+        ? { google: { thinkingConfig: { thinkingLevel: 'high', includeThoughts: true } } satisfies GoogleLanguageModelOptions }
+        : undefined,
   })
   try {
     const result = await agent.stream({
       // Only the newest question carries its YouTube link, since Gemini takes one video link per request.
-      messages: await Promise.all(messages.map((turn, index) => toModelMessage(apiKey, turn, index === messages.length - 1))),
+      messages: await Promise.all(
+        messages.map((turn, index) => toModelMessage(provider === 'google' ? key : undefined, turn, index === messages.length - 1)),
+      ),
       abortSignal,
     })
     // Provider errors arrive as error parts in the stream, so keep the real error to throw afterwards.
@@ -120,7 +137,7 @@ export async function chatWithGemini(
     if (streamError) throw streamError
     const steps = await Promise.resolve(result.steps).catch(() => [])
     // Every step is a billed call, even when the caller does not ask for the totals.
-    for (const step of steps) void recordSdkUsage({ provider: 'google', model: CHAT_MODEL }, step.usage)
+    for (const step of steps) void recordSdkUsage({ provider, model }, step.usage)
     if (scope?.onUsage) {
       const last = steps.at(-1)?.usage
       if (last) {

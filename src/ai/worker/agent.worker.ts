@@ -22,6 +22,7 @@ import type { FromWorker, StreamPart, ToWorker } from './protocol'
  */
 const post = (msg: FromWorker) => self.postMessage(msg)
 const controllers = new Map<string, AbortController>()
+const steers = new Map<string, { id: string; text: string }[]>()
 const pendingTools = new Map<string, { resolve: (v: unknown) => void; reject: (e: Error) => void }>()
 const errorText = (e: unknown) => (e instanceof Error ? e.message : String(e))
 
@@ -159,27 +160,35 @@ async function runPass(msg: Extract<ToWorker, { type: 'start' }>) {
   try {
     const agent = new ToolLoopAgent({
       model,
-      ...((limit || cache) && {
-        prepareStep: async ({
-          messages,
-          steps,
-        }: {
-          messages: ModelMessage[]
-          steps: { usage?: { inputTokens?: number; outputTokens?: number } }[]
-        }) => {
-          const last = steps.at(-1)?.usage
-          const used = Math.max(last ? (last.inputTokens ?? 0) + (last.outputTokens ?? 0) : 0, estimateTokens(messages))
-          if (!limit || used < limit * 0.8) {
-            if (latest) latest = messages
-            return { messages: withCache(messages) }
-          }
-          const next = await compact(model, messages, controller.signal, (u) => part({ type: 'spend', ...u }))
-          const after = estimateTokens(next)
-          part({ type: 'compacted', beforeTokens: used, afterTokens: after })
-          latest = next
-          return { messages: withCache(next) }
-        },
-      }),
+      prepareStep: async ({
+        messages: stepMessages,
+        steps,
+      }: {
+        messages: ModelMessage[]
+        steps: { usage?: { inputTokens?: number; outputTokens?: number } }[]
+      }) => {
+        // Steering messages join the history here, before the model's next step. The history is then ours, as after a
+        // compaction, so the main thread gets all of it back.
+        const arrived = steers.get(msg.runId)?.splice(0) ?? []
+        let messages = stepMessages
+        if (arrived.length) {
+          messages = [...stepMessages, ...arrived.map(({ text }) => ({ role: 'user' as const, content: text }))]
+          latest = messages
+          for (const { id } of arrived) part({ type: 'steered', id })
+        }
+        if (!limit) return { messages: withCache(messages) }
+        const last = steps.at(-1)?.usage
+        const used = Math.max(last ? (last.inputTokens ?? 0) + (last.outputTokens ?? 0) : 0, estimateTokens(messages))
+        if (used < limit * 0.8) {
+          if (latest) latest = messages
+          return { messages: withCache(messages) }
+        }
+        const next = await compact(model, messages, controller.signal, (u) => part({ type: 'spend', ...u }))
+        const after = estimateTokens(next)
+        part({ type: 'compacted', beforeTokens: used, afterTokens: after })
+        latest = next
+        return { messages: withCache(next) }
+      },
       instructions:
         cache && msg.instructions ? { role: 'system', content: msg.instructions, providerOptions: ephemeral } : msg.instructions,
       tools,
@@ -232,6 +241,7 @@ async function runPass(msg: Extract<ToWorker, { type: 'start' }>) {
     })
   } finally {
     controllers.delete(msg.runId)
+    steers.delete(msg.runId)
   }
 }
 
@@ -239,7 +249,9 @@ self.onmessage = (e: MessageEvent<ToWorker>) => {
   const msg = e.data
   if (msg.type === 'start') void runPass(msg)
   else if (msg.type === 'abort') controllers.get(msg.runId)?.abort()
-  else if (msg.type === 'tool-result') {
+  else if (msg.type === 'steer') {
+    if (controllers.has(msg.runId)) steers.set(msg.runId, [...(steers.get(msg.runId) ?? []), { id: msg.id, text: msg.text }])
+  } else if (msg.type === 'tool-result') {
     const p = pendingTools.get(msg.callId)
     pendingTools.delete(msg.callId)
     if (msg.error !== undefined) p?.reject(new Error(msg.error))

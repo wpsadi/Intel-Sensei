@@ -1,6 +1,6 @@
+import { AI_MODELS } from '@/ai/providers'
 import { messageText } from '@/ai/utils/messages'
 import { Context, ContextContent, ContextContentBody, ContextContentHeader, ContextTrigger } from '@/components/ai-elements/context'
-import { CHAT_MODEL } from '@/constants/ai'
 import type { ChatMessage } from '@/features/note/db/types'
 import { cn } from '@/lib/utils'
 
@@ -70,7 +70,7 @@ export function ContextUsage({ messages }: { messages: ChatMessage[] }) {
   const used = tokens.system + tokens.human + tokens.ai
 
   return (
-    <Context usedTokens={used} maxTokens={MAX_TOKENS} modelId={`google:${CHAT_MODEL}`}>
+    <Context usedTokens={used} maxTokens={MAX_TOKENS} modelId={AI_MODELS.chatId}>
       <ContextTrigger size="sm" className="h-8 px-2" aria-label="Context usage" />
       <ContextContent align="start" side="top" className="w-72">
         <ContextContentHeader />
