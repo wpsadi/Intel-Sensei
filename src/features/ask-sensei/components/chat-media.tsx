@@ -1,6 +1,6 @@
 import '@videojs/react/video/skin.css'
 import { Video, VideoPlayer, VideoSkin } from '@videojs/react/video'
-import { Children, type ReactNode, isValidElement } from 'react'
+import { Children, type ComponentProps, type ReactNode, isValidElement } from 'react'
 
 import {
   AudioPlayer,
@@ -116,13 +116,13 @@ export function MediaGallery({ items }: { items: MediaItem[] }) {
 }
 
 /** Markdown `img`: the extension decides whether it is a picture, a video or audio. Alone it renders as a one-item gallery. */
-export function MarkdownImage({ src, alt }: { src?: string; alt?: string }) {
-  if (!src) return null
+export function MarkdownImage({ src, alt }: ComponentProps<'img'>) {
+  if (typeof src !== 'string' || !src) return null
   return <MediaGallery items={[{ kind: mediaKindOf(src) ?? 'image', src, alt }]} />
 }
 
 /** Markdown `a`: links to audio or video files become players; other links stay links. */
-export function MarkdownLink({ href, children }: { href?: string; children?: ReactNode }) {
+export function MarkdownLink({ href, children }: ComponentProps<'a'>) {
   const kind = mediaKindOf(href)
   if (href && kind) return <MediaGallery items={[{ kind, src: href, alt: typeof children === 'string' ? children : undefined }]} />
   return (
