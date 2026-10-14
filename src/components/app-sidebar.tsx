@@ -15,6 +15,7 @@ import {
   TerminalIcon,
 } from 'lucide-react'
 import * as React from 'react'
+import { BsBrowserChrome } from 'react-icons/bs'
 
 import { NavMain } from '@/components/nav-main'
 import { NavSecondary } from '@/components/nav-secondary'
@@ -77,6 +78,11 @@ const data = {
       title: 'S3D',
       url: '/s-3d',
       icon: <DraftingCompassIcon />,
+    },
+    {
+      title: 'SBrowse',
+      url: '/s-browse',
+      icon: <BsBrowserChrome />,
     },
   ],
   navSecondary: [

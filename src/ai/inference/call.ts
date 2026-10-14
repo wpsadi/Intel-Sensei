@@ -130,7 +130,7 @@ export class LiveCall {
         // gemini-3.8-live rejects thinkingConfig and closes the socket, so it is left out there.
         ...(LIVE_MODEL.includes('extended-thinking') && { thinkingConfig: { thinkingLevel: ThinkingLevel.MEDIUM, includeThoughts: true } }),
         systemInstruction:
-          'You are Sensei, a patient study helper on a live voice call. Keep replies short and conversational, because they are spoken aloud. After a tool call, carry on from where you stopped: never say again what you already said. Do not use tools for a plain answer.\n\n' +
+          "You are Sensei, a friendly, general-purpose assistant on a live voice call. Help with the user's request across topics; do not steer the conversation toward studying unless asked. Keep replies short and conversational, because they are spoken aloud. After a tool call, carry on from where you stopped: never say again what you already said. Do not use tools for a plain answer.\n\n" +
           currentTimePrompt() +
           (this.options.instructions ? `\n\n${this.options.instructions}` : '') +
           ((this.options.history ?? '')

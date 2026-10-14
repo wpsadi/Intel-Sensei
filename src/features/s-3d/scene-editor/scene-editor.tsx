@@ -27,9 +27,10 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
+import { useCommandScope } from '@/lib/commands'
 import { cn } from '@/lib/utils'
 
-import { eventKey } from '../commands'
+import { useCommandHandler, useLabel } from '../commands'
 import { DEFAULT_POINTS, GEOMETRY_PARAMS, animate, applyLook, buildScene, disposeTree, fitCamera, sceneOf } from '../render/scene3d'
 import { GLBoundary } from '../render/three-view'
 import { useS3D } from '../store'
@@ -51,6 +52,9 @@ import {
 const pathDims = (geo: Geometry3D | undefined) => (geo === 'tube' ? 3 : geo === 'lathe' ? 2 : 0)
 
 const r3 = (v: number) => Math.round(v * 1000) / 1000
+
+/** The selected object in the open scene, read live so handlers never see a stale selection. */
+const sceneSel = () => useS3D.getState().sceneEdit?.selected ?? null
 
 /** Lets the toolbar, outside the Canvas, read and move the editor camera. */
 interface View {
@@ -303,32 +307,57 @@ export function SceneEditor({ embedded = false }: { embedded?: boolean }) {
   // The editor camera starts at the scene camera and is independent of it afterwards.
   const initial = useMemo(() => scene?.camera, [edit?.nodeId]) // eslint-disable-line react-hooks/exhaustive-deps
 
-  useEffect(() => {
-    if (!edit) return
-    const editable = (t: EventTarget | null) =>
-      t instanceof HTMLElement && (t.isContentEditable || ['INPUT', 'TEXTAREA', 'SELECT'].includes(t.tagName))
-    const onKey = (e: KeyboardEvent) => {
-      if (editable(e.target)) return
-      const st = useS3D.getState()
-      const sel = st.sceneEdit?.selected
-      const key = eventKey(e)
-      const run = (fn: () => void) => {
-        e.preventDefault()
-        fn()
-      }
-      if (key === 'w' || key === 'g') run(() => setGizmo('translate'))
-      else if (key === 'e' || key === 'r') run(() => setGizmo(key === 'e' ? 'rotate' : 'scale'))
-      else if (key === 's') run(() => setGizmo('scale'))
-      else if (key === 'f') run(() => frame(sel))
-      else if ((key === 'delete' || key === 'backspace') && sel) run(() => deleteObject(sel))
-      else if (key === 'mod+d' && sel) run(() => duplicateObject(sel))
-      else if (key === 'mod+z') run(() => st.undo())
-      else if (key === 'mod+shift+z' || key === 'mod+y') run(() => st.redo())
-      else if (key === 'escape') run(() => (sel ? selectObject(null) : !embedded && closeSceneEditor()))
-    }
-    window.addEventListener('keydown', onKey)
-    return () => window.removeEventListener('keydown', onKey)
-  }, [edit, embedded])
+  // Modal, so the editor and global commands stay off while the scene editor is open, as the canvas shortcuts did before.
+  // Falling through a disabled scene command therefore reaches no canvas command.
+  useCommandScope('scene', { modal: true, enabled: !!edit })
+  const sceneHandlers = useMemo(
+    () => ({
+      translate: { run: () => setGizmo('translate') },
+      rotate: { run: () => setGizmo('rotate') },
+      scale: { run: () => setGizmo('scale') },
+      frame: { run: () => frameRef.current?.(sceneSel()) },
+      // Without a selection these are disabled, so the key falls through to the browser.
+      delete: {
+        enabled: () => !!sceneSel(),
+        run: () => {
+          const sel = sceneSel()
+          if (sel) deleteObject(sel)
+        },
+      },
+      duplicate: {
+        enabled: () => !!sceneSel(),
+        run: () => {
+          const sel = sceneSel()
+          if (sel) duplicateObject(sel)
+        },
+      },
+      undo: { run: () => useS3D.getState().undo() },
+      redo: { run: () => useS3D.getState().redo() },
+      deselect: {
+        run: () => {
+          if (sceneSel()) selectObject(null)
+          else if (!embedded) closeSceneEditor()
+        },
+      },
+    }),
+    [embedded],
+  )
+  useCommandHandler('scene-translate', edit ? sceneHandlers.translate : null)
+  useCommandHandler('scene-rotate', edit ? sceneHandlers.rotate : null)
+  useCommandHandler('scene-scale', edit ? sceneHandlers.scale : null)
+  useCommandHandler('scene-frame', edit ? sceneHandlers.frame : null)
+  useCommandHandler('scene-delete', edit ? sceneHandlers.delete : null)
+  useCommandHandler('scene-duplicate', edit ? sceneHandlers.duplicate : null)
+  useCommandHandler('scene-undo', edit ? sceneHandlers.undo : null)
+  useCommandHandler('scene-redo', edit ? sceneHandlers.redo : null)
+  useCommandHandler('scene-deselect', edit ? sceneHandlers.deselect : null)
+  const moveKey = useLabel('scene-translate')
+  const rotateKey = useLabel('scene-rotate')
+  const scaleKey = useLabel('scene-scale')
+  const frameKey = useLabel('scene-frame')
+  const deleteKey = useLabel('scene-delete')
+  const duplicateKey = useLabel('scene-duplicate')
+  const escKey = useLabel('scene-deselect')
 
   if (!edit || !node || !scene || !initial) return null
 
@@ -434,7 +463,7 @@ export function SceneEditor({ embedded = false }: { embedded?: boolean }) {
         <div className="pointer-events-auto flex items-center gap-0.5 rounded-xl border bg-background/95 p-1 shadow-lg backdrop-blur">
           {!embedded && (
             <>
-              <Button variant="ghost" size="sm" onClick={closeSceneEditor} title="Back to canvas (Esc)">
+              <Button variant="ghost" size="sm" onClick={closeSceneEditor} title={`Back to canvas (${escKey})`}>
                 <ArrowLeftIcon /> {node.name}
               </Button>
               <div className="mx-1 h-5 w-px bg-border" />
@@ -468,9 +497,9 @@ export function SceneEditor({ embedded = false }: { embedded?: boolean }) {
             <RefreshCwIcon />
           </Button>
           <div className="mx-1 h-5 w-px bg-border" />
-          {gizmoBtn('translate', <Move3dIcon />, 'Move (W)')}
-          {gizmoBtn('rotate', <Rotate3dIcon />, 'Rotate (E)')}
-          {gizmoBtn('scale', <Scale3dIcon />, 'Scale (R)')}
+          {gizmoBtn('translate', <Move3dIcon />, `Move (${moveKey})`)}
+          {gizmoBtn('rotate', <Rotate3dIcon />, `Rotate (${rotateKey})`)}
+          {gizmoBtn('scale', <Scale3dIcon />, `Scale (${scaleKey})`)}
           <div className="mx-1 h-5 w-px bg-border" />
           <DropdownMenu>
             <DropdownMenuTrigger render={<Button variant="ghost" size="sm" title="Add object" />}>
@@ -498,7 +527,7 @@ export function SceneEditor({ embedded = false }: { embedded?: boolean }) {
               <DropdownMenuItem onClick={() => addObject('group')}>Empty group</DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
-          <Button variant="ghost" size="icon-sm" title="Frame selection (F)" onClick={() => frame(edit.selected)}>
+          <Button variant="ghost" size="icon-sm" title={`Frame selection (${frameKey})`} onClick={() => frame(edit.selected)}>
             <FocusIcon />
           </Button>
           <Button variant="ghost" size="icon-sm" title="Use this view as the scene camera" onClick={applyView}>
@@ -508,8 +537,8 @@ export function SceneEditor({ embedded = false }: { embedded?: boolean }) {
       </div>
 
       <div className="pointer-events-none absolute bottom-3 left-3 rounded-md bg-background/80 px-2 py-1 text-[11px] text-muted-foreground">
-        Drag to orbit · Right-drag to pan · Scroll to zoom · Click to select · W/E/R move/rotate/scale · F frame · ⌘D duplicate · Del delete
-        · Esc {embedded ? 'deselect' : 'back'}
+        Drag to orbit · Right-drag to pan · Scroll to zoom · Click to select · {moveKey}/{rotateKey}/{scaleKey} move/rotate/scale ·{' '}
+        {frameKey} frame · {duplicateKey} duplicate · {deleteKey} delete · {escKey} {embedded ? 'deselect' : 'back'}
       </div>
     </div>
   )

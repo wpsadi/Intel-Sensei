@@ -10,7 +10,7 @@ import { Input } from '@/components/ui/input'
 import { Progress } from '@/components/ui/progress'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
-import { COMMANDS } from '@/features/s-3d/commands'
+import { commandSystem } from '@/features/s-3d/commands'
 import { docsRepo, settingsRepo, uid, versionsRepo } from '@/features/s-3d/db'
 import { exportNodes, exportSvgString, exportVideo } from '@/features/s-3d/export/exporter'
 import { encodeDoc } from '@/features/s-3d/export/share'
@@ -18,10 +18,12 @@ import { deleteFile, downloadBlob, listFiles, touchFile } from '@/features/s-3d/
 import { addFilesToCanvas, fileFromRef, openFiles } from '@/features/s-3d/io'
 import { useS3D } from '@/features/s-3d/store'
 import type { Doc, ExportSetting, FileMeta, Version } from '@/features/s-3d/types'
+import { useCommandScope } from '@/lib/commands'
 
 import { SenseiAskModal } from '../agent/ask-user'
 import { DiscoverDialog } from '../discover/discover-dialog'
 import { useS3DDialog } from './dialog-store'
+import { ShortcutGroups } from './shortcut-editor'
 
 const field = 'h-7 rounded-md border bg-transparent px-2 text-xs'
 const Row = ({ label, children }: { label: string; children: ReactNode }) => (
@@ -583,20 +585,32 @@ function OpenBody() {
 
 function ShortcutsBody() {
   return (
-    <ScrollArea className="h-96">
-      <div className="grid grid-cols-2 gap-x-6 gap-y-1 pr-3">
-        {COMMANDS.filter((c) => c.shortcut).map((c) => (
-          <div key={c.id} className="flex items-center justify-between border-b py-1 text-xs">
-            <span>{c.label}</span>
-            <kbd className="rounded bg-muted px-1.5 py-0.5 font-mono text-[10px]">{c.shortcut}</kbd>
-          </div>
-        ))}
+    <div className="grid gap-3">
+      <div className="flex items-center justify-between gap-2">
+        <span className="text-xs text-muted-foreground">Edit a shortcut, then press the new keys.</span>
+        <Button
+          size="xs"
+          variant="outline"
+          onClick={() => {
+            if (confirm('Reset every shortcut to its default?')) commandSystem.resetAll()
+          }}
+        >
+          Reset all
+        </Button>
       </div>
-    </ScrollArea>
+      <ScrollArea className="h-96">
+        <div className="grid gap-4 pr-3">
+          <ShortcutGroups />
+        </div>
+      </ScrollArea>
+    </div>
   )
 }
 
 export function S3DDialogs() {
+  // While any S3D dialog is open, editor and global shortcuts are blocked.
+  const open = useS3DDialog((s) => s.open)
+  useCommandScope('dialog', { modal: true, enabled: open !== null })
   return (
     <>
       <Shell id="export" title="Export" description="PNG, JPG, SVG or a multi-page PDF.">
