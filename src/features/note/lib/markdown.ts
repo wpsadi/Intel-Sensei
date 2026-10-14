@@ -96,8 +96,14 @@ function block(node: Json, depth = 0): string {
       return kids.map((item) => listItem(item, pad, `- [${item.attrs?.checked ? 'x' : ' '}] `, depth)).join('\n')
     case 'table':
       return table(node)
-    case 'media':
-      return `[${node.attrs?.name || node.attrs?.kind || 'media'}]`
+    case 'media': {
+      // Kept as a link to the stored file, so an editor that reads this Markdown again shows the same picture or file.
+      const kind = String(node.attrs?.kind || 'file')
+      const name = String(node.attrs?.name || kind).replace(/[[\]]/g, '')
+      const src = String(node.attrs?.src ?? '')
+      if (!src) return `[${name}]`
+      return kind === 'image' ? `![${name}](${src})` : `[${name}](${src} "${kind}")`
+    }
     case 'embed':
       return String(node.attrs?.url ?? '')
     case 'pageBlock':
@@ -110,11 +116,11 @@ function block(node: Json, depth = 0): string {
   }
 }
 
-/** Readable Markdown of a page: title, then its blocks. Used for copy and export. */
-export function pageToMarkdown(page: Pick<Page, 'title' | 'content'>) {
+/** Readable Markdown of a serialized Tiptap document: its blocks, with no title. */
+export function docToMarkdown(content: string) {
   let doc: Json = {}
   try {
-    doc = JSON.parse(page.content)
+    doc = JSON.parse(content)
   } catch {
     // Unparseable content exports as an empty body.
   }
@@ -122,5 +128,10 @@ export function pageToMarkdown(page: Pick<Page, 'title' | 'content'>) {
     .map((node) => block(node))
     .filter(Boolean)
     .join('\n\n')
-  return `# ${page.title || 'Untitled'}\n\n${body}\n`
+  return `${body}\n`
+}
+
+/** Readable Markdown of a page: title, then its blocks. Used for copy and export. */
+export function pageToMarkdown(page: Pick<Page, 'title' | 'content'>) {
+  return `# ${page.title || 'Untitled'}\n\n${docToMarkdown(page.content)}`
 }

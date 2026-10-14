@@ -49,6 +49,29 @@ export async function readMedia(src: string): Promise<Blob | null> {
   return res ? (await readBlob(res)).blob : null
 }
 
+const revisions = new Map<string, number>()
+/** How many times a stored file was rewritten with `updateMedia` since the page loaded. */
+export const mediaRevision = (src: string) => revisions.get(src) ?? 0
+
+type MediaUpdate = (src: string, origin: 'editor' | 'agent') => void
+const updateListeners = new Set<MediaUpdate>()
+/** Hears every file rewritten with `updateMedia`: by the editor the user types in, or by Sensei. Returns a way to stop. */
+export function onMediaUpdated(listener: MediaUpdate) {
+  updateListeners.add(listener)
+  return () => void updateListeners.delete(listener)
+}
+
+/** Rewrites a stored file in place: its media ref stays the same, so whatever holds the ref sees the new content. */
+export async function updateMedia(src: string, file: Blob, name = 'file', origin: 'editor' | 'agent' = 'editor') {
+  if (!isMediaRef(src)) return
+  await putBlob(BUCKET, keyFor(src.slice(SCHEME.length)), file, name)
+  const old = objectUrls.get(src)
+  objectUrls.delete(src)
+  void old?.then((url) => url && URL.revokeObjectURL(url))
+  revisions.set(src, mediaRevision(src) + 1)
+  updateListeners.forEach((listener) => listener(src, origin))
+}
+
 export async function deleteMedia(src: string) {
   if (!isMediaRef(src)) return
   await (await caches.open(BUCKET)).delete(keyFor(src.slice(SCHEME.length)))

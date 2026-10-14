@@ -14,6 +14,7 @@ import {
   tool,
 } from 'ai'
 
+import { catalogOf, createToolSelector, lastUserText } from '../tools/selector'
 import type { FromWorker, StreamPart, ToWorker } from './protocol'
 
 /**
@@ -131,18 +132,32 @@ async function runPass(msg: Extract<ToWorker, { type: 'start' }>) {
             post({ type: 'tool-exec', runId: msg.runId, callId, name, args })
           }),
         ...(t.imageOutput && {
-          toModelOutput: ({ output }: { output: { image: string; mediaType: string } }) => ({
-            type: 'content' as const,
-            value: [
-              { type: 'text' as const, text: 'Rendered view:' },
-              { type: 'file' as const, mediaType: output.mediaType, data: { type: 'data' as const, data: output.image } },
-            ],
-          }),
+          toModelOutput: ({ output }: { output: { image: string; mediaType: string } | string }) =>
+            typeof output === 'string'
+              ? { type: 'text' as const, value: output }
+              : {
+                  type: 'content' as const,
+                  value: [
+                    { type: 'text' as const, text: 'Rendered view:' },
+                    { type: 'file' as const, mediaType: output.mediaType, data: { type: 'data' as const, data: output.image } },
+                  ],
+                },
         }),
       } as never) as Tool,
     ]),
   )
   const model = modelFor(msg)
+  // Dynamic tool selection: the same model picks the tools the request needs, once, before the first step.
+  const selector = msg.toolSelect
+    ? createToolSelector({
+        model,
+        catalog: catalogOf(msg.tools),
+        ...msg.toolSelect,
+        signal: controller.signal,
+        onUsage: (u) => part({ type: 'spend', ...spendOf(u) }),
+      })
+    : undefined
+  if (selector?.enabled) tools.request_tools = selector.requestTool
   // After a compaction the history is ours, not the SDK's; `latest` tracks it so the main thread gets it back.
   let latest: ModelMessage[] | null = null
   let lastContext = 0
@@ -157,37 +172,47 @@ async function runPass(msg: Extract<ToWorker, { type: 'start' }>) {
       : (messages.map((m, i) =>
           i === messages.length - 1 ? { ...m, providerOptions: { ...m.providerOptions, ...ephemeral } } : m,
         ) as ModelMessage[])
+  const prepareMessages = async ({
+    messages: stepMessages,
+    steps,
+  }: {
+    messages: ModelMessage[]
+    steps: { usage?: { inputTokens?: number; outputTokens?: number } }[]
+  }) => {
+    // Steering messages join the history here, before the model's next step. The history is then ours, as after a
+    // compaction, so the main thread gets all of it back.
+    const arrived = steers.get(msg.runId)?.splice(0) ?? []
+    let messages = stepMessages
+    if (arrived.length) {
+      messages = [...stepMessages, ...arrived.map(({ text }) => ({ role: 'user' as const, content: text }))]
+      latest = messages
+      for (const { id } of arrived) part({ type: 'steered', id })
+    }
+    if (!limit) return { messages: withCache(messages) }
+    const last = steps.at(-1)?.usage
+    const used = Math.max(last ? (last.inputTokens ?? 0) + (last.outputTokens ?? 0) : 0, estimateTokens(messages))
+    if (used < limit * 0.8) {
+      if (latest) latest = messages
+      return { messages: withCache(messages) }
+    }
+    const next = await compact(model, messages, controller.signal, (u) => part({ type: 'spend', ...u }))
+    const after = estimateTokens(next)
+    part({ type: 'compacted', beforeTokens: used, afterTokens: after })
+    latest = next
+    return { messages: withCache(next) }
+  }
   try {
     const agent = new ToolLoopAgent({
       model,
-      prepareStep: async ({
-        messages: stepMessages,
-        steps,
-      }: {
-        messages: ModelMessage[]
-        steps: { usage?: { inputTokens?: number; outputTokens?: number } }[]
-      }) => {
-        // Steering messages join the history here, before the model's next step. The history is then ours, as after a
-        // compaction, so the main thread gets all of it back.
-        const arrived = steers.get(msg.runId)?.splice(0) ?? []
-        let messages = stepMessages
-        if (arrived.length) {
-          messages = [...stepMessages, ...arrived.map(({ text }) => ({ role: 'user' as const, content: text }))]
-          latest = messages
-          for (const { id } of arrived) part({ type: 'steered', id })
-        }
-        if (!limit) return { messages: withCache(messages) }
-        const last = steps.at(-1)?.usage
-        const used = Math.max(last ? (last.inputTokens ?? 0) + (last.outputTokens ?? 0) : 0, estimateTokens(messages))
-        if (used < limit * 0.8) {
-          if (latest) latest = messages
-          return { messages: withCache(messages) }
-        }
-        const next = await compact(model, messages, controller.signal, (u) => part({ type: 'spend', ...u }))
-        const after = estimateTokens(next)
-        part({ type: 'compacted', beforeTokens: used, afterTokens: after })
-        latest = next
-        return { messages: withCache(next) }
+      prepareStep: async (args: { messages: ModelMessage[]; steps: { usage?: { inputTokens?: number; outputTokens?: number } }[] }) => {
+        // Only the tools the model picked for the request are offered; the set grows but never shrinks, so the cache holds.
+        const pending = steers
+          .get(msg.runId)
+          ?.map((s) => s.text)
+          .join('\n')
+        const activeTools = await selector?.activeTools(pending || lastUserText(args.messages), !!pending)
+        const base = await prepareMessages(args)
+        return activeTools ? { ...base, activeTools: activeTools as never } : base
       },
       instructions:
         cache && msg.instructions ? { role: 'system', content: msg.instructions, providerOptions: ephemeral } : msg.instructions,

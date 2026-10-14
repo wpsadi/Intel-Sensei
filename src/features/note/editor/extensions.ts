@@ -3,7 +3,7 @@ import { Details, DetailsContent, DetailsSummary } from '@tiptap/extension-detai
 import { Highlight } from '@tiptap/extension-highlight'
 import { TaskItem, TaskList } from '@tiptap/extension-list'
 import { Mathematics } from '@tiptap/extension-mathematics'
-import { TableKit } from '@tiptap/extension-table'
+import { TableCell, TableHeader, TableRow } from '@tiptap/extension-table'
 import { Color, TextStyle } from '@tiptap/extension-text-style'
 import StarterKit from '@tiptap/starter-kit'
 
@@ -19,6 +19,7 @@ import { EmojiNode, MentionNode } from './nodes/inline'
 import { Callout, Column, Columns, TabPanel, Tabs } from './nodes/layout'
 import { Media } from './nodes/media'
 import { Breadcrumb, PageBlock, TableOfContents } from './nodes/pages'
+import { Table } from './nodes/table'
 import { SlashCommands } from './slash-commands'
 
 /** Toggle list (level 0) and toggle headings 1–3 share one node; the level styles the summary. */
@@ -68,7 +69,10 @@ export function buildExtensions({ pageId, nested }: { pageId: string; nested: bo
     caretPlaceholder(nested),
     TaskList,
     TaskItem.configure({ nested: true }),
-    TableKit.configure({ table: { resizable: true } }),
+    Table.configure({ resizable: true }),
+    TableCell,
+    TableHeader,
+    TableRow,
     ToggleBlock,
     DetailsSummary,
     DetailsContent,

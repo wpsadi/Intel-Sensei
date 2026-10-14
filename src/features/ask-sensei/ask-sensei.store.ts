@@ -8,9 +8,11 @@ import { AI_MODELS } from '@/ai/providers'
 import { type PendingMessage, demoteSteering, removePending, submitWhileBusy, takeNextPending } from '@/ai/send-queue'
 import { currentTodos, messageText } from '@/ai/utils/messages'
 import type { ChatTurn } from '@/ai/utils/messages'
+import { useTerminals } from '@/features/ask-sensei/terminal/terminal.store'
 import { uid } from '@/features/note/db/idb'
 import { deleteMedia } from '@/features/note/db/media'
 import { chatMessagesRepo, chatsRepo } from '@/features/note/db/repo'
+import { artifactKind, useArtifacts } from '@/features/ask-sensei/artifact/artifact.store'
 import type { Chat, ChatAnswers, ChatAttachment, ChatMessage } from '@/features/note/db/types'
 
 /** Chats and their messages. IndexedDB is the source of truth; this store is the in-memory copy the UI reads. */
@@ -155,6 +157,24 @@ export const useAskSenseiStore = create<AskSenseiState>()((set, get) => {
               return turns
             },
             onUsage: (usage) => patchMessage(chatId, reply.id, { usage }),
+            onSteps: (steps) => patchMessage(chatId, reply.id, { steps }),
+            onFile: (file, callId) => {
+              const have = current()?.attachments ?? []
+              // A document written again under the same title is the same file: it keeps its one card.
+              patchMessage(chatId, reply.id, {
+                attachments: have.some((item) => item.src === file.src)
+                  ? have.map((item) => (item.src === file.src ? file : item))
+                  : [...have, file],
+              })
+              useArtifacts.getState().endDraft(callId)
+              // A document Sensei made opens beside the chat; a picture stays under the reply.
+              const kind = artifactKind(file)
+              if (kind && kind !== 'image') useArtifacts.getState().show(file, chatId)
+            },
+            onArtifactDraft: (draft) =>
+              draft.done
+                ? useArtifacts.getState().endDraft(draft.id)
+                : useArtifacts.getState().writeDraft({ ...draft, chatId, messageId: reply.id }),
             onAsk: (questions) =>
               new Promise<ChatAnswers>((resolve, reject) => {
                 patchMessage(chatId, reply.id, { questions: { questions } })
@@ -171,6 +191,8 @@ export const useAskSenseiStore = create<AskSenseiState>()((set, get) => {
         : `Sorry, Sensei could not reply: ${error instanceof Error ? error.message : 'unknown error'}`
     }
 
+    // A document cut off half way (the reply was stopped) is not shown as still being written.
+    useArtifacts.getState().endDraftsOf(reply.id)
     // Stopped while still thinking: the thinking time ends at the stop.
     endThinking()
     const thoughts = current()?.reasoning || undefined
@@ -179,10 +201,16 @@ export const useAskSenseiStore = create<AskSenseiState>()((set, get) => {
     const usage = current()?.usage
     const searches = current()?.searches
     const questions = current()?.questions
+    const files = current()?.attachments
+    // A call still running when the reply ended was cut off (the reply was stopped).
+    const steps = current()?.steps?.map((step) =>
+      step.status === 'running' ? { ...step, status: 'failed' as const, detail: 'Stopped' } : step,
+    )
+    const workedSeconds = steps?.length ? Math.max(1, Math.round((Date.now() - startedAt) / 1000)) : undefined
     pendingAnswers = null
     const interrupted = controller.signal.aborted || undefined
     if (abort === controller) abort = null
-    patchMessage(chatId, reply.id, { content: finalText, reasoning: thoughts, reasoningSeconds, interrupted })
+    patchMessage(chatId, reply.id, { content: finalText, reasoning: thoughts, reasoningSeconds, interrupted, workedSeconds, steps })
     set({ streamingId: null })
     await chatMessagesRepo.put({
       ...reply,
@@ -195,6 +223,9 @@ export const useAskSenseiStore = create<AskSenseiState>()((set, get) => {
       usage,
       searches,
       questions,
+      attachments: files,
+      steps,
+      workedSeconds,
     })
     await touchChat(chatId)
     if (!interrupted) void episodicMemory.append({ id: reply.id, chatId, role: 'assistant', content: finalText })
@@ -340,6 +371,8 @@ export const useAskSenseiStore = create<AskSenseiState>()((set, get) => {
       void episodicMemory.removeChat(id)
       void sessionMemory.clear(id)
       await chatsRepo.remove(id)
+      // Its terminals and Python environment go with it.
+      void useTerminals.getState().removeChat(id)
       set((state) => {
         const { [id]: _removed, ...rest } = state.messages
         return { chats: state.chats.filter((chat) => chat.id !== id), messages: rest }

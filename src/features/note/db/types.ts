@@ -158,6 +158,8 @@ export interface ChatAttachment {
   name: string
   type: string
   size: number
+  /** A file Sensei made for the user. In the terminal it is read-only, so only the editor beside the chat changes it. */
+  artifact?: boolean
 }
 
 /** A brief plan Sensei wrote when asked how to do something. It shows as a card in the reply. */
@@ -263,6 +265,10 @@ export interface ChatMessage {
   parts?: ChatPart[]
   /** The web searches Sensei ran for this reply, in order. */
   searches?: ChatSearch[]
+  /** The tool calls (commands, files, memory) Sensei made for this reply, in order. */
+  steps?: ChatToolStep[]
+  /** How long the whole reply took, in seconds, when it used tools. */
+  workedSeconds?: number
   /** How long Sensei thought before its first words, in seconds. */
   reasoningSeconds?: number
   /** True when the user stopped the reply before it finished. */

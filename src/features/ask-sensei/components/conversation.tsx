@@ -9,6 +9,7 @@ import { CopyMessage, ReplyAction, ReplyActions } from '@/components/reply-actio
 import { Bubble, Message, MessageContent } from '@/components/ui/chat'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { Separator } from '@/components/ui/separator'
+import { ArtifactCards, isArtifact } from '@/features/ask-sensei/artifact/artifact-cards'
 import { ChatPlanCard } from '@/features/ask-sensei/components/chat-plan'
 import { ChatQuestionsCard } from '@/features/ask-sensei/components/chat-questions'
 import { ChatReasoning } from '@/features/ask-sensei/components/chat-reasoning'
@@ -17,6 +18,7 @@ import { Markdown } from '@/features/ask-sensei/components/markdown'
 import { useMediaUrl } from '@/features/note/db/hooks'
 import { resolveMedia } from '@/features/note/db/media'
 import type { ChatAttachment, ChatMessage } from '@/features/note/db/types'
+import { WorkedFor } from '@/features/s-3d/agent/worked-for'
 import { cn } from '@/lib/utils'
 
 /** Element id of the marker at the end of the list. The page scrolls to it from the down arrow. */
@@ -66,14 +68,14 @@ function AttachedImage({ attachment, onOpen }: { attachment: ChatAttachment; onO
 }
 
 /** Files sent with a message: images as pictures, other files as chips. Clicking one opens it from Cache Storage in a new tab. */
-function MessageAttachments({ attachments }: { attachments: ChatAttachment[] }) {
+function MessageAttachments({ attachments, align = 'end' }: { attachments: ChatAttachment[]; align?: 'start' | 'end' }) {
   const open = async (attachment: ChatAttachment) => {
     const url = await resolveMedia(attachment.src)
     if (url) window.open(url, '_blank', 'noopener')
     else toast('This file is no longer saved in the browser')
   }
   return (
-    <div className="flex flex-wrap justify-end gap-2">
+    <div className={cn('flex flex-wrap gap-2', align === 'end' ? 'justify-end' : 'justify-start')}>
       {attachments.map((attachment) =>
         attachment.type.startsWith('image/') ? (
           <AttachedImage key={attachment.src} attachment={attachment} onOpen={() => void open(attachment)} />
@@ -159,12 +161,24 @@ export function Conversation({
           const isReply = message.role === 'assistant'
           const isStreaming = message.id === streamingId
           const isWaiting =
-            isReply && isStreaming && !message.content && !message.reasoning && !message.plan && !message.searches && !message.questions
+            isReply &&
+            isStreaming &&
+            !message.content &&
+            !message.reasoning &&
+            !message.plan &&
+            !message.searches &&
+            !message.questions &&
+            !message.steps?.length
           return (
             <Message key={message.id} id={message.id} align={isReply ? 'start' : 'end'} className="scroll-mt-6">
               {/* An interrupted reply takes the full row, so its checkpoint line runs across the chat. */}
               <MessageContent className={cn(!isReply && 'group/user', message.interrupted ? 'w-full max-w-full' : undefined)}>
-                {!isReply && message.attachments?.length ? <MessageAttachments attachments={message.attachments} /> : null}
+                {(isReply ? (message.attachments ?? []).filter((file) => !isArtifact(file)) : message.attachments)?.length ? (
+                  <MessageAttachments
+                    attachments={isReply ? (message.attachments ?? []).filter((file) => !isArtifact(file)) : (message.attachments ?? [])}
+                    align={isReply ? 'start' : 'end'}
+                  />
+                ) : null}
                 {!isReply && !message.content ? null : isWaiting ? (
                   <ReplyDot />
                 ) : (
@@ -175,13 +189,23 @@ export function Conversation({
                     {isReply && (
                       // Thinking is over once the reply's first words arrive; the saved time shows after a reload too.
                       // Tool calls show inside the thinking block rather than between the reply's paragraphs.
-                      <ChatReasoning
-                        reasoning={message.reasoning}
-                        steps={message.parts?.flatMap((part) => (part.type === 'steps' ? part.steps : []))}
-                        isStreaming={isStreaming && !message.content}
-                        duration={message.reasoningSeconds}
-                        className="mb-3"
-                      />
+                      <>
+                        {/* A reply that ran commands or used tools shows how long it worked, like the S-3D agent. */}
+                        {message.steps?.length ? (
+                          <WorkedFor startedAt={message.createdAt} seconds={message.workedSeconds} running={isStreaming} />
+                        ) : null}
+                        <ChatReasoning
+                          reasoning={message.reasoning}
+                          steps={message.steps ?? message.parts?.flatMap((part) => (part.type === 'steps' ? part.steps : []))}
+                          isStreaming={isStreaming && !message.content}
+                          duration={message.reasoningSeconds ?? message.workedSeconds}
+                          toolCount={!message.steps?.length}
+                          defaultOpen={false}
+                          className="mb-3"
+                        />
+                        {/* The documents Sensei made sit between the thinking and the final answer. */}
+                        <ArtifactCards files={(message.attachments ?? []).filter(isArtifact)} messageId={message.id} chatId={message.chatId} />
+                      </>
                     )}
                     {isReply && message.parts?.length ? (
                       // A live-call reply: speech, searches and tool calls in the order they happened, in one message.

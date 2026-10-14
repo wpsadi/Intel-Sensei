@@ -191,10 +191,6 @@
 }
 
 /* Tables */
-.snote-editor .tableWrapper {
-  overflow-x: auto;
-  margin: 8px 0;
-}
 .snote-editor table {
   border-collapse: collapse;
   table-layout: fixed;

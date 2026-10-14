@@ -71,6 +71,21 @@ export function languageModel(provider: Provider, model: string, key: string, ba
 export const minimalThinking = (provider: Provider) =>
   provider === 'google' ? { google: { thinkingConfig: { thinkingLevel: 'minimal' } } satisfies GoogleLanguageModelOptions } : undefined
 
+/**
+ * Options that make the model think and send a summary of its thinking, so the chat can show it. Neither Claude nor
+ * Gemini sends thinking text unless asked: Claude thinks adaptively and needs `display: 'summarized'`, and `effort`
+ * sets how deep; Gemini needs `includeThoughts`. Other providers use their defaults.
+ */
+export const thinkingSummary = (
+  provider: Provider,
+  effort: 'low' | 'medium' | 'high' = 'high',
+): Record<string, Record<string, unknown>> | undefined =>
+  provider === 'anthropic'
+    ? { anthropic: { thinking: { type: 'adaptive', display: 'summarized' }, effort } }
+    : provider === 'google'
+      ? { google: { thinkingConfig: { thinkingLevel: effort, includeThoughts: true } } satisfies GoogleLanguageModelOptions }
+      : undefined
+
 /** A provider and one of its models. */
 export interface ModelChoice {
   provider: Provider

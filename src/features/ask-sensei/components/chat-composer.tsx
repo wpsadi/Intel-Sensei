@@ -1,7 +1,10 @@
 import { AudioLines, Mic, MicOff, PhoneOff, X } from 'lucide-react'
 import { type ClipboardEvent, type KeyboardEvent, type ReactNode, useEffect, useMemo, useRef, useState } from 'react'
+import { useSearchParams } from 'react-router-dom'
 import { toast } from 'sonner'
 
+import { warmForFiles } from '@/ai/sandbox/attachments'
+import { useInstalledSkills } from '@/ai/skills/skills'
 import {
   Composer,
   ComposerActions,
@@ -14,12 +17,14 @@ import {
   ComposerVoice,
   ComposerVoiceButton,
 } from '@/components/assistant-ui/elements/composer'
+import { type ComposerSuggestion, useSuggestionMenu } from '@/components/assistant-ui/elements/suggestion-menu'
 import { mono } from '@/components/assistant-ui/elements/surfaces'
 import { Button } from '@/components/ui/button'
 import { useAskSenseiStore } from '@/features/ask-sensei/ask-sensei.store'
 import { useLiveCall } from '@/features/ask-sensei/components/live-call'
 import { deleteMedia, putMedia } from '@/features/note/db/media'
 import type { ChatAttachment } from '@/features/note/db/types'
+import { skillSuggestions } from '@/features/skills/suggest'
 import { cn } from '@/lib/utils'
 
 import { formatElapsed, useVoiceNote } from './use-voice-note'
@@ -30,6 +35,14 @@ const PASTE_ATTACH_BYTES = 8 * 1024
 
 const formatSize = (bytes: number) =>
   bytes < 1024 ? `${bytes} B` : bytes < 1024 ** 2 ? `${(bytes / 1024).toFixed(1)} KB` : `${(bytes / 1024 ** 2).toFixed(1)} MB`
+
+/** The files `@` can point at: names that start with what is typed first, then names that contain it. */
+function fileSuggestions(names: string[], query: string): ComposerSuggestion[] {
+  const q = query.toLowerCase()
+  const starts = names.filter((name) => name.toLowerCase().startsWith(q))
+  const contains = names.filter((name) => !name.toLowerCase().startsWith(q) && name.toLowerCase().includes(q))
+  return [...starts, ...contains].slice(0, 30).map((name) => ({ id: `file-${name}`, label: name, insert: `@${name}` }))
+}
 
 const attachmentKind = (type: string) => (type.startsWith('image/') ? 'image' : type.startsWith('text/') ? 'text' : 'archive')
 
@@ -70,6 +83,30 @@ export function ChatComposer({
     [chatMessages],
   )
   const [recalled, setRecalled] = useState<number | null>(null)
+  // "/" lists the skills, "@" the files of this chat (the ones attached, and the ones Sensei made).
+  const skills = useInstalledSkills()
+  const [, setSearchParams] = useSearchParams()
+  const inputRef = useRef<HTMLTextAreaElement>(null)
+  const fileNames = useMemo(
+    () => [...new Set([...(chatMessages ?? []).flatMap((message) => message.attachments ?? []), ...attachments].map((file) => file.name))],
+    [chatMessages, attachments],
+  )
+  const openSkillSettings = () =>
+    setSearchParams((prev) => {
+      const params = new URLSearchParams(prev)
+      params.set('settings', 'open')
+      params.set('section', 'skills')
+      return params
+    })
+  const suggestions = useSuggestionMenu({
+    draft,
+    setDraft,
+    inputRef,
+    suggest: (trigger, query) =>
+      trigger === '/'
+        ? { title: 'Skills', items: skillSuggestions(skills, query, openSkillSettings) }
+        : { title: 'Files', items: fileSuggestions(fileNames, query) },
+  })
   const draftBeforeRecall = useRef('')
 
   const [recallChatId, setRecallChatId] = useState(chatId)
@@ -96,6 +133,8 @@ export function ChatComposer({
       const saved = await Promise.all(
         files.map(async (file) => ({ src: await putMedia(file, file.name), name: file.name, type: file.type, size: file.size })),
       )
+      // Files the model reads through Python start the environment now, so it is ready by the time they are asked about.
+      if (chatId) warmForFiles(saved, chatId)
       setAttachments((prev) => [...prev, ...saved])
     } catch {
       toast('Could not save the attachment')
@@ -249,60 +288,69 @@ export function ChatComposer({
   }
 
   return (
-    <Composer className="max-w-none">
-      <ComposerBar>
-        {attachments.length > 0 && (
-          <ComposerAttachments className="px-2 pt-2">
-            {attachments.map((item) => (
-              <ComposerAttachmentChip
-                key={item.src}
-                attachment={{ name: item.name, meta: formatSize(item.size), state: 'done', kind: attachmentKind(item.type) }}
-                onRemove={() => removeAttachment(item.src)}
-              />
-            ))}
-          </ComposerAttachments>
-        )}
-        <textarea
-          rows={1}
-          value={draft}
-          onChange={(event) => setDraft(event.target.value)}
-          onKeyDown={handleKeyDown}
-          onPaste={handlePaste}
-          placeholder="Ask Sensei anything…"
-          aria-label="Message Sensei"
-          className="field-sizing-content max-h-48 min-h-11 w-full resize-none bg-transparent px-3 pt-2.5 text-[15px] outline-none placeholder:text-muted-foreground"
-        />
-        {/* Fixed height so the row never jumps when the send button appears. */}
-        <ComposerToolbar className="h-9 justify-between">
-          <div className="flex items-center gap-1">
-            <ComposerAttachButton onClick={pickFiles} />
-            {context}
-          </div>
-          <ComposerActions>
-            <ComposerVoiceButton active={false} aria-label="Start voice input" onClick={() => void startVoice()} />
-            {/* Call and send share one box; only visibility changes, so the voice button never shifts. */}
-            <div className="relative size-8">
-              <Button
-                variant="secondary"
-                size="icon-sm"
-                className={cn('absolute inset-0 rounded-full', (hasText || streaming) && 'invisible')}
-                aria-label="Start live call"
-                onClick={() => void call.start()}
-                tabIndex={hasText || streaming ? -1 : undefined}
-              >
-                <AudioLines />
-              </Button>
-              <ComposerSend
-                className={cn('absolute inset-0', !hasText && !streaming && 'invisible')}
-                streaming={streaming && !hasText}
-                idle={false}
-                onClick={streaming && !hasText ? onStop : send}
-                tabIndex={hasText || streaming ? undefined : -1}
-              />
+    <div className="relative">
+      {suggestions.menu}
+      <Composer className="max-w-none">
+        <ComposerBar>
+          {attachments.length > 0 && (
+            <ComposerAttachments className="px-2 pt-2">
+              {attachments.map((item) => (
+                <ComposerAttachmentChip
+                  key={item.src}
+                  attachment={{ name: item.name, meta: formatSize(item.size), state: 'done', kind: attachmentKind(item.type) }}
+                  onRemove={() => removeAttachment(item.src)}
+                />
+              ))}
+            </ComposerAttachments>
+          )}
+          <textarea
+            ref={inputRef}
+            rows={1}
+            value={draft}
+            onChange={(event) => {
+              setDraft(event.target.value)
+              suggestions.track(event.target)
+              suggestions.typed()
+            }}
+            onSelect={(event) => suggestions.track(event.currentTarget)}
+            onKeyDown={(event) => !suggestions.onKeyDown(event) && handleKeyDown(event)}
+            onPaste={handlePaste}
+            placeholder="Ask Sensei anything…"
+            aria-label="Message Sensei"
+            className="field-sizing-content max-h-48 min-h-11 w-full resize-none bg-transparent px-3 pt-2.5 text-[15px] outline-none placeholder:text-muted-foreground"
+          />
+          {/* Fixed height so the row never jumps when the send button appears. */}
+          <ComposerToolbar className="h-9 justify-between">
+            <div className="flex items-center gap-1">
+              <ComposerAttachButton onClick={pickFiles} />
+              {context}
             </div>
-          </ComposerActions>
-        </ComposerToolbar>
-      </ComposerBar>
-    </Composer>
+            <ComposerActions>
+              <ComposerVoiceButton active={false} aria-label="Start voice input" onClick={() => void startVoice()} />
+              {/* Call and send share one box; only visibility changes, so the voice button never shifts. */}
+              <div className="relative size-8">
+                <Button
+                  variant="secondary"
+                  size="icon-sm"
+                  className={cn('absolute inset-0 rounded-full', (hasText || streaming) && 'invisible')}
+                  aria-label="Start live call"
+                  onClick={() => void call.start()}
+                  tabIndex={hasText || streaming ? -1 : undefined}
+                >
+                  <AudioLines />
+                </Button>
+                <ComposerSend
+                  className={cn('absolute inset-0', !hasText && !streaming && 'invisible')}
+                  streaming={streaming && !hasText}
+                  idle={false}
+                  onClick={streaming && !hasText ? onStop : send}
+                  tabIndex={hasText || streaming ? undefined : -1}
+                />
+              </div>
+            </ComposerActions>
+          </ComposerToolbar>
+        </ComposerBar>
+      </Composer>
+    </div>
   )
 }

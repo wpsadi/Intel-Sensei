@@ -1,6 +1,7 @@
 'use client'
 
 import {
+  BookOpenIcon,
   DatabaseBackupIcon,
   DollarSignIcon,
   KeyRoundIcon,
@@ -35,6 +36,7 @@ import { AppearanceSection } from './appearance-section'
 import { BackupSection } from './backup-section'
 import { ChatSection } from './chat-section'
 import { SecuritySection } from './security-section'
+import { SkillsSection } from './skills-section'
 
 const SETTINGS_PARAM = 'settings'
 const SECTION_PARAM = 'section'
@@ -43,6 +45,7 @@ const SECTIONS = [
   { id: 'ai', name: 'AI providers', icon: KeyRoundIcon },
   { id: 'models', name: 'AI models', icon: Sparkles },
   { id: 'chat', name: 'Chat', icon: MessageSquareIcon },
+  { id: 'skills', name: 'Skills', icon: BookOpenIcon },
   { id: 'security', name: 'Security', icon: ShieldIcon },
   { id: 'backup', name: 'Backup', icon: DatabaseBackupIcon },
   { id: 'appearance', name: 'Appearance', icon: Paintbrush },
@@ -153,6 +156,7 @@ export function SettingsDialog() {
                 {section === 'ai' && <AiSection />}
                 {section === 'models' && <AiModelsSection />}
                 {section === 'chat' && <ChatSection />}
+                {section === 'skills' && <SkillsSection />}
                 {section === 'security' && <SecuritySection />}
                 {section === 'backup' && <BackupSection />}
                 {section === 'appearance' && <AppearanceSection />}

@@ -11,6 +11,8 @@ export const PYODIDE_INDEX_URL = `https://cdn.jsdelivr.net/pyodide/v${PYODIDE_VE
 
 /** Where files live. Attached files are put here under their own names. */
 export const SANDBOX_HOME = '/home/user'
+/** The one folder the terminal cannot write to: what Sensei makes for the user is put here, and only the editor changes it. */
+export const ARTIFACTS_DIR = `${SANDBOX_HOME}/artifacts`
 /** Largest file accepted into the sandbox. */
 export const FILE_MAX_BYTES = 30 * 1024 * 1024
 /** A command that runs longer than this is stopped. */
@@ -24,11 +26,13 @@ export interface PyodideLike {
     writeFile(path: string, data: Uint8Array): void
     readFile(path: string): Uint8Array
     analyzePath(path: string): { exists: boolean }
+    chmod(path: string, mode: number): void
+    mkdir(path: string): void
   }
   globals: { set(name: string, value: unknown): void }
   runPython(code: string): unknown
   runPythonAsync(code: string): Promise<unknown>
-  loadPackage(name: string): Promise<unknown>
+  loadPackage(name: string | string[]): Promise<unknown>
 }
 
 /** Writes text to a file in the sandbox, making its folders. A relative path counts from the home folder. */
@@ -78,9 +82,23 @@ export function safeName(name: string) {
   )
 }
 
-/** Writes a file into the home folder and returns its path. A name already taken gets " (2)", " (3)" and so on. */
-export function mountFile(py: PyodideLike, name: string, bytes: Uint8Array) {
+/**
+ * Writes a file into the home folder and returns its path. A name already taken gets " (2)", " (3)" and so on. A
+ * read-only file (one Sensei made for the user) goes into the artifacts folder instead, which the terminal can read
+ * but not write to: it keeps its name and is replaced in place when it changes.
+ */
+export function mountFile(py: PyodideLike, name: string, bytes: Uint8Array, readonly = false) {
   const clean = safeName(name)
+  if (readonly) {
+    const path = `${ARTIFACTS_DIR}/${clean}`
+    if (py.FS.analyzePath(ARTIFACTS_DIR).exists) py.FS.chmod(ARTIFACTS_DIR, 0o755)
+    else py.FS.mkdir(ARTIFACTS_DIR)
+    if (py.FS.analyzePath(path).exists) py.FS.chmod(path, 0o644)
+    py.FS.writeFile(path, bytes)
+    py.FS.chmod(path, 0o444)
+    py.FS.chmod(ARTIFACTS_DIR, 0o555)
+    return path
+  }
   const dot = clean.lastIndexOf('.')
   const [stem, ext] = dot > 0 ? [clean.slice(0, dot), clean.slice(dot)] : [clean, '']
   let path = `${SANDBOX_HOME}/${clean}`

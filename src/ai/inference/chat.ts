@@ -1,5 +1,4 @@
-import type { GoogleLanguageModelOptions } from '@ai-sdk/google'
-import { type LanguageModelUsage, ToolLoopAgent } from 'ai'
+import { type LanguageModelUsage, ToolLoopAgent, parsePartialJson } from 'ai'
 
 import {
   MEMORY_INSTRUCTIONS,
@@ -10,18 +9,35 @@ import {
   disposeScratchpad,
   memoryPrompt,
 } from '@/ai/memory'
-import { AI_MODELS } from '@/ai/providers'
+import { AI_MODELS, thinkingSummary } from '@/ai/providers'
+import { warmForFiles } from '@/ai/sandbox/attachments'
+import { holdSandbox } from '@/ai/sandbox/client'
 import { SANDBOX_INSTRUCTIONS, createSandboxTools } from '@/ai/sandbox/tools'
+import { applySkillCommand } from '@/ai/skills/invoke'
+import { SKILLS_INSTRUCTIONS, createSkillTools, skillsPrompt } from '@/ai/skills/tools'
 import { ASK_INSTRUCTIONS, createAskTools } from '@/ai/tools/ask'
+import { EXPORT_INSTRUCTIONS, createExportFileTool, documentName } from '@/ai/tools/export-file'
 import { PLAN_INSTRUCTIONS, createPlanTools } from '@/ai/tools/plan'
 import { createScrapeTool } from '@/ai/tools/scrape'
 import { createSearchTool, upsertSearch } from '@/ai/tools/search'
+import { catalogOf, createToolSelector, lastUserText } from '@/ai/tools/selector'
 import { TODO_INSTRUCTIONS, createTodoTools } from '@/ai/tools/todo'
 import { recordSdkUsage } from '@/ai/usage'
 import { currentTimePrompt } from '@/ai/utils/current-time'
+import { withFileMentions } from '@/ai/utils/file-mentions'
 import { type ChatTurn, toModelMessage } from '@/ai/utils/messages'
 import { thinkingOnly } from '@/ai/utils/thinking'
-import type { ChatAnswers, ChatPlan, ChatQuestion, ChatSearch, ChatTodoList, ChatUsage } from '@/features/note/db/types'
+import { describeToolCall, hasOwnUi, resultFailed } from '@/ai/utils/tool-steps'
+import type {
+  ChatAnswers,
+  ChatAttachment,
+  ChatPlan,
+  ChatQuestion,
+  ChatSearch,
+  ChatTodoList,
+  ChatToolStep,
+  ChatUsage,
+} from '@/features/note/db/types'
 
 /**
  * Sensei's persona for chat. It says nothing about how to think: asking for a thinking style made
@@ -55,8 +71,19 @@ export async function chatWithSensei(
     /** Shows Sensei's questions and resolves with the user's answers. */ onAsk?: (questions: ChatQuestion[]) => Promise<ChatAnswers>
     /** Called before each step; returns the messages the user sent meanwhile, which join the conversation from that step on. */
     takeSteers?: () => Promise<ChatTurn[]>
+    /** Receives each file Sensei hands to the user, and the tool call that made it; it shows with the reply. */
+    onFile?: (file: ChatAttachment, callId: string) => void
+    /** Receives a document as Sensei writes it, so it can be shown while it streams. `done` ends the draft. */
+    onArtifactDraft?: (draft: { id: string; name: string; content: string; format: 'markdown' | 'html'; done?: boolean }) => void
+    /** Receives the tool calls of this reply, in order, each time one starts or ends. */
+    onSteps?: (steps: ChatToolStep[]) => void
   },
 ) {
+  // Files the model reads through Python: start the environment while the reply gets going.
+  warmForFiles(
+    messages.flatMap((turn) => turn.attachments ?? []),
+    scope?.chatId,
+  )
   const scratchpad = scope ? createScratchpad(scope.chatId, scope.messageId) : undefined
   const { provider, key, model } = AI_MODELS.chat
   if (!key) throw new Error('Add a key for the chat provider in Settings → AI providers.')
@@ -65,29 +92,60 @@ export async function chatWithSensei(
     searches = upsertSearch(searches, search)
     onSearches?.(searches)
   })
+  const tools = {
+    webSearch,
+    scrape: createScrapeTool(scope?.chatId),
+    // terminal and python: files attached to this conversation are in the sandbox's home folder.
+    ...createSandboxTools({ attachments: () => messages.flatMap((turn) => turn.attachments ?? []), session: scope?.chatId }),
+    memory: createMemoryTool({ chatId: scope?.chatId }),
+    ...(scratchpad && { scratchpad: createScratchpadTool(scratchpad) }),
+    ...createPlanTools(onPlan),
+    ...createTodoTools(onTodos, scope?.todos),
+    ...createAskTools(scope?.onAsk),
+    ...createExportFileTool(
+      (file, callId) => scope?.onFile?.(file, callId),
+      scope?.chatId,
+      () => messages.flatMap((turn) => turn.attachments ?? []),
+    ),
+    ...createSkillTools(),
+  }
+  // What the model reads of a user message: a /skill-name message carries the skill's instructions, and @file mentions
+  // are explained. The chat keeps showing what was typed.
+  const fileNames = messages.flatMap((turn) => turn.attachments ?? []).map((file) => file.name)
+  const forModel = async (turn: ChatTurn): Promise<ChatTurn> =>
+    turn.role === 'user' ? { ...turn, content: withFileMentions(await applySkillCommand(turn.content), fileNames) } : turn
+  // Dynamic tool selection: the chat model picks the tools the request needs before the first step.
+  const selector = createToolSelector({
+    model: AI_MODELS.chatModel,
+    catalog: catalogOf(tools),
+    alwaysInclude: ['memory', 'scratchpad', 'askUser', 'use_skill'],
+    max: 8,
+    signal: abortSignal,
+    onUsage: (usage) => void recordSdkUsage({ provider, model }, usage),
+  })
   const agent = new ToolLoopAgent({
     model: AI_MODELS.chatModel,
     instructions: SENSEI_SYSTEM_PROMPT,
-    tools: {
-      webSearch,
-      scrape: createScrapeTool(),
-      // terminal and python: files attached to this conversation are in the sandbox's home folder.
-      ...createSandboxTools({ attachments: () => messages.flatMap((turn) => turn.attachments ?? []) }),
-      memory: createMemoryTool({ chatId: scope?.chatId }),
-      ...(scratchpad && { scratchpad: createScratchpadTool(scratchpad) }),
-      ...createPlanTools(onPlan),
-      ...createTodoTools(onTodos, scope?.todos),
-      ...createAskTools(scope?.onAsk),
-    },
+    tools: selector.enabled ? { ...tools, request_tools: selector.requestTool } : tools,
     // Memory is read again before every step, so a fact saved or a scratchpad note written in one step is seen by the next.
     prepareStep: async ({ messages: stepMessages }) => {
       const steered = (await scope?.takeSteers?.()) ?? []
+      const activeTools = await selector.activeTools(
+        // The request as typed, not with a skill's whole instructions in front of it.
+        steered.length
+          ? steered.map((turn) => turn.content).join('\n')
+          : (messages.findLast((turn) => turn.role === 'user')?.content ?? lastUserText(stepMessages)),
+        steered.length > 0,
+      )
       return {
+        ...(activeTools && { activeTools: activeTools as never }),
         // Steering messages join the history here and stay in it for the steps after.
         ...(steered.length && {
           messages: [
             ...stepMessages,
-            ...(await Promise.all(steered.map((turn) => toModelMessage(provider === 'google' ? key : undefined, turn, false)))),
+            ...(await Promise.all(
+              steered.map(async (turn) => toModelMessage(provider === 'google' ? key : undefined, await forModel(turn), false, true)),
+            )),
           ],
         }),
         instructions: [
@@ -100,22 +158,26 @@ export async function chatWithSensei(
           TODO_INSTRUCTIONS,
           ASK_INSTRUCTIONS,
           SANDBOX_INSTRUCTIONS,
+          EXPORT_INSTRUCTIONS,
+          SKILLS_INSTRUCTIONS,
+          await skillsPrompt(),
         ]
           .filter(Boolean)
           .join('\n\n'),
       }
     },
-    // Gemini leaves out its thought summaries unless asked for them.
-    providerOptions:
-      provider === 'google'
-        ? { google: { thinkingConfig: { thinkingLevel: 'high', includeThoughts: true } } satisfies GoogleLanguageModelOptions }
-        : undefined,
+    // Claude and Gemini leave out their thought summaries unless asked for them.
+    providerOptions: thinkingSummary(provider) as never,
   })
+  // A reply that is being written keeps its Python environment alive; it stops a minute after the last use.
+  const releaseSandbox = holdSandbox(scope?.chatId)
   try {
     const result = await agent.stream({
       // Only the newest question carries its YouTube link, since Gemini takes one video link per request.
       messages: await Promise.all(
-        messages.map((turn, index) => toModelMessage(provider === 'google' ? key : undefined, turn, index === messages.length - 1)),
+        messages.map(async (turn, index) =>
+          toModelMessage(provider === 'google' ? key : undefined, await forModel(turn), index === messages.length - 1, true),
+        ),
       ),
       abortSignal,
     })
@@ -123,13 +185,60 @@ export async function chatWithSensei(
     let streamError: unknown
     let reply = ''
     let thoughts = ''
+    let toolSteps: ChatToolStep[] = []
+    const setStep = (id: string, patch: Partial<ChatToolStep>, created?: Pick<ChatToolStep, 'name' | 'label' | 'detail'>) => {
+      const known = toolSteps.find((step) => step.id === id)
+      if (!known && !created) return
+      toolSteps = known
+        ? toolSteps.map((step) => (step.id === id ? { ...step, ...patch } : step))
+        : [...toolSteps, { id, status: 'running', at: thinkingOnly(thoughts).length, ...created!, ...patch }]
+      scope?.onSteps?.(toolSteps)
+    }
+    // create_document writes its text inside the tool call, so it is read from the call's input as that streams in.
+    const documents = new Map<string, { input: string; shownAt: number }>()
+    const showDraft = async (id: string, input: string, done = false) => {
+      const draft = ((await parsePartialJson(input)).value ?? {}) as { title?: string; format?: string; content?: string }
+      if (typeof draft.content !== 'string') return
+      scope?.onArtifactDraft?.({
+        id,
+        name: documentName(draft.title ?? 'Document', draft.format === 'html' ? 'html' : 'markdown'),
+        content: draft.content,
+        format: draft.format === 'html' ? 'html' : 'markdown',
+        done,
+      })
+    }
     for await (const part of result.fullStream) {
-      if (part.type === 'text-delta') {
+      if (part.type === 'tool-input-start' && part.toolName === 'create_document') {
+        documents.set(part.id, { input: '', shownAt: 0 })
+      } else if (part.type === 'tool-input-delta' && documents.has(part.id)) {
+        const document = documents.get(part.id)!
+        document.input += part.delta
+        // Reading the JSON again for every few characters would cost more than the text it shows.
+        if (Date.now() - document.shownAt > 120) {
+          document.shownAt = Date.now()
+          await showDraft(part.id, document.input)
+        }
+      } else if (part.type === 'tool-input-end' && documents.has(part.id)) {
+        await showDraft(part.id, documents.get(part.id)!.input)
+      } else if (part.type === 'text-delta') {
         reply += part.text
         onText(reply)
       } else if (part.type === 'reasoning-delta') {
         thoughts += part.text
         onReasoning?.(thinkingOnly(thoughts))
+      } else if (part.type === 'tool-call') {
+        if (!hasOwnUi(part.toolName))
+          setStep(
+            part.toolCallId,
+            {},
+            { name: part.toolName, ...describeToolCall(part.toolName, (part.input ?? {}) as Record<string, unknown>) },
+          )
+      } else if (part.type === 'tool-result') {
+        setStep(part.toolCallId, { status: resultFailed(part.toolName, part.output) ? 'failed' : 'done' })
+      } else if (part.type === 'tool-error') {
+        const draft = documents.get(part.toolCallId)
+        if (draft) scope?.onArtifactDraft?.({ id: part.toolCallId, name: '', content: '', format: 'markdown', done: true })
+        setStep(part.toolCallId, { status: 'failed', detail: part.error instanceof Error ? part.error.message : String(part.error) })
       } else if (part.type === 'error' && !abortSignal?.aborted) {
         streamError = part.error
       }
@@ -154,6 +263,7 @@ export async function chatWithSensei(
     }
     return reply.trim()
   } finally {
+    releaseSandbox()
     // The scratchpad is only for this loop.
     if (scratchpad) disposeScratchpad(scratchpad)
   }

@@ -3,8 +3,14 @@ import { toast } from 'sonner'
 import { create } from 'zustand'
 
 import { generateChatTitle, generateFileTitle } from '@/ai/inference/title'
+import { MEMORY_INSTRUCTIONS, createMemoryTool, memoryPrompt, memoryScope } from '@/ai/memory'
 import { AI_MODELS, type Provider } from '@/ai/providers'
+import { isModelMedia, warmForFiles } from '@/ai/sandbox/attachments'
+import { holdSandbox, sandboxUnavailable } from '@/ai/sandbox/client'
 import { type PendingMessage, demoteSteering, removePending, submitWhileBusy, takeNextPending, useSendQueue } from '@/ai/send-queue'
+import { skillContextFor } from '@/ai/skills/invoke'
+import { SKILLS_INSTRUCTIONS, createSkillTools, skillsPrompt } from '@/ai/skills/tools'
+import { GENERAL_INSTRUCTIONS, createGeneralTools, localTools } from '@/ai/tools/general'
 import { thinkingOnly } from '@/ai/utils/thinking'
 import { type ToolSpec, streamInWorker } from '@/ai/worker/client'
 import { S3D_AGENT_CONTEXT_LIMIT } from '@/constants/ai'
@@ -18,9 +24,10 @@ import type { AgentAttachment, AgentChat, AgentMessage } from '../types'
 import { agentDescriptions, agentSchemas } from './agent-tools'
 import { askQuestions } from './ask-questions-store'
 import { askUser } from './ask-user-store'
+import { createFileTools, mountAttachments } from './file-tools'
 import { type AgentMode, approveTool, needsApproval, toolAllowed } from './modes'
 import { goalInstructions, modeInstructions } from './skills'
-import { DESCRIPTIONS, SYSTEM_PROMPT, createdIds, impl, schemas, screensOf, touchedIds } from './tools-impl'
+import { DESCRIPTIONS, SYSTEM_PROMPT, createdIds, impl, schemas, touchedIds } from './tools-impl'
 import { VERDICT_DESCRIPTION, VERIFIER_TOOLS, verdictSchema, verifierInstructions } from './verifier'
 
 /** Tool rounds within one pass. When a pass uses them all it was cut off, so the run goes on in a new pass. */
@@ -29,16 +36,22 @@ const MAX_STEPS = 8
 const MAX_PASSES = 30
 /** A /goal run may take far more passes: it only ends when the goal is achieved, the user stops it, or it stalls. */
 const MAX_GOAL_PASSES = 80
+/** How the agent works with files: on disk through tools, not in its context. */
+const FILE_INSTRUCTIONS = `Files: files the user attached are in the sandbox home folder under their own names; read and process them with the terminal and Python (pdftotext, pandas, PIL-style scripts) instead of expecting them in front of you. A script's result becomes part of the design with export_file, which gives an s3d-file: ref for place_image (pictures) or a model object's src in add_objects (GLB/GLTF). import_file copies a file already in the design (an image node's or model's src) into the sandbox.`
+/** Offered on every request, whatever the dynamic tool selection picks. */
+const TOOLS_ALWAYS = [
+  'get_document',
+  'get_scene',
+  'verify_design',
+  'update_todos',
+  'complete_goal',
+  'write_plan',
+  'ask_questions',
+  'ask_user',
+  'use_skill',
+]
 /** Independent checks of a /goal run; each one that fails sends the worker back to work. */
 const MAX_VERIFICATIONS = 8
-/** Multi-angle checks per run; each one is a pass, so a model that keeps changing things cannot loop on it forever. */
-const MAX_ANGLE_CHECKS = 3
-/**
- * After every pass the app reviews the screens the agent touched and sends any problems back to fix, until the
- * review is clean. This only stops a model that keeps failing to fix the same problems from looping forever.
- */
-const MAX_REVIEWS = 8
-
 /**
  * How hard the chat model thinks, in the provider's own terms. Claude thinks adaptively and `effort` sets how deep; its
  * summarized thinking streams while the model works, so a long think shows progress instead of a silent pause. Gemini
@@ -133,6 +146,8 @@ interface RunTrack {
   mode: AgentMode
   docId: string
   chatId: string
+  /** Files attached anywhere in this chat; they are put in the sandbox before it is used. */
+  attachments: () => AgentAttachment[]
   goal?: string
   completeGoal: (summary: string, evidence: string) => void
   setPlan: (plan: ChatPlan) => void
@@ -156,6 +171,32 @@ const UNLOCKED = new Set(['ask_user', 'search_3d_models'])
 async function runTool(name: string, args: unknown, track: RunTrack) {
   if (name === 'complete_goal' && !track.goal) throw new Error('There is no goal to complete.')
   if (!toolAllowed(track.mode, name)) throw new Error(`${name} is not available in this mode. Use only the tools you were given.`)
+  const shared = await general
+  if (name === 'memory') {
+    // Each program has its own memory, apart from every other program and app.
+    return createMemoryTool({ chatId: track.chatId, scope: memoryScope.s3d(track.docId) }).execute!(
+      args as never,
+      {
+        abortSignal: track.signal,
+        toolCallId: crypto.randomUUID(),
+        messages: [],
+      } as never,
+    )
+  }
+  if (SANDBOX_TOOLS.includes(name) || name === 'export_file') {
+    // Mounting files would wait for Python to load: say it is booting instead.
+    const wait = sandboxUnavailable()
+    if (wait) return wait
+  }
+  if (name === 'export_file' || name === 'import_file') {
+    const fileTools = createFileTools(track.docId)
+    await mountAttachments(track.attachments(), track.signal)
+    return fileTools[name].execute!(args as never, { abortSignal: track.signal, toolCallId: crypto.randomUUID(), messages: [] } as never)
+  }
+  if (shared.has(name)) {
+    if (SANDBOX_TOOLS.includes(name)) await mountAttachments(track.attachments(), track.signal)
+    return shared.call(name, args, track.signal)
+  }
   if (name in agentSchemas) return agentTool(name as keyof typeof agentSchemas, args, track)
   const tool = name as keyof typeof impl
   const parsed = schemas[tool].safeParse(args)
@@ -228,6 +269,11 @@ async function execTool(name: keyof typeof impl, args: unknown, track: RunTrack)
   return turn
 }
 
+/** Web search, scraping and the sandbox: the same tools the other agents have. They never touch the canvas. */
+const general = localTools({ ...createGeneralTools(), memory: createMemoryTool(), ...createFileTools(''), ...createSkillTools() })
+/** The sandbox tools read the chat's attached files from the sandbox, so they are put there first. */
+const SANDBOX_TOOLS = ['terminal', 'write_file', 'import_file']
+
 let toolSpecs: Promise<Record<string, ToolSpec>> | null = null
 const getToolSpecs = () =>
   (toolSpecs ??= Promise.all([
@@ -249,7 +295,7 @@ const getToolSpecs = () =>
           { description: agentDescriptions[name], schema: await asSchema(agentSchemas[name] as never).jsonSchema } satisfies ToolSpec,
         ] as const,
     ),
-  ]).then(Object.fromEntries))
+  ]).then(async (entries) => Object.fromEntries([...entries, ...Object.entries((await general).specs)])))
 
 /** The tools a mode offers; the rest are not even shown to the model. */
 const toolsFor = async (mode: AgentMode, goal?: string) =>
@@ -272,6 +318,12 @@ async function toModel(m: AgentMessage): Promise<ModelMessage> {
   ]
   if (m.context) parts.push({ type: 'text', text: m.context })
   // 3D models cannot be sent to the model as files; it places them in a scene by ref instead.
+  const named = (m.attachments ?? []).map((a) => a.name)
+  if (named.length)
+    parts.push({
+      type: 'text',
+      text: `Attached files (in the sandbox home folder; any that is not a picture is only a reference, read through load_skill "files" and the terminal): ${named.join(', ')}`,
+    })
   const models = (m.attachments ?? []).filter((a) => /\.(glb|gltf)$/i.test(a.name))
   if (models.length)
     parts.push({
@@ -279,7 +331,8 @@ async function toModel(m: AgentMessage): Promise<ModelMessage> {
       text: `Attached 3D models (use as model objects with src): ${models.map((a) => `${a.name} → ${a.ref}`).join(', ')}`,
     })
   for (const a of m.attachments ?? []) {
-    if (!a.type.startsWith('image/') && !a.type.startsWith('video/') && a.type !== 'application/pdf') continue
+    // Pictures, audio and video are shown to the model; every other file stays a reference for the sandbox.
+    if (!isModelMedia(a.type)) continue
     const blob = await readFile(a.ref)
     if (blob) parts.push({ type: 'file', data: new Uint8Array(await blob.arrayBuffer()), mediaType: a.type })
   }
@@ -336,6 +389,9 @@ export async function runAgent(
     toast.info('Say what to achieve: /goal build a low-poly cow and export it')
     return
   }
+  // A message that starts with /skill-name carries that skill's instructions to the model, next to the @mention context.
+  const skillContext = await skillContextFor(text)
+  const fullContext = [context, skillContext].filter(Boolean).join('\n\n') || undefined
   if (goal && (mode === 'ask' || mode === 'plan')) {
     toast.info(`/goal builds things, so it needs Edit or Full access mode (now ${mode}).`)
     return
@@ -348,7 +404,7 @@ export async function runAgent(
     text,
     attachments: files,
     createdAt: Date.now(),
-    ...(context && { context }),
+    ...(fullContext && { context: fullContext }),
     ...(goal && { goal }),
   }
   const assistant: AgentMessage = {
@@ -416,6 +472,7 @@ export async function runAgent(
       mode,
       docId,
       chatId: c.id,
+      attachments: () => c.messages.flatMap((m) => m.attachments ?? []),
       created: [],
       touched: [],
       interleaved: false,
@@ -434,8 +491,18 @@ export async function runAgent(
         update({ todos: list })
       },
     }
+    // The run keeps the Python environment alive; it stops a minute after the last use.
+    const releaseSandbox = holdSandbox()
     try {
-      const instructions = SYSTEM_PROMPT + modeInstructions(mode) + (goal ? goalInstructions(goal) : '') + selectionContext()
+      warmForFiles(c.messages.flatMap((m) => m.attachments ?? []))
+      const skills = await skillsPrompt().catch(() => '')
+      const memory = await memoryPrompt({ chatId: c.id, scope: memoryScope.s3d(docId) }).catch(() => '')
+      const instructions =
+        SYSTEM_PROMPT +
+        modeInstructions(mode) +
+        (goal ? goalInstructions(goal) : '') +
+        `\n\n${GENERAL_INSTRUCTIONS}\n\n${FILE_INSTRUCTIONS}\n\n${SKILLS_INSTRUCTIONS}${skills ? `\n${skills}` : ''}\n\n${MEMORY_INSTRUCTIONS}\nThis memory belongs to this 3D/design file only.${memory ? `\n\n${memory}` : ''}` +
+        selectionContext()
       const tools = await toolsFor(mode, goal)
       const cut = c.summary ? c.messages.findIndex((m) => m.id === c.summary!.uptoId) + 1 : 0
       let messages: ModelMessage[] = [
@@ -461,7 +528,7 @@ export async function runAgent(
         update({ steps })
       }
 
-      /** A clean automatic review is the verification step, so finish the to-do items that are only that. */
+      /** Finishes the to-do items that are only verification, once the agent's own verify_design came back clean. */
       const completeVerifyTodos = () => {
         if (!todos) return
         const isVerify = (t: string) => /verif|review|check|render/i.test(t)
@@ -553,9 +620,6 @@ export async function runAgent(
       let toolTotal = 0
       let modelTotal = 0
       const runStarted = performance.now()
-      let reviews = 0
-      let angleChecks = 0
-      let angleEdits = 0
       let stallRetries = 0
       let idle = 0
       let calls = 0
@@ -601,6 +665,8 @@ export async function runAgent(
             instructions,
             maxSteps: MAX_STEPS,
             tools,
+            // ~110 tools: the model picks the ones the request needs and the rest stay out of every step.
+            toolSelect: { alwaysInclude: TOOLS_ALWAYS, max: 25 },
             messages,
             providerOptions: agentOptions(ai.provider, 'medium'),
             contextLimit: S3D_AGENT_CONTEXT_LIMIT,
@@ -619,7 +685,10 @@ export async function runAgent(
             execTool: async (name, args) => {
               toolsRunning++
               try {
-                return await runTool(name, args, track)
+                const output = await runTool(name, args, track)
+                // A clean verify_design is the verification step, so finish the to-do items that are only that.
+                if (name === 'verify_design' && (output as { ok?: boolean } | undefined)?.ok) completeVerifyTodos()
+                return output
               } finally {
                 toolsRunning--
                 lastPart = performance.now()
@@ -727,72 +796,6 @@ export async function runAgent(
         // A plan ends the turn: the user decides whether to build it.
         if (planWritten) break
 
-        // Verification is part of the loop: review what this pass built or changed, and send problems back.
-        const screens = screensOf([...track.created, ...track.touched])
-        if (screens.length) {
-          const review = await impl.verify_design({ ids: screens })
-          const found = review.issues.length + review.more
-          setStep({
-            id: `review-${reviews}`,
-            name: 'verify_design',
-            label: reviews ? `Review again (${reviews + 1})` : 'Review',
-            detail: review.ok ? 'All good' : `${found} ${found === 1 ? 'problem' : 'problems'} to fix`,
-            status: review.ok ? 'done' : 'failed',
-          })
-          reviews++
-          if (review.ok) completeVerifyTodos()
-          else if (reviews >= MAX_REVIEWS) {
-            reply = `${reply || 'Done.'}\n\nThe review still finds ${found} ${found === 1 ? 'problem' : 'problems'} after ${MAX_REVIEWS} attempts to fix ${found === 1 ? 'it' : 'them'}.`
-            break
-          } else {
-            idle = 0
-            messages.push({
-              role: 'user',
-              content: `Automatic review of your work found these problems. Fix every one, keeping the work intact: 3D issues (they have a sceneId) with update_objects, delete_objects or set_scene; 2D issues with update_nodes or delete_nodes. Keep your to-do list up to date, and do not stop until the work is complete and verified.\n${JSON.stringify(review.issues)}`,
-            })
-            continue
-          }
-        }
-
-        // A scene that looks right from the camera can be wrong from behind or above: show every side before finishing.
-        const scenes = [...new Set([...track.created, ...track.touched])].filter((id) =>
-          ['shape3d', 'model3d'].includes(useS3D.getState().doc.nodes[id]?.type ?? ''),
-        )
-        const edits = track.created.length + track.touched.length
-        if (scenes.length && edits > angleEdits && angleChecks < MAX_ANGLE_CHECKS) {
-          angleEdits = edits
-          angleChecks++
-          const sheets = await Promise.all(
-            scenes.slice(0, 3).map(async (sceneId) => ({
-              sceneId,
-              name: useS3D.getState().doc.nodes[sceneId]?.name ?? sceneId,
-              view: await impl.render_views({ sceneId }),
-            })),
-          )
-          setStep({
-            id: `angles-${angleChecks}`,
-            name: 'render_views',
-            label: `Check all angles${angleChecks > 1 ? ` (${angleChecks})` : ''}`,
-            detail: `${sheets.length} scene${sheets.length === 1 ? '' : 's'}`,
-            status: 'done',
-          })
-          messages.push({
-            role: 'user',
-            content: [
-              {
-                type: 'text',
-                text: 'Automatic multi-angle check. Each sheet shows a scene from front, side, back, left, top and iso. Look at EVERY angle for what the camera view hides: missing or flat backs, floating or poking-through parts, gaps, misaligned or mirrored parts, parts outside the body. Fix any problem with update_objects / add_objects / delete_objects and update your to-do list. If every angle is correct, reply with a one or two sentence summary.',
-              },
-              ...sheets.flatMap((x) => [
-                { type: 'text' as const, text: `${x.name} (sceneId=${x.sceneId}):` },
-                { type: 'file' as const, data: x.view.image, mediaType: 'image/png' },
-              ]),
-            ],
-          })
-          idle = 0
-          continue
-        }
-
         // Keep going while the to-do list has open items, or the pass was cut off by the step limit.
         const open = todos?.items.filter((i) => i.status !== 'completed') ?? []
         const cutOff = calls >= MAX_STEPS
@@ -862,6 +865,7 @@ export async function runAgent(
       if (!controller.signal.aborted) update({ error: error instanceof Error ? error.message : String(error) })
       else update({ text: (c.messages.find((m) => m.id === assistant.id)?.text ?? '') + '\n\n_Stopped._' })
     } finally {
+      releaseSandbox()
       update({ workedSeconds: Math.max(1, Math.round((Date.now() - assistant.createdAt) / 1000)) })
       // One undo for the whole reply works only while its steps sit together on top of the history.
       if (track.start !== undefined && !track.interleaved) update({ changes: track.start, changesEnd: track.end })

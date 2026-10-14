@@ -36,7 +36,8 @@ export function ChatReasoning({
   const running = steps?.some((s) => s.status === 'running')
   const label = (streaming: boolean, seconds?: number) => {
     if (streaming || running) return <Shimmer duration={1}>{running ? 'Working…' : 'Thinking…'}</Shimmer>
-    const thought = reasoning ? (seconds ? `Thought for ${seconds} seconds` : 'Thought for a few seconds') : 'Done'
+    // Always the time, never a bare "Done": a reply that only ran tools reads the same as one that thought first.
+    const thought = seconds ? `Thought for ${seconds} ${seconds === 1 ? 'second' : 'seconds'}` : 'Thought for a few seconds'
     return <p>{showToolCount && steps?.length ? `${thought} · ${toolCount(steps.length)}` : thought}</p>
   }
   const stepList = (list: ChatToolStep[], className = 'my-3 space-y-3') => (

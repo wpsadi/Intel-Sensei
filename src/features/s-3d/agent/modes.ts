@@ -30,6 +30,20 @@ const READ = [
   'search_3d_models',
   'ask_user',
   'ask_questions',
+  // The general tools: they work in their own sandbox or on the web, never on the file.
+  'webSearch',
+  'scrape',
+  'terminal',
+  'write_file',
+  'load_skill',
+  'sandbox_status',
+  'view_image',
+  'find_skill',
+  'use_skill',
+  'create_skill',
+  'memory',
+  'import_file',
+  'export_file',
 ]
 /** Moves around the canvas without changing the design: allowed to build modes without approval. */
 const NAVIGATE = ['select_nodes', 'set_page']

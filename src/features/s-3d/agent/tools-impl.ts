@@ -5,7 +5,7 @@ import { z } from 'zod'
 import { uid } from '../db'
 import { type DiscoverItem, OWNING_UNITS, searchModels } from '../discover/smithsonian'
 import { exportNodes } from '../export/exporter'
-import { downloadBlob, storeFile } from '../files'
+import { downloadBlob, readFile, storeFile } from '../files'
 import { importRemoteModel } from '../io'
 import { FRAME_PRESETS, absRect, childrenOf, solid, stroke } from '../model'
 import { translatePath } from '../model'
@@ -468,7 +468,9 @@ export const schemas = {
     reset: z.boolean().optional().describe('Clear all adjustments first'),
   }),
   place_image: z.object({
-    src: z.string().describe('Image URL or data: URL to place. It is fetched and stored with the document.'),
+    src: z
+      .string()
+      .describe('Image URL, data: URL or s3d-file: ref (such as one from export_file) to place. It is stored with the document.'),
     name: z.string().optional(),
     parentId: z.string().optional().describe('Frame to place it in; omit for the page'),
     x: z.number().optional().describe('Relative to the parent'),
@@ -1547,9 +1549,8 @@ const implFns = {
     return { adjusted: targets, adjust: s().doc.nodes[targets[0]].adjust ?? {} }
   },
   async place_image({ src, name, parentId, x, y, w, h }: z.infer<typeof schemas.place_image>) {
-    const res = await fetch(src)
-    if (!res.ok) throw new Error(`Could not fetch the image (${res.status})`)
-    const blob = await res.blob()
+    const blob = await readFile(src)
+    if (!blob) throw new Error('Could not read the image')
     if (!blob.type.startsWith('image/')) throw new Error(`The file is not an image (${blob.type || 'unknown type'})`)
     const bitmap = await createImageBitmap(blob)
     const natural = { width: bitmap.width, height: bitmap.height }

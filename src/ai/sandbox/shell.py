@@ -530,6 +530,55 @@ async def c_pdfinfo(args, stdin):
     return join([f"{k}: {v}" for k, v in rows])
 
 
+PDF_PAGES_PER_CALL = 10
+MIN_PICTURE_SIDE = 64
+
+
+async def c_pdfimages(args, stdin):
+    """Saves the pictures inside PDF pages as JPEG files, so a model can look at them with view_image. A scanned page is one picture."""
+    f, v, paths = opts(args, "fls")
+    if len(paths) < 2:
+        raise Fail("usage: pdfimages [-f first] [-l last] [-s maxpixels] file.pdf prefix  (writes prefix-PAGE-N.jpg, at most 10 pages per call)")
+    try:
+        first, last = page_range(v.get("f"), v.get("l"), 10**9)
+        longest = max(200, min(int(v.get("s", "1400")), 3000))
+    except ValueError:
+        raise Fail("-f, -l and -s must be numbers")
+    reader = await open_pdf(paths[0])
+    total = len(reader.pages)
+    if first > total:
+        raise Fail(f"{paths[0]} has {total} pages")
+    last = min(last, total, first + PDF_PAGES_PER_CALL - 1)
+    import pyodide_js
+    await pyodide_js.loadPackage("pillow")
+    folder = os.path.dirname(paths[1])
+    if folder:
+        os.makedirs(folder, exist_ok=True)
+    out = []
+    for n in range(first, last + 1):
+        saved = 0
+        try:
+            pictures = list(reader.pages[n - 1].images)
+        except Exception:
+            pictures = []
+        for picture in pictures:
+            try:
+                img = picture.image.convert("RGB")
+            except Exception:
+                continue
+            if min(img.size) < MIN_PICTURE_SIDE:
+                continue
+            img.thumbnail((longest, longest))
+            saved += 1
+            name = f"{paths[1]}-{n}-{saved}.jpg"
+            img.save(name, "JPEG", quality=85)
+            out.append(f"page {n}: {name} ({img.width}x{img.height})")
+        if not saved:
+            out.append(f"page {n}: no pictures (text or drawings only: read it with pdftotext)")
+    more = f"\n{total - last} more pages: run again with -f {last + 1}" if last < total else ""
+    return f"Pictures of pages {first}-{last} of {total}:\n" + join(out) + more + "\nLook at each with view_image.\n"
+
+
 def check_url(raw):
     url = urlparse(raw.strip())
     if url.scheme != "https" or not url.hostname:
@@ -667,7 +716,7 @@ COMMANDS = {
     "pwd": c_pwd, "cd": c_cd, "echo": c_echo, "ls": c_ls, "cat": c_cat, "head": c_head, "tail": c_tail, "wc": c_wc,
     "grep": c_grep, "find": c_find, "mkdir": c_mkdir, "rm": c_rm, "cp": c_cp, "mv": c_mv, "touch": c_touch,
     "sort": c_sort, "uniq": c_uniq, "stat": c_stat, "du": c_du, "tree": c_tree, "file": c_file, "unzip": c_unzip,
-    "pdftotext": c_pdftotext, "pdfinfo": c_pdfinfo, "curl": c_curl, "wget": c_wget, "pip": c_pip, "pip3": c_pip,
+    "pdftotext": c_pdftotext, "pdfinfo": c_pdfinfo, "pdfimages": c_pdfimages, "curl": c_curl, "wget": c_wget, "pip": c_pip, "pip3": c_pip,
     "python": c_python, "python3": c_python, "help": c_help,
 }
 

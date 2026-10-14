@@ -59,6 +59,25 @@ describe('file names', () => {
   })
 })
 
+describe('read-only files', () => {
+  const text = (value: string) => new TextEncoder().encode(value)
+
+  it('go in a folder the terminal can read but not write to, and are replaced in place', async () => {
+    expect(mountFile(py, 'doc.md', text('# one\n'), true)).toBe('/home/user/artifacts/doc.md')
+    expect(await sh('cat artifacts/doc.md')).toBe('# one\n')
+    expect(await sh('ls artifacts')).toContain('doc.md')
+    await expect(sh('echo more >> artifacts/doc.md')).rejects.toThrow(/Permission denied/)
+    await expect(sh('echo new > artifacts/other.md')).rejects.toThrow(/Permission denied/)
+    expect(await sh('rm artifacts/doc.md')).toMatch(/Permission denied/)
+    expect(await sh('cat artifacts/doc.md')).toBe('# one\n')
+    expect(mountFile(py, 'doc.md', text('# two\n'), true)).toBe('/home/user/artifacts/doc.md')
+    expect(await sh('cat artifacts/doc.md')).toBe('# two\n')
+    // The rest of the home folder stays writable.
+    await sh('echo ok > free.txt')
+    expect(await sh('cat free.txt')).toBe('ok\n')
+  })
+})
+
 describe('shell', () => {
   it('lists, reads and searches files', async () => {
     expect(await sh('ls')).toContain('notes.txt')
@@ -132,6 +151,21 @@ describe('PDFs', () => {
     expect(await sh('pdftotext guide.pdf guide.txt')).toContain('Wrote pages 1-3 of 3')
     expect(await sh('head -n 1 guide.txt')).toBe('--- Page 1 ---\n')
   })
+
+  it('saves the pictures in a scanned page so the model can look at them', async () => {
+    // Pillow writes a one-page PDF that holds a single big picture, like a scan.
+    await sh("python -c \"from PIL import Image; Image.new('RGB', (800, 1000), 'red').save('scan.pdf')\"")
+    const out = await sh('pdfimages -s 300 scan.pdf pages/p')
+    expect(out).toContain('page 1: pages/p-1-1.jpg (240x300)')
+    // JPEG signature
+    expect(Array.from(readFile(py, 'pages/p-1-1.jpg').slice(0, 3))).toEqual([0xff, 0xd8, 0xff])
+  }, 120_000)
+
+  it('says a page with only text has no pictures, and what to do instead', async () => {
+    expect(await sh('pdfimages -f 1 -l 1 guide.pdf g')).toContain('no pictures (text or drawings only: read it with pdftotext)')
+    expect(await sh('pdfimages guide.pdf')).toContain('usage: pdfimages')
+    expect(await sh('pdfimages notes.txt x')).toContain('not a readable PDF')
+  }, 120_000)
 
   it('says plainly when the file is not a PDF', async () => {
     expect(await sh('pdftotext notes.txt')).toContain('not a readable PDF')

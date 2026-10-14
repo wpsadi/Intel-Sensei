@@ -40,9 +40,8 @@ export function ContextUsage({ messages }: { messages: ChatMessage[] }) {
 
   const tokens: Record<(typeof PARTS)[number]['key'], number> = { system: 0, human: 0, ai: 0 }
   for (const [index, message] of messages.entries()) {
-    // Text attachments are sent whole, so their size counts. Other files are inside the reported total, not in the split.
-    const attached = (message.attachments ?? []).filter((file) => file.type.startsWith('text/')).reduce((sum, file) => sum + file.size, 0)
-    const estimate = estimateTokens(messageText(message)) + Math.ceil(attached / 4)
+    // Files other than pictures, audio and video are not sent to the model, so only the text of the message counts here.
+    const estimate = estimateTokens(messageText(message))
     if (message.role === 'user') tokens.human += estimate
     else tokens.ai += estimate
     if (index === reportedIndex) break

@@ -11,4 +11,5 @@ export {
 } from './scratchpad/scratchpad'
 export { semanticMemory } from './semantic/semantic'
 export { sessionMemory } from './session/session'
+export { ASK_SCOPE, memoryScope, type MemoryScope } from './types'
 export type { Episode, MemoryHit, MemoryKind, Procedure, SemanticFact, SessionNote, VectorKind } from './types'

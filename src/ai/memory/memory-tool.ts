@@ -5,6 +5,7 @@ import { episodicMemory } from './episodic/episodic'
 import { proceduralMemory } from './procedural/procedural'
 import { semanticMemory } from './semantic/semantic'
 import { sessionMemory } from './session/session'
+import { ASK_SCOPE, type MemoryScope } from './types'
 
 const memoryInput = z.object({
   command: z
@@ -46,7 +47,7 @@ const day = (time: number) => new Date(time).toISOString().slice(0, 10)
  * model can do what is listed here and nothing else. Session commands always use `chatId`, never an id
  * the model gives, so they can only reach this chat's notes.
  */
-export function createMemoryTool({ chatId }: { chatId?: string } = {}) {
+export function createMemoryTool({ chatId, scope = ASK_SCOPE }: { chatId?: string; scope?: MemoryScope } = {}) {
   const run = async ({ command, text, name, id, query, pinned }: z.infer<typeof memoryInput>) => {
     const need = (value: string | undefined, label: string) => {
       if (!value?.trim()) throw new Error(`${label} is required`)
@@ -58,22 +59,22 @@ export function createMemoryTool({ chatId }: { chatId?: string } = {}) {
     }
     switch (command) {
       case 'remember_fact':
-        await semanticMemory.add(need(text, 'text'), pinned ?? true)
+        await semanticMemory.add(need(text, 'text'), pinned ?? true, scope)
         return 'Saved to semantic memory.'
       case 'update_fact':
-        return (await semanticMemory.update(need(id, 'id'), need(text, 'text'))) ? 'Fact updated.' : `No fact with id ${id}.`
+        return (await semanticMemory.update(need(id, 'id'), need(text, 'text'), scope)) ? 'Fact updated.' : `No fact with id ${id}.`
       case 'forget_fact':
-        await semanticMemory.remove(need(id, 'id'))
+        await semanticMemory.remove(need(id, 'id'), scope)
         return 'Fact removed.'
       case 'search_facts': {
-        const hits = await semanticMemory.search(need(query, 'query'))
+        const hits = await semanticMemory.search(need(query, 'query'), 5, scope)
         return hits.length ? hits.map(({ item }) => `[${item.id}] ${item.text}`).join('\n') : 'No matching facts.'
       }
       case 'remember_event':
-        await episodicMemory.append({ chatId, role: 'event', content: need(text, 'text') })
+        await episodicMemory.append({ scope, chatId, role: 'event', content: need(text, 'text') })
         return 'Event saved to episodic memory.'
       case 'search_events': {
-        const hits = await episodicMemory.search(need(query, 'query'))
+        const hits = await episodicMemory.search(need(query, 'query'), 5, scope)
         if (!hits.length) return 'No matching episodes.'
         // Each hit says whether it happened in this chat, which the model already has in front of it.
         return JSON.stringify(
@@ -86,13 +87,13 @@ export function createMemoryTool({ chatId }: { chatId?: string } = {}) {
         )
       }
       case 'save_procedure':
-        await proceduralMemory.save(need(name, 'name'), need(text, 'text'))
+        await proceduralMemory.save(need(name, 'name'), need(text, 'text'), scope)
         return 'Procedure saved.'
       case 'forget_procedure':
-        await proceduralMemory.remove(need(id, 'id'))
+        await proceduralMemory.remove(need(id, 'id'), scope)
         return 'Procedure removed.'
       case 'search_procedures': {
-        const hits = await proceduralMemory.search(need(query, 'query'))
+        const hits = await proceduralMemory.search(need(query, 'query'), 5, scope)
         return hits.length
           ? hits.map(({ item }) => `[${item.id}] ${item.name}: ${item.instructions}`).join('\n')
           : 'No matching procedures.'

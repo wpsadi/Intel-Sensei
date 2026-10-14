@@ -6,11 +6,21 @@ export type SandboxRequest = { id: number } & (
   | { op: 'shell'; command: string }
   | { op: 'ping' }
   | { op: 'write'; path: string; text: string; append: boolean }
-  | { op: 'mount'; files: { name: string; bytes: Uint8Array }[] }
+  | { op: 'mount'; files: { name: string; bytes: Uint8Array; readonly?: boolean }[] }
   | { op: 'read'; path: string }
 )
 export type SandboxResult = ExecResult | { paths: string[] } | { bytes: Uint8Array } | { path: string }
 export type SandboxResponse = { id: number; ok: true; result: SandboxResult } | { id: number; ok: false; error: string }
+
+/** Modules scripts and the PDF commands use most. They are not needed to start, so a failure here is ignored. */
+async function preload(py: PyodideLike) {
+  try {
+    await py.loadPackage(['pillow', 'numpy', 'pandas'])
+    await py.runPythonAsync('import micropip\nawait micropip.install("pypdf==6.19.0")')
+  } catch {
+    // Each one still loads on first use.
+  }
+}
 
 /** Pyodide loads once, on the first request, and is kept for the rest. A failed load is retried on the next request. */
 let ready: Promise<PyodideLike> | null = null
@@ -20,6 +30,8 @@ function python() {
     const { loadPyodide } = await import(/* @vite-ignore */ `${PYODIDE_INDEX_URL}pyodide.mjs`)
     const py = (await loadPyodide({ indexURL: PYODIDE_INDEX_URL })) as PyodideLike
     await prepare(py)
+    // The usual modules load in the background, so the first script that needs them does not wait for a download.
+    void preload(py)
     return py
   })().catch((error) => {
     ready = null
@@ -40,7 +52,7 @@ self.onmessage = async (event: MessageEvent<SandboxRequest>) => {
     if (request.op === 'shell') result = await runShell(py, request.command)
     else if (request.op === 'ping') result = { paths: [] }
     else if (request.op === 'write') result = { path: writeTextFile(py, request.path, request.text, request.append) }
-    else if (request.op === 'mount') result = { paths: request.files.map((file) => mountFile(py, file.name, file.bytes)) }
+    else if (request.op === 'mount') result = { paths: request.files.map((file) => mountFile(py, file.name, file.bytes, file.readonly)) }
     else result = { bytes: readFile(py, request.path) }
     self.postMessage({ id: request.id, ok: true, result } satisfies SandboxResponse)
   } catch (error) {
