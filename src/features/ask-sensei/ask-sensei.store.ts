@@ -2,17 +2,18 @@ import { toast } from 'sonner'
 import { create } from 'zustand'
 
 import { chatWithSensei } from '@/ai/inference/chat'
+import type { ChatProfile } from '@/ai/inference/chat-profile'
 import { generateChatTitle } from '@/ai/inference/title'
 import { episodicMemory, sessionMemory } from '@/ai/memory'
 import { AI_MODELS } from '@/ai/providers'
 import { type PendingMessage, demoteSteering, removePending, submitWhileBusy, takeNextPending } from '@/ai/send-queue'
 import { currentTodos, messageText } from '@/ai/utils/messages'
 import type { ChatTurn } from '@/ai/utils/messages'
+import { artifactKind, useArtifacts } from '@/features/ask-sensei/artifact/artifact.store'
 import { useTerminals } from '@/features/ask-sensei/terminal/terminal.store'
 import { uid } from '@/features/note/db/idb'
 import { deleteMedia } from '@/features/note/db/media'
 import { chatMessagesRepo, chatsRepo } from '@/features/note/db/repo'
-import { artifactKind, useArtifacts } from '@/features/ask-sensei/artifact/artifact.store'
 import type { Chat, ChatAnswers, ChatAttachment, ChatMessage } from '@/features/note/db/types'
 
 /** Chats and their messages. IndexedDB is the source of truth; this store is the in-memory copy the UI reads. */
@@ -31,7 +32,7 @@ interface AskSenseiState {
   load(): Promise<void>
   createChat(): Promise<Chat>
   /** Saves the user's message and starts Sensei's reply. With no chat id, a new chat is created. Returns the chat id. */
-  sendMessage(chatId: string | null, content: string, attachments?: ChatAttachment[]): Promise<string | null>
+  sendMessage(chatId: string | null, content: string, attachments?: ChatAttachment[], profile?: ChatProfile): Promise<string | null>
   /** Drops Sensei's last reply and streams a new one for the same question. */
   retryReply(chatId: string): Promise<void>
   /** Saves one message from a live call. Called again with the same id as the transcript grows. */
@@ -92,6 +93,7 @@ export const useAskSenseiStore = create<AskSenseiState>()((set, get) => {
   let pendingAnswers: ((answers: ChatAnswers) => void) | null = null
 
   /** Streams Sensei's reply to the conversation so far, then saves it. */
+  const chatProfiles = new Map<string, ChatProfile>()
   const streamReply = async (chatId: string) => {
     const history = historyOf(get().messages[chatId] ?? [])
     const todos = currentTodos(get().messages[chatId] ?? [])
@@ -136,6 +138,7 @@ export const useAskSenseiStore = create<AskSenseiState>()((set, get) => {
             chatId,
             messageId: reply.id,
             todos,
+            profile: chatProfiles.get(chatId),
             takeSteers: async () => {
               const taken = steerBox.splice(0)
               const turns: ChatTurn[] = []
@@ -290,10 +293,12 @@ export const useAskSenseiStore = create<AskSenseiState>()((set, get) => {
       return chat
     },
 
-    async sendMessage(chatId, content, attachments) {
+    async sendMessage(chatId, content, attachments, profile) {
       const text = content.trim()
       if (!text && !attachments?.length) return null
       const chat = get().chats.find((item) => item.id === chatId) ?? (await get().createChat())
+      // An app that limits Sensei to its own tools sets that on every message; replies, retries and queued messages reuse it.
+      if (profile) chatProfiles.set(chat.id, profile)
       // A reply is running: the message waits for it, or steers it when it belongs to this chat.
       if (get().streamingId) {
         submitWhileBusy(chat.id, { text, attachments }, chat.id === runChatId ? (pending) => steerBox.push(pending) : undefined)

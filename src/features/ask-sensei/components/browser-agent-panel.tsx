@@ -2,6 +2,7 @@ import { PlusIcon } from 'lucide-react'
 import * as React from 'react'
 import { useSearchParams } from 'react-router-dom'
 
+import type { ChatProfile } from '@/ai/inference/chat-profile'
 import senseiLogo from '@/assets/sensei.svg'
 import { Shimmer } from '@/components/ai-elements/shimmer'
 import { Button } from '@/components/ui/button'
@@ -14,7 +15,7 @@ import { WidgetComposer } from '@/features/note/sensei-widget/WidgetComposer'
 import { WorkedFor } from '@/features/s-3d/agent/worked-for'
 
 /** The browser assistant uses the same streaming Sensei runtime as S3D and Ask Sensei. */
-export function BrowserAgentPanel({ page }: { page: string | null }) {
+export function BrowserAgentPanel({ page, profile }: { page: string | null; profile?: ChatProfile }) {
   const ready = useAskSenseiStore((state) => state.ready)
   const messagesByChat = useAskSenseiStore((state) => state.messages)
   const streamingId = useAskSenseiStore((state) => state.streamingId)
@@ -49,8 +50,7 @@ export function BrowserAgentPanel({ page }: { page: string | null }) {
   }, [messages.length, lastMessageContent])
 
   const send = async (text: string) => {
-    const context = page ? `I am using the SBrowse browser on ${page}. ` : 'I am using the SBrowse browser. '
-    const id = await sendMessage(chatId, `${context}${text}`)
+    const id = await sendMessage(chatId, text, undefined, profile)
     if (id) selectChat(id)
   }
 

@@ -55,6 +55,31 @@ export function describeToolCall(name: string, args: Record<string, unknown>): {
       return { label: 'Reading a page', detail: text(args.url) }
     case 'export_file':
       return { label: 'Sharing a file', detail: text(args.path) }
+    case 'computer': {
+      const action = text(args.action)
+      const at = typeof args.x === 'number' && typeof args.y === 'number' ? ` at ${Math.round(args.x)}, ${Math.round(args.y)}` : ''
+      const what: Record<string, string> = {
+        open_url: 'Opening a site',
+        screenshot: 'Looking at the page',
+        click: 'Clicking',
+        double_click: 'Double-clicking',
+        right_click: 'Right-clicking',
+        move: 'Moving the pointer',
+        type: 'Typing',
+        key: 'Pressing a key',
+        scroll: 'Scrolling',
+        wait: 'Waiting',
+      }
+      const detail =
+        action === 'open_url'
+          ? text(args.url)
+          : action === 'type'
+            ? text(args.text)
+            : action === 'key'
+              ? text(args.key)
+              : at.trim() || undefined
+      return { label: what[action ?? ''] ?? 'Using the page', detail }
+    }
     case 'view_image':
       return { label: 'Viewing an image', detail: text(args.path) }
     case 'load_skill':

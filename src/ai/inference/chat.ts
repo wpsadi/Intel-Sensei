@@ -1,5 +1,6 @@
-import { type LanguageModelUsage, ToolLoopAgent, parsePartialJson } from 'ai'
+import { type LanguageModelUsage, type Tool, ToolLoopAgent, parsePartialJson } from 'ai'
 
+import type { ChatProfile } from '@/ai/inference/chat-profile'
 import {
   MEMORY_INSTRUCTIONS,
   SCRATCHPAD_INSTRUCTIONS,
@@ -88,6 +89,8 @@ export async function chatWithSensei(
     onArtifactDraft?: (draft: { id: string; name: string; content: string; format: 'markdown' | 'html'; done?: boolean }) => void
     /** Receives the tool calls of this reply, in order, each time one starts or ends. */
     onSteps?: (steps: ChatToolStep[]) => void
+    /** Limits the agent to one app's tools and instructions. */
+    profile?: ChatProfile
   },
 ) {
   // Files the model reads through Python: start the environment while the reply gets going.
@@ -103,7 +106,7 @@ export async function chatWithSensei(
     searches = upsertSearch(searches, search)
     onSearches?.(searches)
   })
-  const tools = {
+  const allTools = {
     webSearch,
     scrape: createScrapeTool(scope?.chatId),
     // terminal and python: files attached to this conversation are in the sandbox's home folder.
@@ -120,6 +123,13 @@ export async function chatWithSensei(
     ),
     ...createSkillTools(),
   }
+  const profile = scope?.profile
+  const tools: Record<string, Tool> = profile
+    ? {
+        ...Object.fromEntries(Object.entries(allTools).filter(([name]) => profile.allow.includes(name))),
+        ...profile.tools,
+      }
+    : allTools
   // What the model reads of a user message: a /skill-name message carries the skill's instructions, and @file mentions
   // are explained. The chat keeps showing what was typed.
   const fileNames = messages.flatMap((turn) => turn.attachments ?? []).map((file) => file.name)
@@ -159,20 +169,30 @@ export async function chatWithSensei(
             )),
           ],
         }),
-        instructions: [
-          SENSEI_SYSTEM_PROMPT,
-          currentTimePrompt(),
-          await memoryPrompt({ chatId: scope?.chatId, scratchpad }),
-          MEMORY_INSTRUCTIONS,
-          SCRATCHPAD_INSTRUCTIONS,
-          PLAN_INSTRUCTIONS,
-          TODO_INSTRUCTIONS,
-          ASK_INSTRUCTIONS,
-          SANDBOX_INSTRUCTIONS,
-          EXPORT_INSTRUCTIONS,
-          SKILLS_INSTRUCTIONS,
-          await skillsPrompt(),
-        ]
+        instructions: (profile
+          ? [
+              SENSEI_SYSTEM_PROMPT,
+              currentTimePrompt(),
+              SANDBOX_INSTRUCTIONS,
+              SKILLS_INSTRUCTIONS,
+              await skillsPrompt(),
+              profile.instructions,
+            ]
+          : [
+              SENSEI_SYSTEM_PROMPT,
+              currentTimePrompt(),
+              await memoryPrompt({ chatId: scope?.chatId, scratchpad }),
+              MEMORY_INSTRUCTIONS,
+              SCRATCHPAD_INSTRUCTIONS,
+              PLAN_INSTRUCTIONS,
+              TODO_INSTRUCTIONS,
+              ASK_INSTRUCTIONS,
+              SANDBOX_INSTRUCTIONS,
+              EXPORT_INSTRUCTIONS,
+              SKILLS_INSTRUCTIONS,
+              await skillsPrompt(),
+            ]
+        )
           .filter(Boolean)
           .join('\n\n'),
       }

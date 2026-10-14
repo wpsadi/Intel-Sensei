@@ -24,6 +24,7 @@ import {
 import * as React from 'react'
 import { BsBrowserChrome } from 'react-icons/bs'
 import { Link, useSearchParams } from 'react-router-dom'
+import { toast } from 'sonner'
 
 import { Button } from '@/components/ui/button'
 import { Checkbox } from '@/components/ui/checkbox'
@@ -41,8 +42,10 @@ import { BrowserAgentPanel } from '@/features/ask-sensei/components/browser-agen
 import { TerminalPanel } from '@/features/ask-sensei/terminal/terminal-panel'
 import { cn } from '@/lib/utils'
 
+import { createBrowserProfile, ensureBrowserSkill } from './s-browse.agent'
+import type { ComputerHost } from './s-browse.computer'
 import { type Access, type SessionGrants, deleteGrants, loadGrants, saveGrants } from './s-browse.db'
-import { screenshotsOn, startScreenshots } from './s-browse.screenshot'
+import { screenshotsOn, startScreenshots, stopScreenshots, subscribeScreenshots } from './s-browse.screenshot'
 import { SBrowseWebMcp } from './s-browse.webmcp'
 
 /** Turns what was typed into a URL. Anything with spaces or no dot is sent to a Bing search instead. */
@@ -324,24 +327,97 @@ function SBrowsePage() {
     }
   }, [open, pinned])
 
-  const getIframe = React.useCallback(() => iframeRef.current, [])
-  const [shotsOn, setShotsOn] = React.useState(screenshotsOn)
-  const sendCua = React.useCallback((action: string, payload: Record<string, unknown> = {}) => {
-    iframeRef.current?.contentWindow?.postMessage({ source: 'sensei-cua', action, ...payload }, '*')
+  // Screen sharing starts with control mode, so it can end on its own when the browser's "Stop sharing" is used.
+  const sharing = React.useSyncExternalStore(subscribeScreenshots, screenshotsOn)
+  const [pointer, setPointer] = React.useState<{ id: number; x: number; y: number; kind: string } | null>(null)
+  const [lastAction, setLastAction] = React.useState<string | null>(null)
+  const acks = React.useRef(new Map<string, () => void>())
+  const controlRef = React.useRef(false)
+  const pageRef = React.useRef<string | null>(null)
+  React.useEffect(() => {
+    controlRef.current = controlMode
+    pageRef.current = page
+  }, [controlMode, page])
+
+  // A page with the Sensei bridge answers every action, so the agent knows whether it landed.
+  React.useEffect(() => {
+    const onMessage = (event: MessageEvent) => {
+      const data = event.data as { source?: string; id?: string } | null
+      if (event.source !== iframeRef.current?.contentWindow || data?.source !== 'sensei-cua-ack' || typeof data.id !== 'string') return
+      acks.current.get(data.id)?.()
+    }
+    window.addEventListener('message', onMessage)
+    return () => window.removeEventListener('message', onMessage)
+  }, [])
+
+  // The latest go-to-address, for the agent's host, which is built once.
+  const openRef = React.useRef<(address: string) => string | null>(() => null)
+  React.useEffect(() => {
+    openRef.current = (address) => {
+      const next = toUrl(address)
+      if (!next) return null
+      setTyped(next)
+      if (!active) createSession(next)
+      else if (next !== active.url)
+        updateSession(active.id, (session) => ({
+          ...session,
+          url: next,
+          history: session.url ? [...session.history, session.url] : session.history,
+        }))
+      return next
+    }
+  })
+
+  const host = React.useMemo<ComputerHost>(
+    () => ({
+      iframe: () => iframeRef.current,
+      url: () => pageRef.current,
+      open: (address) => openRef.current(address),
+      controlOn: () => controlRef.current,
+      send: (action, payload = {}) =>
+        new Promise<boolean>((resolve) => {
+          const id = crypto.randomUUID()
+          const finish = (ok: boolean) => {
+            clearTimeout(timer)
+            acks.current.delete(id)
+            resolve(ok)
+          }
+          const timer = setTimeout(() => finish(false), 1500)
+          acks.current.set(id, () => finish(true))
+          iframeRef.current?.contentWindow?.postMessage({ source: 'sensei-cua', id, action, ...payload }, '*')
+        }),
+      pointer: (x, y, kind) => {
+        const rect = iframeRef.current?.getBoundingClientRect()
+        setLastAction(`${kind.replace('_', ' ')} at ${x}, ${y}`)
+        if (rect) setPointer({ id: Date.now(), x: rect.left + x, y: rect.top + y, kind })
+      },
+    }),
+    [],
+  )
+  const profile = React.useMemo(() => createBrowserProfile(host), [host])
+  React.useEffect(() => {
+    void ensureBrowserSkill()
   }, [])
   React.useEffect(() => {
-    if (!controlMode) return
-    const onKey = (event: KeyboardEvent) => {
-      if (event.target instanceof HTMLInputElement || event.target instanceof HTMLTextAreaElement) return
-      sendCua('keypress', {
-        key: event.key,
-        code: event.code,
-        modifiers: { alt: event.altKey, ctrl: event.ctrlKey, meta: event.metaKey, shift: event.shiftKey },
-      })
+    if (!pointer) return
+    const timer = setTimeout(() => setPointer(null), 1400)
+    return () => clearTimeout(timer)
+  }, [pointer])
+
+  // Turning control on shares the screen straight away (the browser asks once); if that is refused, control stays off.
+  const toggleControl = async () => {
+    if (controlMode) {
+      setControlMode(false)
+      stopScreenshots()
+      return
     }
-    window.addEventListener('keydown', onKey)
-    return () => window.removeEventListener('keydown', onKey)
-  }, [controlMode, sendCua])
+    if (await startScreenshots()) setControlMode(true)
+    else toast('Control needs the screen to be shared, so it stayed off.')
+  }
+  React.useEffect(() => {
+    // The share ended (the browser's "Stop sharing"): the agent can no longer see the page, so control ends with it.
+    if (controlMode && !sharing) setControlMode(false)
+  }, [controlMode, sharing])
 
   const renderSession = (session: Session) => (
     <li key={session.id} className={cn('group/row flex items-center gap-1 rounded-md px-1 py-0.5', session.id === activeId && 'bg-muted')}>
@@ -379,7 +455,7 @@ function SBrowsePage() {
 
   return (
     <div className="relative flex h-svh min-h-svh w-full flex-1 flex-col overflow-hidden">
-      <SBrowseWebMcp page={page} send={sendCua} getIframe={getIframe} />
+      <SBrowseWebMcp page={page} host={host} />
       {page ? (
         // Without allow-same-origin the page has an opaque origin, so it cannot read our cookies, storage, or DOM, but its own
         // assets are fetched without credentials and sites behind Basic Auth answer 401. Allowing it gives the page its own
@@ -420,17 +496,12 @@ function SBrowsePage() {
         </form>
       )}
 
-      {controlMode && page && (
-        <div
-          className="fixed inset-0 z-10 cursor-crosshair"
-          onClick={(event) => {
-            const rect = event.currentTarget.getBoundingClientRect()
-            sendCua('click', { x: Math.round(event.clientX - rect.left), y: Math.round(event.clientY - rect.top) })
-          }}
-          onMouseMove={(event) => {
-            const rect = event.currentTarget.getBoundingClientRect()
-            sendCua('mousemove', { x: Math.round(event.clientX - rect.left), y: Math.round(event.clientY - rect.top) })
-          }}
+      {pointer && (
+        // Where the agent just acted, so the user can follow along.
+        <span
+          key={pointer.id}
+          className="pointer-events-none fixed z-20 size-6 -translate-x-1/2 -translate-y-1/2 animate-ping rounded-full border-2 border-primary bg-primary/30"
+          style={{ left: pointer.x, top: pointer.y }}
         />
       )}
 
@@ -593,25 +664,48 @@ function SBrowsePage() {
           ))}
         </div>
         <div className="flex min-h-0 flex-1 flex-col">
-          {rightTab === 'agent' && <BrowserAgentPanel page={page} />}
+          {rightTab === 'agent' && <BrowserAgentPanel page={page} profile={profile} />}
           {rightTab === 'cua' && (
             <div className="flex flex-col gap-3 p-3 text-xs">
-              <p className="text-muted-foreground">Control the iframe with coordinate and keyboard events.</p>
-              <Button variant={controlMode ? 'default' : 'outline'} onClick={() => setControlMode((value) => !value)}>
-                <MousePointer2Icon />
-                {controlMode ? 'Control mode on' : 'Enable control mode'}
-              </Button>
-              <div className="grid grid-cols-2 gap-2">
-                <Button variant={shotsOn ? 'default' : 'outline'} onClick={() => void startScreenshots().then(setShotsOn)}>
-                  <CameraIcon />
-                  {shotsOn ? 'Screenshots on' : 'Allow screenshots'}
-                </Button>
-                <Button variant="outline" onClick={() => sendCua('keypress', { key: 'Enter' })}>
-                  Press Enter
+              <div className="flex flex-col gap-3 rounded-lg border p-3">
+                <div className="flex items-start gap-3">
+                  <span
+                    className={cn(
+                      'flex size-8 shrink-0 items-center justify-center rounded-md',
+                      controlMode ? 'bg-primary text-primary-foreground' : 'bg-muted',
+                    )}
+                  >
+                    <MousePointer2Icon className="size-4" />
+                  </span>
+                  <div className="min-w-0 flex-1">
+                    <p className="text-sm font-medium">Computer control</p>
+                    <p className="mt-0.5 text-muted-foreground">Lets the agent see this page and click, type and scroll in it.</p>
+                  </div>
+                </div>
+                <Button variant={controlMode ? 'outline' : 'default'} onClick={() => void toggleControl()}>
+                  {controlMode ? 'Turn off control' : 'Turn on control'}
                 </Button>
               </div>
-              <p className="text-[11px] text-muted-foreground">
-                Pointer and keyboard actions are sent as <code>postMessage</code> events to the embedded page.
+              <ul className="flex flex-col divide-y rounded-lg border">
+                <li className="flex items-center justify-between gap-2 px-3 py-2">
+                  <span className="flex items-center gap-2 text-muted-foreground">
+                    <CameraIcon className="size-3.5" /> Screen
+                  </span>
+                  <span className="flex items-center gap-1.5">
+                    <span className={cn('size-1.5 rounded-full', sharing ? 'bg-emerald-500' : 'bg-muted-foreground/40')} />
+                    {sharing ? 'Shared' : 'Not shared'}
+                  </span>
+                </li>
+                <li className="flex items-center justify-between gap-2 px-3 py-2">
+                  <span className="flex items-center gap-2 text-muted-foreground">
+                    <MousePointer2Icon className="size-3.5" /> Last action
+                  </span>
+                  <span className="truncate">{lastAction ?? 'None yet'}</span>
+                </li>
+              </ul>
+              <p className="text-[11px] leading-relaxed text-muted-foreground">
+                Turning control on asks the browser to share this tab, once. A page can only be clicked or typed into if it includes{' '}
+                <code>sensei-cua-bridge.js</code>; any page can still be seen.
               </p>
             </div>
           )}
