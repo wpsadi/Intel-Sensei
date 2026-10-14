@@ -116,8 +116,9 @@ export function MediaGallery({ items }: { items: MediaItem[] }) {
 }
 
 /** Markdown `img`: the extension decides whether it is a picture, a video or audio. Alone it renders as a one-item gallery. */
-export function MarkdownImage({ src, alt }: ComponentProps<'img'>) {
-  if (typeof src !== 'string' || !src) return null
+export function MarkdownImage(props: Record<string, unknown>) {
+  const { src, alt } = props as { src?: string; alt?: string }
+  if (!src) return null
   return <MediaGallery items={[{ kind: mediaKindOf(src) ?? 'image', src, alt }]} />
 }
 
