@@ -1,52 +1,25 @@
 'use client'
 
 import {
-  AudioLinesIcon,
   DollarSignIcon,
   DraftingCompassIcon,
   HomeIcon,
-  InboxIcon,
-  MessageCircleQuestionIcon,
   NotebookPenIcon,
   PenToolIcon,
-  SearchIcon,
   Settings2Icon,
   SparklesIcon,
   TerminalIcon,
 } from 'lucide-react'
 import * as React from 'react'
 import { BsBrowserChrome } from 'react-icons/bs'
+import { Link } from 'react-router-dom'
 
 import { NavMain } from '@/components/nav-main'
 import { NavSecondary } from '@/components/nav-secondary'
-import { TeamSwitcher } from '@/components/team-switcher'
 import { Sidebar, SidebarContent, SidebarHeader, SidebarRail } from '@/components/ui/sidebar'
 
-// This is sample data.
 const data = {
-  teams: [
-    {
-      name: 'Acme Inc',
-      logo: <TerminalIcon />,
-      plan: 'Enterprise',
-    },
-    {
-      name: 'Acme Corp.',
-      logo: <AudioLinesIcon />,
-      plan: 'Startup',
-    },
-    {
-      name: 'Evil Corp.',
-      logo: <TerminalIcon />,
-      plan: 'Free',
-    },
-  ],
   navMain: [
-    {
-      title: 'Search',
-      url: '#',
-      icon: <SearchIcon />,
-    },
     {
       title: 'Ask Sensei',
       url: '/ask-sensei',
@@ -54,15 +27,9 @@ const data = {
     },
     {
       title: 'Home',
-      url: '#',
+      url: '/',
       icon: <HomeIcon />,
       isActive: true,
-    },
-    {
-      title: 'Inbox',
-      url: '#',
-      icon: <InboxIcon />,
-      badge: '10',
     },
     {
       title: 'SNote',
@@ -96,11 +63,6 @@ const data = {
       url: '?settings=open',
       icon: <Settings2Icon />,
     },
-    {
-      title: 'Help',
-      url: '#',
-      icon: <MessageCircleQuestionIcon />,
-    },
   ],
 }
 
@@ -108,7 +70,12 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
   return (
     <Sidebar className="border-r-0" {...props}>
       <SidebarHeader>
-        <TeamSwitcher teams={data.teams} />
+        <Link to="/" className="flex items-center gap-2 px-2 py-2 text-sm font-semibold tracking-tight">
+          <span className="flex size-6 items-center justify-center rounded-md bg-sidebar-primary text-sidebar-primary-foreground">
+            <TerminalIcon className="size-3.5" />
+          </span>
+          Sensei
+        </Link>
         <NavMain items={data.navMain} />
       </SidebarHeader>
       <SidebarContent>

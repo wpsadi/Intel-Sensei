@@ -2,6 +2,8 @@ import { useEffect, useRef, useState } from 'react'
 import { toast } from 'sonner'
 
 import { type CallToolEvent, LiveCall } from '@/ai/inference/call'
+import { GENERAL_INSTRUCTIONS, createGeneralTools } from '@/ai/tools/general'
+import { SKILLS_INSTRUCTIONS, createSkillTools, skillsPrompt } from '@/ai/skills/tools'
 import {
   MEMORY_INSTRUCTIONS,
   SCRATCHPAD_INSTRUCTIONS,
@@ -230,6 +232,8 @@ export function useLiveCall(chatId: string | null, onChatOpened: (id: string) =>
           (todos) => changeReply((turn) => void (turn.todos = todos ?? undefined)),
           currentTodos(useAskSenseiStore.getState().messages[chat] ?? []),
         ),
+        ...createGeneralTools(),
+        ...createSkillTools(),
         deepAnswer: createDeepAnswerTool({
           chatId: chat,
           history: () =>
@@ -260,6 +264,10 @@ export function useLiveCall(chatId: string | null, onChatOpened: (id: string) =>
       // The deep answer runs in the background, so the voice keeps talking meanwhile.
       nonBlocking: ['deepAnswer'],
       instructions: [
+        `You are the live Gemini browser agent. Focus first on operating the user's active SBrowse iframe and explaining what you are doing. Use the terminal, web tools, and skills when they help inspect or complete the task; never claim a tool ran if it did not.`,
+        GENERAL_INSTRUCTIONS,
+        SKILLS_INSTRUCTIONS,
+        await skillsPrompt(),
         await memoryPrompt({ chatId: chat }),
         MEMORY_INSTRUCTIONS,
         SCRATCHPAD_INSTRUCTIONS,

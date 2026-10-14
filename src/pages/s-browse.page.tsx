@@ -1,18 +1,23 @@
 import {
   ArrowLeftIcon,
   ArrowRightIcon,
+  CameraIcon,
   ChevronLeftIcon,
   ChevronRightIcon,
   HomeIcon,
   LayersIcon,
+  MessageSquareIcon,
   MoreHorizontalIcon,
+  MousePointer2Icon,
   PencilIcon,
   PlusIcon,
   RotateCwIcon,
+  SendIcon,
   Settings2Icon,
   ShieldCheckIcon,
   StarIcon,
   StarOffIcon,
+  TerminalIcon,
   Trash2Icon,
 } from 'lucide-react'
 import * as React from 'react'
@@ -28,6 +33,8 @@ import { ScrollArea } from '@/components/ui/scroll-area'
 import { cn } from '@/lib/utils'
 
 import { type Access, type SessionGrants, deleteGrants, loadGrants, saveGrants } from './s-browse.db'
+import { SBrowseWebMcp } from './s-browse.webmcp'
+import { useLiveCall } from '@/features/ask-sensei/components/live-call'
 
 /** Turns what was typed into a URL. Anything with spaces or no dot is sent to a Bing search instead. */
 function toUrl(input: string) {
@@ -119,6 +126,15 @@ function titleOf(session: Session) {
 /** SBrowse: the page fills the screen. A sessions panel slides in from the left edge and a browser panel from the right edge, on hover or tap. */
 function SBrowsePage() {
   const [open, setOpen] = React.useState<'left' | 'right' | null>(null)
+  const [rightTab, setRightTab] = React.useState<'agent' | 'terminal' | 'cua'>('agent')
+  const [agentInput, setAgentInput] = React.useState('')
+  const [agentMessages, setAgentMessages] = React.useState<{ role: 'user' | 'assistant'; text: string }[]>([])
+  const [terminalInput, setTerminalInput] = React.useState('')
+  const [terminalOutput, setTerminalOutput] = React.useState<string[]>([])
+  const [controlMode, setControlMode] = React.useState(false)
+  const [liveChatId, setLiveChatId] = React.useState<string | null>(null)
+  const liveCall = useLiveCall(liveChatId, setLiveChatId)
+  const iframeRef = React.useRef<HTMLIFrameElement>(null)
   const leftPanelRef = React.useRef<HTMLDivElement>(null)
   const leftTriggerRef = React.useRef<HTMLButtonElement>(null)
   const rightPanelRef = React.useRef<HTMLDivElement>(null)
@@ -299,6 +315,32 @@ function SBrowsePage() {
     }
   }, [open, pinned])
 
+  const toggleLiveCall = () => { if (liveCall.state === 'live' || liveCall.state === 'connecting') liveCall.end(); else void liveCall.start() }
+
+  const sendAgentMessage = () => {
+    const text = agentInput.trim()
+    if (!text) return
+    setAgentMessages((messages) => [...messages, { role: 'user', text }, { role: 'assistant', text: `I can help operate ${page ? hostOf(page) : 'the browser'}. Use CUA controls to move, click, or type in the page.` }])
+    setAgentInput('')
+  }
+
+  const runTerminal = () => {
+    const command = terminalInput.trim()
+    if (!command) return
+    setTerminalOutput((lines) => [...lines, `$ ${command}`, command === 'help' ? 'Commands: help, pwd, clear' : command === 'pwd' ? '/home/user' : `command completed: ${command}`])
+    setTerminalInput('')
+  }
+
+  const sendCua = React.useCallback((action: string, payload: Record<string, unknown> = {}) => {
+    iframeRef.current?.contentWindow?.postMessage({ source: 'sensei-cua', action, ...payload }, '*')
+  }, [])
+  React.useEffect(() => {
+    if (!controlMode) return
+    const onKey = (event: KeyboardEvent) => { if (event.target instanceof HTMLInputElement || event.target instanceof HTMLTextAreaElement) return; sendCua('keypress', { key: event.key, code: event.code, modifiers: { alt: event.altKey, ctrl: event.ctrlKey, meta: event.metaKey, shift: event.shiftKey } }) }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [controlMode, sendCua])
+
   const renderSession = (session: Session) => (
     <li
       key={session.id}
@@ -342,12 +384,14 @@ function SBrowsePage() {
 
   return (
     <div className="relative flex h-svh min-h-svh w-full flex-1 flex-col overflow-hidden">
+      <SBrowseWebMcp page={page} send={sendCua} />
       {page ? (
         // Without allow-same-origin the page has an opaque origin, so it cannot read our cookies, storage, or DOM, but its own
         // assets are fetched without credentials and sites behind Basic Auth answer 401. Allowing it gives the page its own
         // origin, never ours, and only once the user agrees. A page on our own origin would escape the sandbox, so it never gets it.
         holdPage ? null : (
           <iframe
+            ref={iframeRef}
             key={`${page}-${reloadKey}`}
             src={page}
             title="SBrowse page"
@@ -380,6 +424,8 @@ function SBrowsePage() {
           <p className="text-sm text-muted-foreground">Words are searched on Bing. Type a site like example.com to open it directly.</p>
         </form>
       )}
+
+      {controlMode && page && <div className="fixed inset-0 z-10 cursor-crosshair" onClick={(event) => { const rect = event.currentTarget.getBoundingClientRect(); sendCua('click', { x: Math.round(event.clientX - rect.left), y: Math.round(event.clientY - rect.top) }) }} onMouseMove={(event) => { const rect = event.currentTarget.getBoundingClientRect(); sendCua('mousemove', { x: Math.round(event.clientX - rect.left), y: Math.round(event.clientY - rect.top) }) }} />}
 
       {shortcutHidden && (
         // Keys pressed inside the iframe never reach this page, so Shift+Q cannot bring the panels back once you click into the site.
@@ -538,6 +584,21 @@ function SBrowsePage() {
             </Button>
           </div>
         )}
+        <div className="flex shrink-0 border-b">
+          {([['agent', MessageSquareIcon, 'Agent'], ['terminal', TerminalIcon, 'Terminal'], ['cua', MousePointer2Icon, 'CUA']] as const).map(([tab, Icon, label]) => (
+            <button key={tab} type="button" onClick={() => setRightTab(tab)} className={cn('flex flex-1 items-center justify-center gap-1 px-2 py-2 text-xs', rightTab === tab ? 'border-b-2 border-primary font-medium' : 'text-muted-foreground')}>
+              <Icon className="size-3.5" />{label}
+            </button>
+          ))}
+        </div>
+        <div className="flex min-h-0 flex-1 flex-col">
+          {rightTab === 'agent' && <>
+            <ScrollArea className="min-h-0 flex-1 p-3"><div className="flex flex-col gap-2 text-xs">{agentMessages.length === 0 && <><div className="mb-2 flex items-center justify-between rounded-md border p-2"><span className="text-[11px]">Gemini Live {liveCall.state === 'live' ? 'connected' : liveCall.state === 'connecting' ? 'connecting…' : 'ready'}</span><Button size="xs" variant={liveCall.state === 'live' ? 'destructive' : 'default'} onClick={toggleLiveCall}>{liveCall.state === 'live' ? 'End call' : 'Start call'}</Button></div><p className="text-muted-foreground">Agent history will appear here.</p></>}{agentMessages.map((message, index) => <div key={index} className={cn('rounded-md p-2', message.role === 'user' ? 'bg-primary/10' : 'bg-muted')}><span className="mb-1 block text-[10px] font-medium uppercase text-muted-foreground">{message.role}</span>{message.text}</div>)}</div></ScrollArea>
+            <form onSubmit={(event) => { event.preventDefault(); sendAgentMessage() }} className="flex gap-1 border-t p-2"><Input aria-label="Agent message" value={agentInput} onChange={(event) => setAgentInput(event.target.value)} placeholder="Ask the browser agent…" className="h-8 text-xs" /><Button type="submit" size="icon-sm" aria-label="Send message"><SendIcon /></Button></form>
+          </>}
+          {rightTab === 'terminal' && <><ScrollArea className="min-h-0 flex-1 bg-black p-3 font-mono text-[11px] text-green-300"><div>{terminalOutput.length ? terminalOutput.map((line, index) => <div key={index}>{line}</div>) : <span className="text-green-700">Terminal ready. Type help.</span>}</div></ScrollArea><form onSubmit={(event) => { event.preventDefault(); runTerminal() }} className="flex gap-1 border-t bg-black p-2"><Input aria-label="Terminal command" value={terminalInput} onChange={(event) => setTerminalInput(event.target.value)} placeholder="command" className="h-8 border-green-900 bg-black font-mono text-xs text-green-300" /></form></>}
+          {rightTab === 'cua' && <div className="flex flex-col gap-3 p-3 text-xs"><p className="text-muted-foreground">Control the iframe with coordinate and keyboard events.</p><Button variant={controlMode ? 'default' : 'outline'} onClick={() => setControlMode((value) => !value)}><MousePointer2Icon />{controlMode ? 'Control mode on' : 'Enable control mode'}</Button><div className="grid grid-cols-2 gap-2"><Button variant="outline" onClick={() => sendCua('screenshot')}><CameraIcon />View window</Button><Button variant="outline" onClick={() => sendCua('keypress', { key: 'Enter' })}>Press Enter</Button></div><p className="text-[11px] text-muted-foreground">Pointer and keyboard actions are sent as <code>postMessage</code> events to the embedded page.</p></div>}
+        </div>
       </div>
 
       <Dialog

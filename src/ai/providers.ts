@@ -74,7 +74,8 @@ export const minimalThinking = (provider: Provider) =>
 /**
  * Options that make the model think and send a summary of its thinking, so the chat can show it. Neither Claude nor
  * Gemini sends thinking text unless asked: Claude thinks adaptively and needs `display: 'summarized'`, and `effort`
- * sets how deep; Gemini needs `includeThoughts`. Other providers use their defaults.
+ * sets how deep; Gemini needs `includeThoughts`. OpenAI uses stateless Responses so tool-loop
+ * continuations send reasoning content rather than references to items a proxy may not persist.
  */
 export const thinkingSummary = (
   provider: Provider,
@@ -84,7 +85,7 @@ export const thinkingSummary = (
     ? { anthropic: { thinking: { type: 'adaptive', display: 'summarized' }, effort } }
     : provider === 'google'
       ? { google: { thinkingConfig: { thinkingLevel: effort, includeThoughts: true } } satisfies GoogleLanguageModelOptions }
-      : undefined
+      : { openai: { store: false, include: ['reasoning.encrypted_content'] } }
 
 /** A provider and one of its models. */
 export interface ModelChoice {
