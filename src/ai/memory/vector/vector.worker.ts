@@ -1,4 +1,6 @@
 /// <reference lib="webworker" />
+import { vault } from '@/features/vault/vault'
+
 import { getMemoryDb } from '../db'
 import type { VectorKind } from '../types'
 import { HnswIndex } from './hnsw'
@@ -11,12 +13,19 @@ export type VectorRequest = { id: number } & (
   | { type: 'size'; kind: VectorKind }
 )
 
+/** The page sends its vault state first, and again whenever it changes, so the worker can read and write encrypted vectors. */
+export type VaultMessage = { type: 'vault'; key: CryptoKey | null; encrypting: boolean }
+
 export type VectorResponse = { id: number; ok: true; result: unknown } | { id: number; ok: false; error: string }
 
 const indexes: Record<VectorKind, HnswIndex> = { semantic: new HnswIndex(), episodic: new HnswIndex(), procedural: new HnswIndex() }
 
 /** Builds both indexes from the vectors saved in IndexedDB. Every request waits for this. */
+let vaultKnown: () => void
+const vaultReady = new Promise<void>((resolve) => (vaultKnown = resolve))
+
 const ready = (async () => {
+  await vaultReady
   const db = await getMemoryDb()
   for (const record of await db.getAll('vectors')) indexes[record.kind].add(record.refId, record.vector)
 })()
@@ -40,7 +49,12 @@ async function handle(request: VectorRequest): Promise<unknown> {
   }
 }
 
-self.onmessage = async (event: MessageEvent<VectorRequest>) => {
+self.onmessage = async (event: MessageEvent<VectorRequest | VaultMessage>) => {
+  if (event.data.type === 'vault') {
+    vault.set({ key: event.data.key, encrypting: event.data.encrypting })
+    vaultKnown()
+    return
+  }
   const { id } = event.data
   try {
     self.postMessage({ id, ok: true, result: await handle(event.data) } satisfies VectorResponse)

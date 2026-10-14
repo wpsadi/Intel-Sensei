@@ -1,3 +1,5 @@
+import { BLOB_BUCKETS, putBlob, readBlob } from '@/features/vault/blob'
+
 import { getDb, uid } from './db'
 import type { FileMeta } from './types'
 
@@ -5,7 +7,7 @@ import type { FileMeta } from './types'
  * Opened and imported files: bytes go into the `s3d-files` Cache Storage bucket, metadata into the IndexedDB
  * `files` store. Nodes reference a file with a `s3d-file:<id>` src that is resolved to an object URL at render time.
  */
-const BUCKET = 's3d-files'
+const BUCKET = BLOB_BUCKETS[1]
 const SCHEME = 's3d-file:'
 const keyFor = (id: string) => new Request(`/__s3d_files__/${id}`)
 const objectUrls = new Map<string, Promise<string>>()
@@ -26,8 +28,7 @@ export function kindOf(file: { name: string; type: string }): FileMeta['kind'] {
 /** Stores the bytes in the cache bucket and the metadata in IndexedDB. Resolves with the `s3d-file:` ref. */
 export async function storeFile(file: Blob, name = (file as File).name ?? 'file', docId?: string) {
   const id = uid()
-  const cache = await caches.open(BUCKET)
-  await cache.put(keyFor(id), new Response(file, { headers: { 'Content-Type': file.type || 'application/octet-stream' } }))
+  await putBlob(BUCKET, keyFor(id), file, name)
   const meta: FileMeta = {
     id,
     name,
@@ -58,7 +59,7 @@ export async function readFile(src: string): Promise<Blob | null> {
     return res?.ok ? res.blob() : null
   }
   const res = await (await caches.open(BUCKET)).match(keyFor(fileIdOf(src)))
-  return res ? res.blob() : null
+  return res ? (await readBlob(res)).blob : null
 }
 
 /** Base64 data URL for exports, which cannot reference object URLs. */

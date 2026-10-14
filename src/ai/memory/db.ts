@@ -1,5 +1,7 @@
 import { type DBSchema, type IDBPDatabase, openDB } from 'idb'
 
+import { secureDb } from '@/features/vault/secure-db'
+
 import type { Episode, Procedure, SemanticFact, SessionNote, VectorRecord } from './types'
 
 interface IMemoryDB extends DBSchema {
@@ -64,6 +66,6 @@ export function getMemoryDb() {
       void dbPromise?.then((db) => db.close())
       dbPromise = null
     },
-  })
+  }).then((db) => secureDb(db, DB_NAME))
   return dbPromise
 }

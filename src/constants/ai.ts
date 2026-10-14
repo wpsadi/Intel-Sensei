@@ -14,6 +14,10 @@ export const ANTHROPIC_BASE_URL_STORAGE = 'sensei.anthropic_base_url'
 export const GEMINI_MODEL = 'gemini-3.5-flash-lite'
 export const TRANSCRIBE_MODEL = 'gemini-3.5-transcribe'
 export const TEST_MODEL = 'gemini-3.5-flash-lite'
+/** Used by the OpenAI key test in Settings. */
+export const OPENAI_TEST_MODEL = 'gpt-6-luna'
+/** Used by the Anthropic key test in Settings. */
+export const ANTHROPIC_TEST_MODEL = 'claude-haiku-5-5'
 /** Runs the chat. */
 export const CHAT_MODEL = 'gemini-3.5-flash-lite'
 export const MINI_STUFF_MODEL = 'gemma-4-26b-a4b-it'
@@ -30,3 +34,13 @@ export const EMBEDDING_DIMENSIONS = 768
 export const S3D_AGENT_CONTEXT_LIMIT = 500_000
 /** Context window of the S-Note Sensei widget; older messages are compacted at 80% of it. */
 export const SNOTE_AGENT_CONTEXT_LIMIT = 250_000
+
+/** Every localStorage key that holds a secret or private setting, so they can be encrypted and exported together. */
+export const SECRET_STORAGE_KEYS = [
+  GEMINI_KEY_STORAGE,
+  FIRECRAWL_KEY_STORAGE,
+  OPENAI_KEY_STORAGE,
+  OPENAI_BASE_URL_STORAGE,
+  ANTHROPIC_KEY_STORAGE,
+  ANTHROPIC_BASE_URL_STORAGE,
+]

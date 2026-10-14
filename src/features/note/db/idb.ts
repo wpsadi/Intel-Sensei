@@ -1,5 +1,7 @@
 import { type DBSchema, type IDBPDatabase, openDB } from 'idb'
 
+import { secureDb } from '@/features/vault/secure-db'
+
 import type { Chat, ChatMessage, Database, Page, Person, Setting, SyncedBlock, View, WidgetChat } from './types'
 
 interface SNoteSchema extends DBSchema {
@@ -42,7 +44,7 @@ export function getDb() {
       }
       if (oldVersion < 3) db.createObjectStore('widgetChats', { keyPath: 'id' })
     },
-  })
+  }).then((db) => secureDb(db, DB_NAME))
   return dbPromise
 }
 

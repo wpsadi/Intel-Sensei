@@ -1,5 +1,7 @@
 import { type DBSchema, type IDBPDatabase, openDB } from 'idb'
 
+import { secureDb } from '@/features/vault/secure-db'
+
 export type UsageProvider = 'google' | 'anthropic' | 'openai'
 
 /** One model call (or one agent step): what was sent and what came back. Cost is worked out when shown, from models.dev prices. */
@@ -28,6 +30,6 @@ export function getUsageDb() {
     upgrade(db) {
       db.createObjectStore('logs', { keyPath: 'id' }).createIndex('byAt', 'at')
     },
-  })
+  }).then((db) => secureDb(db, 'sensei-usage'))
   return dbPromise
 }

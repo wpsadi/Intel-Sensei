@@ -1,5 +1,7 @@
 import { type DBSchema, type IDBPDatabase, openDB } from 'idb'
 
+import { secureDb } from '@/features/vault/secure-db'
+
 import type { AgentChat, Doc, FileMeta, Version } from './types'
 
 interface S3DSchema extends DBSchema {
@@ -24,7 +26,7 @@ export function getDb() {
       db.createObjectStore('chats', { keyPath: 'id' }).createIndex('byDoc', 'docId')
       db.createObjectStore('settings', { keyPath: 'key' })
     },
-  })
+  }).then((db) => secureDb(db, 's3d'))
   return dbPromise
 }
 

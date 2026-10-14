@@ -1,10 +1,12 @@
+import { BLOB_BUCKETS, blobMeta, putBlob, readBlob } from '@/features/vault/blob'
+
 import { uid } from './idb'
 
 /**
  * Media binaries live in the Cache Storage bucket, not IndexedDB.
  * Documents reference them with a `snote-media:<id>` src which is resolved to an object URL at render time.
  */
-const BUCKET = 'snote-media'
+const BUCKET = BLOB_BUCKETS[0]
 const SCHEME = 'snote-media:'
 const keyFor = (id: string) => new Request(`/__snote_media__/${id}`)
 
@@ -14,17 +16,7 @@ export const isMediaRef = (src: string) => src.startsWith(SCHEME)
 
 export async function putMedia(file: Blob, name = 'file') {
   const id = uid()
-  const cache = await caches.open(BUCKET)
-  await cache.put(
-    keyFor(id),
-    new Response(file, {
-      headers: {
-        'Content-Type': file.type || 'application/octet-stream',
-        'X-File-Name': encodeURIComponent(name),
-        'Content-Length': String(file.size),
-      },
-    }),
-  )
+  await putBlob(BUCKET, keyFor(id), file, name)
   return `${SCHEME}${id}`
 }
 
@@ -36,7 +28,7 @@ export function resolveMedia(src: string): Promise<string> {
     url = caches
       .open(BUCKET)
       .then((cache) => cache.match(keyFor(src.slice(SCHEME.length))))
-      .then(async (res) => (res ? URL.createObjectURL(await res.blob()) : ''))
+      .then(async (res) => (res ? URL.createObjectURL((await readBlob(res)).blob) : ''))
     objectUrls.set(src, url)
   }
   return url
@@ -46,18 +38,15 @@ export async function mediaInfo(src: string) {
   if (!isMediaRef(src)) return null
   const res = await (await caches.open(BUCKET)).match(keyFor(src.slice(SCHEME.length)))
   if (!res) return null
-  return {
-    name: decodeURIComponent(res.headers.get('X-File-Name') ?? 'file'),
-    type: res.headers.get('Content-Type') ?? '',
-    size: Number(res.headers.get('Content-Length') ?? 0),
-  }
+  const meta = await blobMeta(res)
+  return { name: meta.name || 'file', type: meta.type, size: meta.size }
 }
 
 /** The stored bytes for a media ref, or null when it is gone. */
 export async function readMedia(src: string): Promise<Blob | null> {
   if (!isMediaRef(src)) return null
   const res = await (await caches.open(BUCKET)).match(keyFor(src.slice(SCHEME.length)))
-  return res ? res.blob() : null
+  return res ? (await readBlob(res)).blob : null
 }
 
 export async function deleteMedia(src: string) {

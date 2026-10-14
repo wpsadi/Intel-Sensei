@@ -1,5 +1,7 @@
+import { vault } from '@/features/vault/vault'
+
 import type { VectorKind } from '../types'
-import type { VectorRequest, VectorResponse } from './vector.worker'
+import type { VaultMessage, VectorRequest, VectorResponse } from './vector.worker'
 
 type Kind = VectorKind
 type Pending = { resolve: (value: unknown) => void; reject: (error: Error) => void }
@@ -8,9 +10,20 @@ let worker: Worker | null = null
 let nextId = 1
 const pending = new Map<number, Pending>()
 
+/** Gives the worker the data key (a CryptoKey can be passed to a worker as is) and the write mode. */
+function sendVault(target: Worker) {
+  const { key, encrypting } = vault.snapshot()
+  target.postMessage({ type: 'vault', key, encrypting } satisfies VaultMessage)
+}
+
+vault.subscribe(() => {
+  if (worker) sendVault(worker)
+})
+
 function getWorker() {
   if (worker) return worker
   worker = new Worker(new URL('./vector.worker.ts', import.meta.url), { type: 'module' })
+  sendVault(worker)
   worker.onmessage = (event: MessageEvent<VectorResponse>) => {
     const reply = event.data
     const waiting = pending.get(reply.id)

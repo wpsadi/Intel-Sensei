@@ -2,7 +2,6 @@ import { useEffect, useRef, useState } from 'react'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 
-import { chatWithGemini } from '@/ai/inference/chat'
 import type { ChatTurn } from '@/ai/utils/messages'
 import { Button } from '@/components/ui/button'
 import { Bubble, Marker, MarkerContent, Message, MessageContent } from '@/components/ui/chat'
@@ -14,7 +13,20 @@ const QUESTIONS = ['hello', "What's the age of the universe?"]
 type Entry = { role: 'user' | 'assistant' | 'error'; content: string }
 
 /** Plays a short two-question conversation with the key passed in, so the key can be checked before saving. */
-export function GeminiTestDialog({ apiKey, open, onOpenChange }: { apiKey: string; open: boolean; onOpenChange: (open: boolean) => void }) {
+export function ProviderTestDialog({
+  provider,
+  model,
+  chat,
+  open,
+  onOpenChange,
+}: {
+  provider: string
+  model: string
+  /** Streams a reply to the conversation so far, calling `onText` as it grows. */
+  chat: (history: ChatTurn[], onText: (soFar: string) => void) => Promise<string>
+  open: boolean
+  onOpenChange: (open: boolean) => void
+}) {
   const [entries, setEntries] = useState<Entry[]>([])
   const [busy, setBusy] = useState(false)
 
@@ -31,7 +43,7 @@ export function GeminiTestDialog({ apiKey, open, onOpenChange }: { apiKey: strin
         // Add the question and an empty reply bubble; the reply fills in as chunks arrive.
         setEntries((prev) => [...prev, { role: 'user', content: question }, { role: 'assistant', content: '' }])
         try {
-          const reply = await chatWithGemini(apiKey, history, (soFar) => {
+          const reply = await chat(history, (soFar) => {
             if (alive) setEntries((prev) => prev.map((entry, index) => (index === prev.length - 1 ? { ...entry, content: soFar } : entry)))
           })
           if (!alive) return
@@ -49,7 +61,8 @@ export function GeminiTestDialog({ apiKey, open, onOpenChange }: { apiKey: strin
     return () => {
       alive = false
     }
-  }, [open, apiKey])
+    // oxlint-disable-next-line react/exhaustive-deps -- `chat` is a new closure every render; a run starts only when the dialog opens
+  }, [open])
 
   // Show the typing marker until the first chunk of the reply arrives.
   const last = entries.at(-1)
@@ -65,8 +78,8 @@ export function GeminiTestDialog({ apiKey, open, onOpenChange }: { apiKey: strin
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-md">
         <DialogHeader>
-          <DialogTitle>{busy ? 'Testing Gemini' : 'Test Done'}</DialogTitle>
-          <DialogDescription>Model: gemini-3.5-flash-lite</DialogDescription>
+          <DialogTitle>{busy ? `Testing ${provider}` : 'Test Done'}</DialogTitle>
+          <DialogDescription>Model: {model}</DialogDescription>
         </DialogHeader>
         <ScrollArea className="h-80 pr-3">
           <div className="flex flex-col gap-3 py-2">
@@ -85,7 +98,7 @@ export function GeminiTestDialog({ apiKey, open, onOpenChange }: { apiKey: strin
             )}
             {awaitingReply && (
               <Marker>
-                <MarkerContent>Gemini is typing…</MarkerContent>
+                <MarkerContent>{provider} is typing…</MarkerContent>
               </Marker>
             )}
             <div ref={bottomRef} />
