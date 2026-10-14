@@ -7,6 +7,7 @@ import { type Components, Streamdown } from 'streamdown'
 import { CodeBlock, CodeBlockActions, CodeBlockCopyButton, CodeBlockHeader, CodeBlockTitle } from '@/components/ai-elements/code-block'
 import { Snippet, SnippetAddon, SnippetCopyButton, SnippetInput } from '@/components/ai-elements/snippet'
 import { ScrollArea } from '@/components/ui/scroll-area'
+import { MarkdownImage, MarkdownLink, MediaGallery, paragraphMedia } from '@/features/ask-sensei/components/chat-media'
 
 const plugins = { cjk, math, mermaid }
 
@@ -18,6 +19,13 @@ const SHELL_LANGUAGES = new Set(['', 'bash', 'sh', 'shell', 'zsh', 'console', 'p
  * block with a copy button. Mermaid and math keep their own renderers.
  */
 const components: Components = {
+  // Several images or media in a row of their own share one self-adjusting gallery instead of stacking full width.
+  p: ({ children }) => {
+    const media = paragraphMedia(children)
+    return media ? <MediaGallery items={media} /> : <p>{children}</p>
+  },
+  img: MarkdownImage,
+  a: MarkdownLink,
   // Streamdown puts list markers inside the text box with no indent, so lists sit flush left; indent them like prose.
   ul: ({ children }) => (
     <ul className="my-2 list-outside list-disc space-y-1 pl-5 marker:text-muted-foreground [&_ul]:list-[circle]">{children}</ul>
@@ -66,7 +74,7 @@ const components: Components = {
   },
 }
 
-/** Renders chat text as markdown: headings, lists, to-dos, quotes, tables, code blocks, snippets, math and mermaid diagrams. */
+/** Renders chat text as markdown: headings, lists, to-dos, quotes, tables, images, video and audio, code blocks, snippets, math and mermaid diagrams. */
 export function Markdown({ children }: { children: string }) {
   return (
     <Streamdown plugins={plugins} components={components}>

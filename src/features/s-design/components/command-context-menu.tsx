@@ -2,13 +2,24 @@ import { ContextMenu } from '@base-ui/react/context-menu'
 import { ChevronRightIcon } from 'lucide-react'
 import type { ReactElement, ReactNode } from 'react'
 
-import { cmd } from '@/features/s-3d/commands'
+import { COMMAND_DEFS, type CommandId, isEnabled, run, useLabel } from '@/features/s-3d/commands'
 
 import type { MenuEntry } from './command-menus'
 
 const itemClass =
   'flex cursor-default items-center gap-6 rounded-sm px-2 py-1 text-xs outline-hidden select-none data-highlighted:bg-accent data-highlighted:text-accent-foreground data-disabled:pointer-events-none data-disabled:opacity-40'
 const popupClass = 'z-50 min-w-48 rounded-md bg-popover p-1 text-popover-foreground shadow-md ring-1 ring-foreground/10 outline-none'
+
+/** One command row. Its shortcut comes from the first binding, via useLabel, so it follows user rebinding. */
+function CommandItem({ id }: { id: CommandId }) {
+  const shortcut = useLabel(id)
+  return (
+    <ContextMenu.Item className={itemClass} disabled={!isEnabled(id)} onClick={() => run(id)}>
+      {COMMAND_DEFS[id].label}
+      {shortcut && <span className="ml-auto text-[10px] tracking-widest text-muted-foreground">{shortcut}</span>}
+    </ContextMenu.Item>
+  )
+}
 
 function Entries({ items }: { items: MenuEntry[] }) {
   return items.map((entry, i) => {
@@ -29,13 +40,7 @@ function Entries({ items }: { items: MenuEntry[] }) {
           </ContextMenu.Portal>
         </ContextMenu.SubmenuRoot>
       )
-    const c = cmd(entry)
-    return (
-      <ContextMenu.Item key={entry} className={itemClass} disabled={c.enabled ? !c.enabled() : false} onClick={() => c.run()}>
-        {c.label}
-        {c.shortcut && <span className="ml-auto text-[10px] tracking-widest text-muted-foreground">{c.shortcut}</span>}
-      </ContextMenu.Item>
-    )
+    return <CommandItem key={entry} id={entry as CommandId} />
   })
 }
 

@@ -1,5 +1,5 @@
 /// <reference lib="webworker" />
-import { type ExecResult, PYODIDE_INDEX_URL, type PyodideLike, mountFile, prepare, readFile, runShell, writeTextFile } from './engine'
+import { type ExecResult, PYODIDE_INDEX_URL, type PyodideLike, mountFile, prepare, readFile, runShell, writeSkills, writeTextFile } from './engine'
 
 /** What the page asks for. `id` pairs a request with its reply. */
 export type SandboxRequest = { id: number } & (
@@ -8,6 +8,7 @@ export type SandboxRequest = { id: number } & (
   | { op: 'write'; path: string; text: string; append: boolean }
   | { op: 'mount'; files: { name: string; bytes: Uint8Array; readonly?: boolean }[] }
   | { op: 'read'; path: string }
+  | { op: 'skills'; skills: { name: string; description: string; body: string }[] }
 )
 export type SandboxResult = ExecResult | { paths: string[] } | { bytes: Uint8Array } | { path: string }
 export type SandboxResponse = { id: number; ok: true; result: SandboxResult } | { id: number; ok: false; error: string }
@@ -52,6 +53,7 @@ self.onmessage = async (event: MessageEvent<SandboxRequest>) => {
     if (request.op === 'shell') result = await runShell(py, request.command)
     else if (request.op === 'ping') result = { paths: [] }
     else if (request.op === 'write') result = { path: writeTextFile(py, request.path, request.text, request.append) }
+    else if (request.op === 'skills') result = { path: writeSkills(py, request.skills) }
     else if (request.op === 'mount') result = { paths: request.files.map((file) => mountFile(py, file.name, file.bytes, file.readonly)) }
     else result = { bytes: readFile(py, request.path) }
     self.postMessage({ id: request.id, ok: true, result } satisfies SandboxResponse)

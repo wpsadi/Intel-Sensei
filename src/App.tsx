@@ -11,6 +11,7 @@ import ErrorPage from '@/pages/error.page'
 import HomePage from '@/pages/home.page'
 import NotFoundPage from '@/pages/not-found.page'
 import S3DPage from '@/pages/s-3d.page'
+import SBrowsePage from '@/pages/s-browse.page'
 import SDesignPage from '@/pages/s-design.page'
 
 // The editor pulls in Tiptap, KaTeX, Mermaid and Leaflet; load it only on /s-note.
@@ -30,6 +31,7 @@ const router = createBrowserRouter([
         children: [{ index: true }, { path: ':chatId' }],
       },
       { path: '/ai-usage', element: <AiUsagePage /> },
+      { path: '/s-browse', element: <SBrowsePage /> },
       {
         path: '/s-note',
         element: (

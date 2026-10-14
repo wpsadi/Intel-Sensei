@@ -1,3 +1,8 @@
+import { detectPlatform } from '@tanstack/react-hotkeys'
+
+import { type CommandDefs, type DefaultBindings, createCommandSystem } from '@/lib/commands'
+
+import { useS3DDialog } from './dialogs/dialog-store'
 import { importFiles } from './io'
 import { useS3D } from './store'
 import type { Tool } from './types'
@@ -9,203 +14,322 @@ const selNodes = () =>
     .selection.map((id) => s().doc.nodes[id])
     .filter(Boolean)
 
-export interface Command {
-  id: string
-  label: string
-  /** Display form, e.g. "⌘D". */
-  shortcut?: string
-  /** Matcher form: mod+shift+alt+key (lowercase key). */
-  keys?: string[]
-  run: () => void
-  enabled?: () => boolean
-}
-
-export const isMac = typeof navigator !== 'undefined' && /Mac|iPhone|iPad/.test(navigator.platform)
-const M = isMac ? '⌘' : 'Ctrl+'
-const SH = isMac ? '⇧' : 'Shift+'
-const ALT = isMac ? '⌥' : 'Alt+'
+export const isMac = detectPlatform() === 'mac'
 
 const tool = (t: Tool) => () => s().set({ tool: t, selection: t === 'select' ? s().selection : [] })
 /** Pixel tools keep the selection: they act on the image under the pointer or the selected one. */
 const raster = (t: Tool) => () => s().set({ tool: t })
+/** Copy, cut and paste keep their keys on the native clipboard events, so the dispatcher does not claim them. */
+/** Scene-editor commands. Their implementation is supplied by the mounted SceneEditor through useCommandHandler. */
+const sceneOnly = () => {}
 
-export const COMMANDS: Command[] = [
-  { id: 'undo', label: 'Undo', shortcut: `${M}Z`, keys: ['mod+z'], run: () => s().undo(), enabled: () => s().past.length > 0 },
-  {
-    id: 'redo',
-    label: 'Redo',
-    shortcut: `${SH}${M}Z`,
-    keys: ['mod+shift+z', 'mod+y'],
-    run: () => s().redo(),
-    enabled: () => s().future.length > 0,
-  },
-  { id: 'copy', label: 'Copy', shortcut: `${M}C`, keys: ['mod+c'], run: () => s().copy(), enabled: hasSel },
-  { id: 'cut', label: 'Cut', shortcut: `${M}X`, keys: ['mod+x'], run: () => s().cut(), enabled: hasSel },
-  { id: 'paste', label: 'Paste', shortcut: `${M}V`, keys: ['mod+v'], run: () => s().paste(), enabled: () => !!s().clipboard },
-  { id: 'duplicate', label: 'Duplicate', shortcut: `${M}D`, keys: ['mod+d'], run: () => s().duplicate(), enabled: hasSel },
-  {
-    id: 'delete',
-    label: 'Delete',
-    shortcut: '⌫',
-    keys: ['delete', 'backspace'],
-    run: () => s().deleteNodes(s().selection),
-    enabled: hasSel,
-  },
-  { id: 'select-all', label: 'Select all', shortcut: `${M}A`, keys: ['mod+a'], run: () => s().selectAll() },
-  { id: 'group', label: 'Group selection', shortcut: `${M}G`, keys: ['mod+g'], run: () => s().group(), enabled: hasSel },
-  {
-    id: 'frame-selection',
+/**
+ * What each command does. Commands hold no keys: see DEFAULT_BINDINGS, and user overrides on top of it.
+ * Scope: 'editor' for the canvas, 'scene' for the 3D scene editor, 'global' for app-wide help.
+ */
+export const COMMAND_DEFS = {
+  undo: { label: 'Undo', group: 'Edit', scope: 'editor', run: () => s().undo(), enabled: () => s().past.length > 0 },
+  redo: { label: 'Redo', group: 'Edit', scope: 'editor', run: () => s().redo(), enabled: () => s().future.length > 0 },
+  copy: { label: 'Copy', group: 'Edit', scope: 'editor', keyboard: false, run: () => s().copy(), enabled: hasSel },
+  cut: { label: 'Cut', group: 'Edit', scope: 'editor', keyboard: false, run: () => s().cut(), enabled: hasSel },
+  paste: { label: 'Paste', group: 'Edit', scope: 'editor', keyboard: false, run: () => s().paste(), enabled: () => !!s().clipboard },
+  duplicate: { label: 'Duplicate', group: 'Edit', scope: 'editor', run: () => s().duplicate(), enabled: hasSel },
+  delete: { label: 'Delete', group: 'Edit', scope: 'editor', run: () => s().deleteNodes(s().selection), enabled: hasSel },
+  'select-all': { label: 'Select all', group: 'Edit', scope: 'editor', run: () => s().selectAll() },
+  group: { label: 'Group selection', group: 'Object', scope: 'editor', run: () => s().group(), enabled: hasSel },
+  'frame-selection': {
     label: 'Frame selection',
-    shortcut: `${ALT}${M}G`,
-    keys: ['mod+alt+g'],
+    group: 'Object',
+    scope: 'editor',
     run: () => s().group(undefined, 'frame'),
     enabled: hasSel,
   },
-  { id: 'ungroup', label: 'Ungroup', shortcut: `${SH}${M}G`, keys: ['mod+shift+g'], run: () => s().ungroup(), enabled: hasSel },
-  {
-    id: 'mask',
+  ungroup: { label: 'Ungroup', group: 'Object', scope: 'editor', run: () => s().ungroup(), enabled: hasSel },
+  mask: {
     label: 'Use as mask',
-    shortcut: `${ALT}${M}M`,
-    keys: ['mod+alt+m'],
+    group: 'Object',
+    scope: 'editor',
     run: () => {
       s().group()
       s().updateNodes(s().selection, { mask: true, name: 'Mask group' })
     },
     enabled: () => s().selection.length > 1,
   },
-  {
-    id: 'union',
+  union: {
     label: 'Union selection',
-    keys: ['mod+alt+u'],
+    group: 'Object',
+    scope: 'editor',
     run: () => s().group(undefined, 'boolean', 'union'),
     enabled: () => s().selection.length > 1,
   },
-  {
-    id: 'subtract',
+  subtract: {
     label: 'Subtract selection',
-    keys: ['mod+alt+s'],
+    group: 'Object',
+    scope: 'editor',
     run: () => s().group(undefined, 'boolean', 'subtract'),
     enabled: () => s().selection.length > 1,
   },
-  {
-    id: 'intersect',
+  intersect: {
     label: 'Intersect selection',
-    keys: ['mod+alt+i'],
+    group: 'Object',
+    scope: 'editor',
     run: () => s().group(undefined, 'boolean', 'intersect'),
     enabled: () => s().selection.length > 1,
   },
-  {
-    id: 'exclude',
+  exclude: {
     label: 'Exclude selection',
-    keys: ['mod+alt+e'],
+    group: 'Object',
+    scope: 'editor',
     run: () => s().group(undefined, 'boolean', 'exclude'),
     enabled: () => s().selection.length > 1,
   },
-  { id: 'bring-front', label: 'Bring to front', shortcut: `${M}]`, keys: ['mod+]'], run: () => s().arrange('front'), enabled: hasSel },
-  { id: 'bring-forward', label: 'Bring forward', shortcut: ']', keys: [']'], run: () => s().arrange('forward'), enabled: hasSel },
-  { id: 'send-backward', label: 'Send backward', shortcut: '[', keys: ['['], run: () => s().arrange('backward'), enabled: hasSel },
-  { id: 'send-back', label: 'Send to back', shortcut: `${M}[`, keys: ['mod+['], run: () => s().arrange('back'), enabled: hasSel },
-  { id: 'flip-h', label: 'Flip horizontal', shortcut: `${SH}H`, keys: ['shift+h'], run: () => s().flip('h'), enabled: hasSel },
-  { id: 'flip-v', label: 'Flip vertical', shortcut: `${SH}V`, keys: ['shift+v'], run: () => s().flip('v'), enabled: hasSel },
-  {
-    id: 'toggle-visible',
+  'bring-front': { label: 'Bring to front', group: 'Arrange', scope: 'editor', run: () => s().arrange('front'), enabled: hasSel },
+  'bring-forward': { label: 'Bring forward', group: 'Arrange', scope: 'editor', run: () => s().arrange('forward'), enabled: hasSel },
+  'send-backward': { label: 'Send backward', group: 'Arrange', scope: 'editor', run: () => s().arrange('backward'), enabled: hasSel },
+  'send-back': { label: 'Send to back', group: 'Arrange', scope: 'editor', run: () => s().arrange('back'), enabled: hasSel },
+  'flip-h': { label: 'Flip horizontal', group: 'Arrange', scope: 'editor', run: () => s().flip('h'), enabled: hasSel },
+  'flip-v': { label: 'Flip vertical', group: 'Arrange', scope: 'editor', run: () => s().flip('v'), enabled: hasSel },
+  'toggle-visible': {
     label: 'Show/Hide',
-    shortcut: `${SH}${M}H`,
-    keys: ['mod+shift+h'],
+    group: 'Object',
+    scope: 'editor',
     run: () => {
       const all = selNodes().every((n) => n.visible)
       s().updateNodes(s().selection, { visible: !all })
     },
     enabled: hasSel,
   },
-  {
-    id: 'toggle-lock',
+  'toggle-lock': {
     label: 'Lock/Unlock',
-    shortcut: `${SH}${M}L`,
-    keys: ['mod+shift+l'],
+    group: 'Object',
+    scope: 'editor',
     run: () => {
       const all = selNodes().every((n) => n.locked)
       s().updateNodes(s().selection, { locked: !all })
     },
     enabled: hasSel,
   },
-  {
-    id: 'toggle-clip',
+  'toggle-clip': {
     label: 'Clip content',
+    group: 'Object',
+    scope: 'editor',
     run: () => {
       const all = selNodes().every((n) => n.clip)
       s().updateNodes(s().selection, { clip: !all })
     },
     enabled: () => selNodes().some((n) => n.type === 'frame' || n.type === 'section'),
   },
-  { id: 'add-auto-layout', label: 'Add auto layout', shortcut: `${SH}A`, keys: ['shift+a'], run: () => addAutoLayout(), enabled: hasSel },
-  { id: 'zoom-fit', label: 'Zoom to fit', shortcut: `${SH}1`, keys: ['shift+1', 'shift+!'], run: () => s().zoomToFit() },
-  {
-    id: 'zoom-selection',
+  'add-auto-layout': { label: 'Add auto layout', group: 'Object', scope: 'editor', run: () => addAutoLayout(), enabled: hasSel },
+  'zoom-fit': { label: 'Zoom to fit', group: 'View', scope: 'editor', run: () => s().zoomToFit() },
+  'zoom-selection': {
     label: 'Zoom to selection',
-    shortcut: `${SH}2`,
-    keys: ['shift+2', 'shift+@'],
+    group: 'View',
+    scope: 'editor',
     run: () => s().zoomToFit(s().selection),
     enabled: hasSel,
   },
-  { id: 'zoom-100', label: 'Zoom to 100%', shortcut: `${SH}0`, keys: ['shift+0', 'shift+)'], run: () => s().zoomTo(1) },
-  { id: 'zoom-in', label: 'Zoom in', shortcut: `${M}+`, keys: ['mod+=', 'mod++', '=', '+'], run: () => s().zoomTo(s().camera.zoom * 1.25) },
-  { id: 'zoom-out', label: 'Zoom out', shortcut: `${M}-`, keys: ['mod+-', '-'], run: () => s().zoomTo(s().camera.zoom / 1.25) },
-  { id: 'toggle-rulers', label: 'Rulers', shortcut: `${SH}R`, keys: ['shift+r'], run: () => s().set({ showRulers: !s().showRulers }) },
-  { id: 'toggle-grid', label: 'Pixel grid', shortcut: `${M}'`, keys: ["mod+'"], run: () => s().set({ showGrid: !s().showGrid }) },
-  {
-    id: 'toggle-snap',
+  'zoom-100': { label: 'Zoom to 100%', group: 'View', scope: 'editor', run: () => s().zoomTo(1) },
+  'zoom-in': { label: 'Zoom in', group: 'View', scope: 'editor', run: () => s().zoomTo(s().camera.zoom * 1.25) },
+  'zoom-out': { label: 'Zoom out', group: 'View', scope: 'editor', run: () => s().zoomTo(s().camera.zoom / 1.25) },
+  'toggle-rulers': { label: 'Rulers', group: 'View', scope: 'editor', run: () => s().set({ showRulers: !s().showRulers }) },
+  'toggle-grid': { label: 'Pixel grid', group: 'View', scope: 'editor', run: () => s().set({ showGrid: !s().showGrid }) },
+  'toggle-snap': {
     label: 'Snap to grid',
-    shortcut: `${SH}${M}'`,
-    keys: ["mod+shift+'", 'mod+shift+"'],
+    group: 'View',
+    scope: 'editor',
     run: () => s().set({ snapToGrid: !s().snapToGrid }),
   },
-  { id: 'save', label: 'Save version', shortcut: `${M}S`, keys: ['mod+s'], run: () => void s().saveNow('Manual save') },
-  { id: 'import', label: 'Import…', shortcut: `${SH}${M}K`, keys: ['mod+shift+k'], run: () => void importFiles() },
-  {
-    id: 'play',
+  save: { label: 'Save version', group: 'File', scope: 'editor', run: () => void s().saveNow('Manual save') },
+  import: { label: 'Import…', group: 'File', scope: 'editor', run: () => void importFiles() },
+  export: { label: 'Export…', group: 'File', scope: 'editor', run: () => useS3DDialog.getState().setOpen('export') },
+  open: { label: 'Open…', group: 'File', scope: 'editor', run: () => useS3DDialog.getState().setOpen('open') },
+  play: {
     label: 'Preview / Play',
-    shortcut: `${ALT}${M}↵`,
-    keys: ['mod+alt+enter'],
+    group: 'View',
+    scope: 'editor',
     run: () => s().set({ mode: s().mode === 'play' ? 'edit' : 'play' }),
   },
-  { id: 'tool-select', label: 'Move', shortcut: 'V', keys: ['v'], run: tool('select') },
-  { id: 'tool-hand', label: 'Hand', shortcut: 'H', keys: ['h'], run: tool('hand') },
-  { id: 'tool-frame', label: 'Frame', shortcut: 'F', keys: ['f', 'a'], run: tool('frame') },
-  { id: 'tool-section', label: 'Section', shortcut: `${SH}S`, keys: ['shift+s'], run: tool('section') },
-  { id: 'tool-rect', label: 'Rectangle', shortcut: 'R', keys: ['r'], run: tool('rect') },
-  { id: 'tool-ellipse', label: 'Ellipse', shortcut: 'O', keys: ['o'], run: tool('ellipse') },
-  { id: 'tool-polygon', label: 'Polygon', shortcut: 'Y', keys: ['y'], run: tool('polygon') },
-  { id: 'tool-star', label: 'Star', shortcut: `${SH}X`, keys: ['shift+x'], run: tool('star') },
-  { id: 'tool-pen', label: 'Pen', shortcut: 'P', keys: ['p'], run: tool('pen') },
-  { id: 'tool-text', label: 'Text', shortcut: 'T', keys: ['t'], run: tool('text') },
-  { id: 'tool-comment', label: 'Comment', shortcut: 'C', keys: ['c'], run: tool('comment') },
-  { id: 'tool-3d', label: '3D shape', shortcut: 'K', keys: ['k'], run: tool('shape3d') },
-  { id: 'tool-brush', label: 'Brush', shortcut: 'B', keys: ['b'], run: raster('brush') },
-  { id: 'tool-eraser', label: 'Eraser', shortcut: 'E', keys: ['e'], run: raster('eraser') },
-  { id: 'tool-clone', label: 'Clone stamp', shortcut: 'S', keys: ['s'], run: raster('clone') },
-  { id: 'tool-heal', label: 'Spot healing', shortcut: 'J', keys: ['j'], run: raster('heal') },
-  { id: 'tool-marquee', label: 'Marquee', shortcut: 'M', keys: ['m'], run: () => s().set({ tool: 'marquee', marqueeShape: 'rect' }) },
-  { id: 'tool-marquee-ellipse', label: 'Elliptical marquee', run: () => s().set({ tool: 'marquee', marqueeShape: 'ellipse' }) },
-  { id: 'tool-lasso', label: 'Lasso', shortcut: 'L', keys: ['l'], run: raster('lasso') },
-  { id: 'tool-wand', label: 'Magic wand', shortcut: 'W', keys: ['w'], run: raster('wand') },
-  { id: 'tool-quick', label: 'Quick selection', shortcut: 'Q', keys: ['q'], run: raster('quick') },
-  { id: 'tool-crop', label: 'Crop', shortcut: `${SH}C`, keys: ['shift+c'], run: raster('crop') },
-  { id: 'tool-eyedropper', label: 'Eyedropper', shortcut: 'I', keys: ['i'], run: raster('eyedropper') },
-  { id: 'tool-zoom', label: 'Zoom', shortcut: 'Z', keys: ['z'], run: raster('zoom') },
-  {
-    id: 'swap-colors',
+  'shortcuts-help': {
+    label: 'Keyboard shortcuts',
+    group: 'Help',
+    scope: 'global',
+    run: () => useS3DDialog.getState().setOpen('shortcuts'),
+  },
+  'tool-select': { label: 'Move', group: 'Tools', scope: 'editor', run: tool('select') },
+  'tool-hand': { label: 'Hand', group: 'Tools', scope: 'editor', run: tool('hand') },
+  'tool-frame': { label: 'Frame', group: 'Tools', scope: 'editor', run: tool('frame') },
+  'tool-section': { label: 'Section', group: 'Tools', scope: 'editor', run: tool('section') },
+  'tool-rect': { label: 'Rectangle', group: 'Tools', scope: 'editor', run: tool('rect') },
+  'tool-ellipse': { label: 'Ellipse', group: 'Tools', scope: 'editor', run: tool('ellipse') },
+  'tool-polygon': { label: 'Polygon', group: 'Tools', scope: 'editor', run: tool('polygon') },
+  'tool-star': { label: 'Star', group: 'Tools', scope: 'editor', run: tool('star') },
+  'tool-pen': { label: 'Pen', group: 'Tools', scope: 'editor', run: tool('pen') },
+  'tool-text': { label: 'Text', group: 'Tools', scope: 'editor', run: tool('text') },
+  'tool-comment': { label: 'Comment', group: 'Tools', scope: 'editor', run: tool('comment') },
+  'tool-3d': { label: '3D shape', group: 'Tools', scope: 'editor', run: tool('shape3d') },
+  'tool-brush': { label: 'Brush', group: 'Tools', scope: 'editor', run: raster('brush') },
+  'tool-eraser': { label: 'Eraser', group: 'Tools', scope: 'editor', run: raster('eraser') },
+  'tool-clone': { label: 'Clone stamp', group: 'Tools', scope: 'editor', run: raster('clone') },
+  'tool-heal': { label: 'Spot healing', group: 'Tools', scope: 'editor', run: raster('heal') },
+  'tool-marquee': { label: 'Marquee', group: 'Tools', scope: 'editor', run: () => s().set({ tool: 'marquee', marqueeShape: 'rect' }) },
+  'tool-marquee-ellipse': {
+    label: 'Elliptical marquee',
+    group: 'Tools',
+    scope: 'editor',
+    run: () => s().set({ tool: 'marquee', marqueeShape: 'ellipse' }),
+  },
+  'tool-lasso': { label: 'Lasso', group: 'Tools', scope: 'editor', run: raster('lasso') },
+  'tool-wand': { label: 'Magic wand', group: 'Tools', scope: 'editor', run: raster('wand') },
+  'tool-quick': { label: 'Quick selection', group: 'Tools', scope: 'editor', run: raster('quick') },
+  'tool-crop': { label: 'Crop', group: 'Tools', scope: 'editor', run: raster('crop') },
+  'tool-eyedropper': { label: 'Eyedropper', group: 'Tools', scope: 'editor', run: raster('eyedropper') },
+  'tool-zoom': { label: 'Zoom', group: 'Tools', scope: 'editor', run: raster('zoom') },
+  'swap-colors': {
     label: 'Swap colours',
-    shortcut: 'X',
-    keys: ['x'],
+    group: 'Tools',
+    scope: 'editor',
     run: () => s().set({ foregroundColor: s().backgroundColor, backgroundColor: s().foregroundColor }),
   },
-]
+  // Canvas keys that used to be read straight off the window. The canvas supplies the pen-aware versions of these.
+  escape: { label: 'Cancel / deselect', group: 'Selection', scope: 'editor', run: sceneOnly },
+  enter: { label: 'Edit text / select children', group: 'Selection', scope: 'editor', run: sceneOnly },
+  'select-next': { label: 'Select next sibling', group: 'Selection', scope: 'editor', run: sceneOnly },
+  'select-previous': { label: 'Select previous sibling', group: 'Selection', scope: 'editor', run: sceneOnly },
+  'nudge-left': { label: 'Nudge left', group: 'Arrange', scope: 'editor', run: (e) => nudge(-1, 0, e), enabled: hasSel },
+  'nudge-right': { label: 'Nudge right', group: 'Arrange', scope: 'editor', run: (e) => nudge(1, 0, e), enabled: hasSel },
+  'nudge-up': { label: 'Nudge up', group: 'Arrange', scope: 'editor', run: (e) => nudge(0, -1, e), enabled: hasSel },
+  'nudge-down': { label: 'Nudge down', group: 'Arrange', scope: 'editor', run: (e) => nudge(0, 1, e), enabled: hasSel },
+  // Scene editor. The mounted SceneEditor supplies the real implementation.
+  'scene-translate': { label: 'Move gizmo', group: 'Scene', scope: 'scene', run: sceneOnly },
+  'scene-rotate': { label: 'Rotate gizmo', group: 'Scene', scope: 'scene', run: sceneOnly },
+  'scene-scale': { label: 'Scale gizmo', group: 'Scene', scope: 'scene', run: sceneOnly },
+  'scene-frame': { label: 'Frame object', group: 'Scene', scope: 'scene', run: sceneOnly },
+  'scene-delete': { label: 'Delete object', group: 'Scene', scope: 'scene', run: sceneOnly },
+  'scene-duplicate': { label: 'Duplicate object', group: 'Scene', scope: 'scene', run: sceneOnly },
+  'scene-undo': { label: 'Undo', group: 'Scene', scope: 'scene', run: sceneOnly },
+  'scene-redo': { label: 'Redo', group: 'Scene', scope: 'scene', run: sceneOnly },
+  'scene-deselect': { label: 'Deselect, then close', group: 'Scene', scope: 'scene', run: sceneOnly },
+} satisfies CommandDefs<string>
 
-export const cmd = (id: string) => COMMANDS.find((c) => c.id === id)!
-export const runCmd = (id: string) => {
-  const c = cmd(id)
-  if (!c.enabled || c.enabled()) c.run()
+export type CommandId = keyof typeof COMMAND_DEFS
+
+/**
+ * Default bindings, kept apart from the commands above. Each entry lists every way to trigger the command.
+ * The first entry is the one shown first in menus.
+ */
+export const DEFAULT_BINDINGS = {
+  undo: ['Mod+Z'],
+  redo: ['Mod+Shift+Z', 'Mod+Y'],
+  copy: ['Mod+C'],
+  cut: ['Mod+X'],
+  paste: ['Mod+V'],
+  duplicate: ['Mod+D'],
+  delete: ['Delete', 'Backspace'],
+  'select-all': ['Mod+A'],
+  group: ['Mod+G'],
+  'frame-selection': ['Mod+Alt+G'],
+  ungroup: ['Mod+Shift+G'],
+  mask: ['Mod+Alt+M'],
+  union: ['Mod+Alt+U'],
+  subtract: ['Mod+Alt+S'],
+  intersect: ['Mod+Alt+I'],
+  exclude: ['Mod+Alt+E'],
+  'bring-front': ['Mod+]'],
+  'bring-forward': [']'],
+  'send-backward': ['['],
+  'send-back': ['Mod+['],
+  'flip-h': ['Shift+H'],
+  'flip-v': ['Shift+V'],
+  'toggle-visible': ['Mod+Shift+H'],
+  'toggle-lock': ['Mod+Shift+L'],
+  'add-auto-layout': ['Shift+A'],
+  'zoom-fit': ['Shift+1', 'Shift+!'],
+  'zoom-selection': ['Shift+2', 'Shift+@'],
+  'zoom-100': ['Shift+0', 'Shift+)'],
+  'zoom-in': ['Mod+=', 'Mod++', '=', '+'],
+  'zoom-out': ['Mod+-', '-'],
+  'toggle-rulers': ['Shift+R'],
+  'toggle-grid': ["Mod+'"],
+  'toggle-snap': ["Mod+Shift+'", 'Mod+Shift+"'],
+  save: ['Mod+S'],
+  import: ['Mod+Shift+K'],
+  export: ['Mod+E'],
+  open: ['Mod+O'],
+  play: ['Mod+Alt+Enter'],
+  'shortcuts-help': ['Mod+/', 'Shift+?'],
+  'tool-select': ['V'],
+  'tool-hand': ['H'],
+  'tool-frame': ['F', 'A'],
+  'tool-section': ['Shift+S'],
+  'tool-rect': ['R'],
+  'tool-ellipse': ['O'],
+  'tool-polygon': ['Y'],
+  'tool-star': ['Shift+X'],
+  'tool-pen': ['P'],
+  'tool-text': ['T'],
+  'tool-comment': ['C'],
+  'tool-3d': ['K'],
+  'tool-brush': ['B'],
+  'tool-eraser': ['E'],
+  'tool-clone': ['S'],
+  'tool-heal': ['J'],
+  'tool-marquee': ['M'],
+  'tool-lasso': ['L'],
+  'tool-wand': ['W'],
+  'tool-quick': ['Q'],
+  'tool-crop': ['Shift+C'],
+  'tool-eyedropper': ['I'],
+  'tool-zoom': ['Z'],
+  'swap-colors': ['X'],
+  escape: ['Escape'],
+  enter: ['Enter'],
+  'select-next': ['Tab'],
+  'select-previous': ['Shift+Tab'],
+  'nudge-left': ['ArrowLeft', 'Shift+ArrowLeft'],
+  'nudge-right': ['ArrowRight', 'Shift+ArrowRight'],
+  'nudge-up': ['ArrowUp', 'Shift+ArrowUp'],
+  'nudge-down': ['ArrowDown', 'Shift+ArrowDown'],
+  'scene-translate': ['W', 'G'],
+  'scene-rotate': ['E'],
+  'scene-scale': ['R', 'S'],
+  'scene-frame': ['F'],
+  'scene-delete': ['Delete', 'Backspace'],
+  'scene-duplicate': ['Mod+D'],
+  'scene-undo': ['Mod+Z'],
+  'scene-redo': ['Mod+Shift+Z', 'Mod+Y'],
+  'scene-deselect': ['Escape'],
+} satisfies DefaultBindings<CommandId>
+
+export const commandSystem = createCommandSystem<CommandId>({
+  storageKey: 'intel-sensei:shortcuts',
+  commands: COMMAND_DEFS,
+  defaults: DEFAULT_BINDINGS,
+})
+
+export const {
+  ids: COMMAND_IDS,
+  labelOf,
+  run,
+  isEnabled,
+  bindingsOf,
+  useBindings,
+  useLabel,
+  useDispatcher,
+  useCommandHandler,
+} = commandSystem
+
+/** Runs a command by id, for menus and buttons. Skips it when its `enabled()` says no. */
+export const runCmd = run
+
+function nudge(dx: number, dy: number, e?: KeyboardEvent) {
+  const d = e?.shiftKey ? 10 : 1
+  s().updateNodes(
+    s().selection.filter((id) => !s().doc.nodes[id]?.locked),
+    (n) => {
+      n.x += dx * d
+      n.y += dy * d
+    },
+  )
 }
 
 function addAutoLayout() {
@@ -227,15 +351,4 @@ function addAutoLayout() {
     sizing: { h: 'hug', v: 'hug' },
     name: 'Auto layout',
   })
-}
-
-/** Normalises a keyboard event to the matcher form used in `keys`. */
-export function eventKey(e: KeyboardEvent) {
-  const parts: string[] = []
-  if (e.metaKey || e.ctrlKey) parts.push('mod')
-  if (e.shiftKey) parts.push('shift')
-  if (e.altKey) parts.push('alt')
-  const key = e.code.startsWith('Digit') && e.shiftKey ? e.code.slice(5) : e.key.toLowerCase()
-  parts.push(key === ' ' ? 'space' : key)
-  return parts.join('+')
 }

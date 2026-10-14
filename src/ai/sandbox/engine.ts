@@ -13,6 +13,8 @@ export const PYODIDE_INDEX_URL = `https://cdn.jsdelivr.net/pyodide/v${PYODIDE_VE
 export const SANDBOX_HOME = '/home/user'
 /** The one folder the terminal cannot write to: what Sensei makes for the user is put here, and only the editor changes it. */
 export const ARTIFACTS_DIR = `${SANDBOX_HOME}/artifacts`
+/** Where the installed skills are written, one folder each with a SKILL.md, so the terminal can list and read them. */
+export const SKILLS_DIR = `${SANDBOX_HOME}/skills`
 /** Largest file accepted into the sandbox. */
 export const FILE_MAX_BYTES = 30 * 1024 * 1024
 /** A command that runs longer than this is stopped. */
@@ -105,6 +107,16 @@ export function mountFile(py: PyodideLike, name: string, bytes: Uint8Array, read
   for (let n = 2; py.FS.analyzePath(path).exists; n++) path = `${SANDBOX_HOME}/${stem} (${n})${ext}`
   py.FS.writeFile(path, bytes)
   return path
+}
+
+/** Replaces the skills folder with these skills, each as `skills/<name>/SKILL.md` with its front matter. */
+export function writeSkills(py: PyodideLike, skills: { name: string; description: string; body: string }[]) {
+  py.runPython(`import shutil; shutil.rmtree(${JSON.stringify(SKILLS_DIR)}, ignore_errors=True)`)
+  for (const skill of skills) {
+    const front = `---\nname: ${skill.name}\ndescription: ${JSON.stringify(skill.description)}\n---\n\n`
+    writeTextFile(py, `${SKILLS_DIR}/${safeName(skill.name)}/SKILL.md`, front + skill.body + '\n')
+  }
+  return SKILLS_DIR
 }
 
 /** The bytes of a file in the sandbox; a relative path counts from the home folder. */

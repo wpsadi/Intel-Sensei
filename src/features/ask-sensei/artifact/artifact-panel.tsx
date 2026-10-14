@@ -1,5 +1,5 @@
 import { CheckIcon, CopyIcon, DownloadIcon, ExternalLinkIcon, LoaderCircleIcon, XIcon } from 'lucide-react'
-import { type ReactNode, Suspense, lazy, useEffect, useRef, useState } from 'react'
+import { type ReactNode, Suspense, lazy, useEffect, useMemo, useRef, useState } from 'react'
 
 import { Button } from '@/components/ui/button'
 import { ScrollArea } from '@/components/ui/scroll-area'
@@ -9,6 +9,7 @@ import type { ChatAttachment } from '@/features/note/db/types'
 import { Markdown } from '@/features/ask-sensei/components/markdown'
 import { useCopy } from '@/hooks/use-copy'
 import { useIsMobile } from '@/hooks/use-mobile'
+import { connectFrame, withFrameBridge } from '@/lib/sandbox-frame'
 import { cn } from '@/lib/utils'
 
 import { ARTIFACT_MIN_WIDTH, type ArtifactKind, artifactKind, useArtifacts } from './artifact.store'
@@ -33,6 +34,21 @@ function useFileText(src: string, enabled: boolean, reload = 0) {
 
 const Note = ({ children }: { children: string }) => <p className="p-6 text-sm text-muted-foreground">{children}</p>
 
+/** An HTML file in a sandboxed frame, connected to this app over Postmate. */
+function HtmlFrame({ title, html }: { title: string; html: string }) {
+  const frame = useRef<HTMLIFrameElement>(null)
+  const srcDoc = useMemo(() => withFrameBridge(html), [html])
+  useEffect(() => {
+    if (!frame.current) return
+    const connection = connectFrame(frame.current)
+    // A page that removed the bridge never answers, which is fine: it just stays unconnected.
+    connection.catch(() => {})
+    return () => void connection.then((child) => child.destroy(), () => {})
+  }, [srcDoc])
+  // No same-origin: the page can run its own scripts but cannot reach this app or its data. Postmate is the only way in.
+  return <iframe ref={frame} title={title} srcDoc={srcDoc} sandbox="allow-scripts allow-popups" className="size-full border-0 bg-white" />
+}
+
 function Body({
   file,
   kind,
@@ -56,9 +72,7 @@ function Body({
   if (text === null) return <Note>This file is no longer saved in the browser.</Note>
   // Not loaded yet: the editor reads its content only on mount.
   if (!text && kind !== 'text') return null
-  if (kind === 'html')
-    // No same-origin: the page can run its own scripts but cannot reach this app or its data.
-    return <iframe title={file.name} srcDoc={text} sandbox="allow-scripts allow-popups" className="size-full border-0 bg-white" />
+  if (kind === 'html') return <HtmlFrame title={file.name} html={text} />
   if (kind === 'markdown')
     return (
       <ScrollArea className="size-full">

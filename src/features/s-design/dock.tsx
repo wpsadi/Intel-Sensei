@@ -49,14 +49,14 @@ import {
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import { Separator } from '@/components/ui/separator'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
-import { cmd, runCmd } from '@/features/s-3d/commands'
+import { COMMAND_DEFS, type CommandId, run, useLabel } from '@/features/s-3d/commands'
 import { useS3D } from '@/features/s-3d/store'
 import type { Shape3D, Tool } from '@/features/s-3d/types'
 import { cn } from '@/lib/utils'
 
 import { BRUSH_TOOLS } from './raster/canvas-tools'
 
-const SHAPES: { tool: Tool; label: string; icon: ReactNode; cmd: string }[] = [
+const SHAPES: { tool: Tool; label: string; icon: ReactNode; cmd: CommandId }[] = [
   { tool: 'rect', label: 'Rectangle', icon: <SquareIcon />, cmd: 'tool-rect' },
   { tool: 'ellipse', label: 'Ellipse', icon: <CircleIcon />, cmd: 'tool-ellipse' },
   { tool: 'polygon', label: 'Polygon', icon: <PentagonIcon />, cmd: 'tool-polygon' },
@@ -70,20 +70,27 @@ const SHAPES_3D: { kind: Shape3D; label: string; icon: ReactNode }[] = [
   { kind: 'cone', label: 'Cone', icon: <ConeIcon /> },
   { kind: 'torusKnot', label: 'Torus knot', icon: <TorusIcon /> },
 ]
+const ZOOM_COMMANDS: CommandId[] = ['zoom-in', 'zoom-out', 'zoom-fit', 'zoom-selection', 'zoom-100']
+
+/** The display shortcut of a command, for dropdown items. A component, so each item calls the hook at its own top level. */
+function CommandShortcut({ id }: { id: CommandId }) {
+  return <>{useLabel(id)}</>
+}
 
 function ToolButton({
   active,
   label,
-  shortcut,
+  command,
   onClick,
   children,
 }: {
   active?: boolean
   label: string
-  shortcut?: string
+  command: CommandId
   onClick: () => void
   children: ReactNode
 }) {
+  const shortcut = useLabel(command)
   return (
     <Tooltip>
       <TooltipTrigger
@@ -98,13 +105,13 @@ function ToolButton({
   )
 }
 
-const PAINT: { tool: Tool; cmd: string; label: string; icon: ReactNode }[] = [
+const PAINT: { tool: Tool; cmd: CommandId; label: string; icon: ReactNode }[] = [
   { tool: 'brush', cmd: 'tool-brush', label: 'Brush', icon: <BrushIcon /> },
   { tool: 'eraser', cmd: 'tool-eraser', label: 'Eraser', icon: <EraserIcon /> },
   { tool: 'clone', cmd: 'tool-clone', label: 'Clone stamp', icon: <StampIcon /> },
   { tool: 'heal', cmd: 'tool-heal', label: 'Spot healing', icon: <BandageIcon /> },
 ]
-const SELECTIONS: { tool: Tool; cmd: string; label: string; icon: ReactNode }[] = [
+const SELECTIONS: { tool: Tool; cmd: CommandId; label: string; icon: ReactNode }[] = [
   { tool: 'marquee', cmd: 'tool-marquee', label: 'Marquee', icon: <BoxSelectIcon /> },
   { tool: 'marquee', cmd: 'tool-marquee-ellipse', label: 'Elliptical marquee', icon: <CircleDashedIcon /> },
   { tool: 'lasso', cmd: 'tool-lasso', label: 'Lasso', icon: <LassoIcon /> },
@@ -120,8 +127,8 @@ function ToolGroup({ items, tool, label }: { items: typeof PAINT; tool: Tool; la
       <ToolButton
         active={items.some((x) => x.tool === tool)}
         label={current.label}
-        shortcut={cmd(current.cmd).shortcut}
-        onClick={() => runCmd(current.cmd)}
+        command={current.cmd}
+        onClick={() => run(current.cmd)}
       >
         {current.icon}
       </ToolButton>
@@ -131,10 +138,12 @@ function ToolGroup({ items, tool, label }: { items: typeof PAINT; tool: Tool; la
         </DropdownMenuTrigger>
         <DropdownMenuContent side="top" className="w-44 normal-case">
           {items.map((x) => (
-            <DropdownMenuItem key={x.tool} className="normal-case tracking-normal" onClick={() => runCmd(x.cmd)}>
+            <DropdownMenuItem key={x.tool} className="normal-case tracking-normal" onClick={() => run(x.cmd)}>
               {x.icon}
               {x.label}
-              <DropdownMenuShortcut>{cmd(x.cmd).shortcut}</DropdownMenuShortcut>
+              <DropdownMenuShortcut>
+                <CommandShortcut id={x.cmd} />
+              </DropdownMenuShortcut>
             </DropdownMenuItem>
           ))}
         </DropdownMenuContent>
@@ -204,7 +213,7 @@ function PixelControls() {
         />
         <ColorPicker label="Foreground colour" value={fg} onChange={(c) => set({ foregroundColor: c })} className="absolute left-0 top-0" />
       </div>
-      <ToolButton label="Swap colours" shortcut={cmd('swap-colors').shortcut} onClick={() => runCmd('swap-colors')}>
+      <ToolButton label="Swap colours" command="swap-colors" onClick={() => run('swap-colors')}>
         <ArrowLeftRightIcon />
       </ToolButton>
       {BRUSH_TOOLS.includes(tool) && <BrushOptions />}
@@ -252,29 +261,29 @@ export function DesignDock() {
   const canRedo = useS3D((s) => s.future.length > 0)
   const set = useS3D((s) => s.set)
   const shape = SHAPES.find((x) => x.tool === tool) ?? SHAPES[0]
-  const pick = (id: string) => () => runCmd(id)
+  const pick = (id: CommandId) => () => run(id)
 
   return (
     <TooltipProvider>
       <div data-ui className="flex items-center gap-0.5 rounded-xl border bg-background/95 p-1 shadow-lg backdrop-blur [&_svg]:size-4">
-        <ToolButton active={tool === 'select'} label="Move" shortcut="V" onClick={pick('tool-select')}>
+        <ToolButton active={tool === 'select'} label="Move" command="tool-select" onClick={pick('tool-select')}>
           <MousePointer2Icon />
         </ToolButton>
-        <ToolButton active={tool === 'hand'} label="Hand" shortcut="H" onClick={pick('tool-hand')}>
+        <ToolButton active={tool === 'hand'} label="Hand" command="tool-hand" onClick={pick('tool-hand')}>
           <HandIcon />
         </ToolButton>
         <Separator orientation="vertical" className="mx-0.5 h-5" />
-        <ToolButton active={tool === 'frame'} label="Frame" shortcut="F" onClick={pick('tool-frame')}>
+        <ToolButton active={tool === 'frame'} label="Frame" command="tool-frame" onClick={pick('tool-frame')}>
           <FrameIcon />
         </ToolButton>
-        <ToolButton active={tool === 'section'} label="Section" shortcut={cmd('tool-section').shortcut} onClick={pick('tool-section')}>
+        <ToolButton active={tool === 'section'} label="Section" command="tool-section" onClick={pick('tool-section')}>
           <SquareDashedIcon />
         </ToolButton>
         <div className="flex items-center">
           <ToolButton
             active={SHAPES.some((x) => x.tool === tool)}
             label={shape.label}
-            shortcut={cmd(shape.cmd).shortcut}
+            command={shape.cmd}
             onClick={pick(shape.cmd)}
           >
             {shape.icon}
@@ -288,20 +297,22 @@ export function DesignDock() {
                 <DropdownMenuItem key={x.tool} className="normal-case tracking-normal" onClick={pick(x.cmd)}>
                   {x.icon}
                   {x.label}
-                  <DropdownMenuShortcut>{cmd(x.cmd).shortcut}</DropdownMenuShortcut>
+                  <DropdownMenuShortcut>
+                    <CommandShortcut id={x.cmd} />
+                  </DropdownMenuShortcut>
                 </DropdownMenuItem>
               ))}
             </DropdownMenuContent>
           </DropdownMenu>
         </div>
-        <ToolButton active={tool === 'pen'} label="Pen" shortcut="P" onClick={pick('tool-pen')}>
+        <ToolButton active={tool === 'pen'} label="Pen" command="tool-pen" onClick={pick('tool-pen')}>
           <PenToolIcon />
         </ToolButton>
-        <ToolButton active={tool === 'text'} label="Text" shortcut="T" onClick={pick('tool-text')}>
+        <ToolButton active={tool === 'text'} label="Text" command="tool-text" onClick={pick('tool-text')}>
           <TypeIcon />
         </ToolButton>
         <div className="flex items-center">
-          <ToolButton active={tool === 'shape3d'} label={`3D ${shape3d}`} shortcut="K" onClick={pick('tool-3d')}>
+          <ToolButton active={tool === 'shape3d'} label={`3D ${shape3d}`} command="tool-3d" onClick={pick('tool-3d')}>
             {SHAPES_3D.find((x) => x.kind === shape3d)?.icon}
           </ToolButton>
           <DropdownMenu>
@@ -322,35 +333,30 @@ export function DesignDock() {
             </DropdownMenuContent>
           </DropdownMenu>
         </div>
-        <ToolButton active={tool === 'comment'} label="Comment" shortcut="C" onClick={pick('tool-comment')}>
+        <ToolButton active={tool === 'comment'} label="Comment" command="tool-comment" onClick={pick('tool-comment')}>
           <MessageCircleIcon />
         </ToolButton>
         <Separator orientation="vertical" className="mx-0.5 h-5" />
         <ToolGroup items={PAINT} tool={tool} label="Paint options" />
         <ToolGroup items={SELECTIONS} tool={tool} label="Selection options" />
-        <ToolButton active={tool === 'crop'} label="Crop" shortcut={cmd('tool-crop').shortcut} onClick={pick('tool-crop')}>
+        <ToolButton active={tool === 'crop'} label="Crop" command="tool-crop" onClick={pick('tool-crop')}>
           <CropIcon />
         </ToolButton>
-        <ToolButton
-          active={tool === 'eyedropper'}
-          label="Eyedropper"
-          shortcut={cmd('tool-eyedropper').shortcut}
-          onClick={pick('tool-eyedropper')}
-        >
+        <ToolButton active={tool === 'eyedropper'} label="Eyedropper" command="tool-eyedropper" onClick={pick('tool-eyedropper')}>
           <PipetteIcon style={{ color: fg }} />
         </ToolButton>
-        <ToolButton active={tool === 'zoom'} label="Zoom tool" shortcut={cmd('tool-zoom').shortcut} onClick={pick('tool-zoom')}>
+        <ToolButton active={tool === 'zoom'} label="Zoom tool" command="tool-zoom" onClick={pick('tool-zoom')}>
           <ZoomInIcon />
         </ToolButton>
         <PixelControls />
-        <ToolButton label="Import image, video, SVG or 3D model" shortcut={cmd('import').shortcut} onClick={pick('import')}>
+        <ToolButton label="Import image, video, SVG or 3D model" command="import" onClick={pick('import')}>
           <UploadIcon />
         </ToolButton>
         <Separator orientation="vertical" className="mx-0.5 h-5" />
-        <ToolButton label="Undo" shortcut={cmd('undo').shortcut} onClick={pick('undo')}>
+        <ToolButton label="Undo" command="undo" onClick={pick('undo')}>
           <Undo2Icon className={cn(!canUndo && 'opacity-40')} />
         </ToolButton>
-        <ToolButton label="Redo" shortcut={cmd('redo').shortcut} onClick={pick('redo')}>
+        <ToolButton label="Redo" command="redo" onClick={pick('redo')}>
           <Redo2Icon className={cn(!canRedo && 'opacity-40')} />
         </ToolButton>
         <HistoryMenu />
@@ -359,10 +365,12 @@ export function DesignDock() {
             {Math.round(zoom * 100)}%
           </DropdownMenuTrigger>
           <DropdownMenuContent side="top" className="w-44">
-            {['zoom-in', 'zoom-out', 'zoom-fit', 'zoom-selection', 'zoom-100'].map((id) => (
+            {ZOOM_COMMANDS.map((id) => (
               <DropdownMenuItem key={id} className="normal-case tracking-normal" onClick={pick(id)}>
-                {cmd(id).label}
-                <DropdownMenuShortcut>{cmd(id).shortcut}</DropdownMenuShortcut>
+                {COMMAND_DEFS[id].label}
+                <DropdownMenuShortcut>
+                  <CommandShortcut id={id} />
+                </DropdownMenuShortcut>
               </DropdownMenuItem>
             ))}
             {[0.5, 2].map((z) => (
@@ -372,7 +380,7 @@ export function DesignDock() {
             ))}
           </DropdownMenuContent>
         </DropdownMenu>
-        <ToolButton label="Preview / Play" shortcut={cmd('play').shortcut} onClick={pick('play')}>
+        <ToolButton label="Preview / Play" command="play" onClick={pick('play')}>
           <PlayIcon />
         </ToolButton>
       </div>

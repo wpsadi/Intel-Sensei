@@ -1,3 +1,5 @@
+import { Skills } from '@/ai/skills/skills'
+
 import { COMMAND_TIMEOUT_MS, type ExecResult, FILE_MAX_BYTES } from './engine'
 import type { SandboxRequest, SandboxResponse, SandboxResult } from './sandbox.worker'
 
@@ -73,6 +75,8 @@ class Session {
   /** Files already put into the current worker, by where they came from. A restarted worker starts empty, so this resets too. */
   mounted = new Map<string, string>()
   restoring: AbortController | null = null
+  /** What the skills folder in the current worker holds, so it is rewritten only when a skill changed. */
+  skillsKey = ''
   /** Tasks that are running and need the environment, such as a reply being written. */
   holds = 0
   private idleTimer: ReturnType<typeof setTimeout> | null = null
@@ -98,6 +102,7 @@ class Session {
     this.ready = null
     this.status = 'idle'
     this.mounted.clear()
+    this.skillsKey = ''
     for (const id of [...this.pending.keys()]) this.fail(id, new Error(reason))
   }
 
@@ -210,6 +215,26 @@ class Session {
     ready.catch(() => {})
   }
 
+  /** Writes the installed skills to `skills/` in the environment, so the terminal finds them. Skipped when nothing changed. */
+  private async syncSkills(signal?: AbortSignal) {
+    try {
+      const skills = await Skills.list()
+      const key = skills.map((skill) => `${skill.name}@${skill.updatedAt}`).join('|')
+      if (key === this.skillsKey) return
+      await this.send(
+        { op: 'skills', skills: skills.map(({ name, description, body }) => ({ name, description, body })) },
+        signal,
+        [],
+        COMMAND_TIMEOUT_MS,
+        TIMED_OUT,
+      )
+      this.skillsKey = key
+    } catch (error) {
+      if (signal?.aborted) throw error
+      // Skills are a convenience: the command itself still runs.
+    }
+  }
+
   /** A command's clock starts once Pyodide is loaded, so a slow first load never eats into its time. */
   async call(request: Request, signal?: AbortSignal, transfer: Transferable[] = [], replay = false): Promise<SandboxResult> {
     if (this.getStatus() === 'unavailable') throw new Error(SANDBOX_UNAVAILABLE)
@@ -217,6 +242,7 @@ class Session {
     // A restore runs its own steps while it is still `ready`'s pending part, so those wait for the worker only.
     this.touch()
     await (replay ? this.booted : this.ready)
+    await this.syncSkills(signal)
     try {
       return await this.send(request, signal, transfer, COMMAND_TIMEOUT_MS, TIMED_OUT)
     } finally {

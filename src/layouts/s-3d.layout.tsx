@@ -22,8 +22,7 @@ import {
 import { SidebarInset, SidebarProvider } from '@/components/ui/sidebar'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { useAgentRun } from '@/features/s-3d/agent/runner'
-import { cmd } from '@/features/s-3d/commands'
-import { isMac } from '@/features/s-3d/commands'
+import { COMMAND_DEFS, type CommandId, isEnabled, run, useDispatcher, useLabel } from '@/features/s-3d/commands'
 import { chatsRepo } from '@/features/s-3d/db'
 import { type S3DDialog, useS3DDialog } from '@/features/s-3d/dialogs/dialog-store'
 import { exportProject, importFiles, openFiles } from '@/features/s-3d/io'
@@ -36,29 +35,30 @@ import type { Service } from '@/features/s-3d/types'
 import { useSidebar } from '@/hooks/use-sidebar'
 import { cn } from '@/lib/utils'
 
-const M = isMac ? '⌘' : 'Ctrl+'
-const SH = isMac ? '⇧' : 'Shift+'
 const itemClass = 'px-2 py-1 text-xs normal-case tracking-normal'
 // The standard item padding would put the tick on top of the label, so checkbox items keep room for it.
 const checkClass = 'py-1 pr-2 pl-8 text-xs normal-case tracking-normal'
 const contentClass = 'min-w-52 p-1 text-xs'
 
-function CmdItem({ id }: { id: string }) {
-  const c = cmd(id)
-  const enabled = !c.enabled || c.enabled()
+/** The command's first binding, shown right-aligned in a menu item. Renders nothing when the command has no keys. */
+function Keys({ id }: { id: CommandId }) {
+  const keys = useLabel(id)
+  return keys ? <MenubarShortcut>{keys}</MenubarShortcut> : null
+}
+
+function CmdItem({ id }: { id: CommandId }) {
   return (
-    <MenubarItem className={itemClass} disabled={!enabled} onClick={() => c.run()}>
-      {c.label}
-      {c.shortcut && <MenubarShortcut>{c.shortcut}</MenubarShortcut>}
+    <MenubarItem className={itemClass} disabled={!isEnabled(id)} onClick={() => run(id)}>
+      {COMMAND_DEFS[id].label}
+      <Keys id={id} />
     </MenubarItem>
   )
 }
 
-function DialogItem({ dialog, label, shortcut }: { dialog: S3DDialog; label: string; shortcut?: string }) {
+function DialogItem({ dialog, label }: { dialog: S3DDialog; label: string }) {
   return (
     <MenubarItem className={itemClass} onClick={() => useS3DDialog.getState().setOpen(dialog)}>
       {label}
-      {shortcut && <MenubarShortcut>{shortcut}</MenubarShortcut>}
     </MenubarItem>
   )
 }
@@ -94,13 +94,14 @@ function S3DMenubar({ service, rightOpen, setRightOpen }: { service: Service; ri
   const selected = useS3D((s) => s.sceneEdit?.selected ?? null)
   const sceneNode = useS3D((s) => (s.sceneEdit ? s.doc.nodes[s.sceneEdit.nodeId] : undefined))
   const scene = sceneNode ? sceneOf(sceneNode) : null
+  const playKeys = useLabel('play')
   return (
     <Menubar className="h-8 shrink-0 gap-0 rounded-none border-x-0 border-t-0 p-0 px-1">
       <MenubarMenu>
         <MenubarTrigger className="h-6 px-2 py-0 text-xs font-semibold">{is2d ? 'S-Design' : 'S3D'}</MenubarTrigger>
         <MenubarContent className={contentClass}>
           {!is2d && <DialogItem dialog="discover" label="Discover 3D models…" />}
-          <DialogItem dialog="shortcuts" label="Keyboard shortcuts" shortcut={`${M}/`} />
+          <CmdItem id="shortcuts-help" />
         </MenubarContent>
       </MenubarMenu>
       <MenubarMenu>
@@ -109,7 +110,7 @@ function S3DMenubar({ service, rightOpen, setRightOpen }: { service: Service; ri
           <MenubarItem className={itemClass} onClick={() => void st().newDoc()}>
             {is2d ? 'New design file' : 'New 3D file'}
           </MenubarItem>
-          <DialogItem dialog="open" label="Open…" shortcut={`${M}O`} />
+          <CmdItem id="open" />
           <MenubarItem className={itemClass} onClick={() => void openFiles()}>
             Open from computer…
           </MenubarItem>
@@ -127,15 +128,9 @@ function S3DMenubar({ service, rightOpen, setRightOpen }: { service: Service; ri
           <CmdItem id="save" />
           <DialogItem dialog="versions" label="Version history" />
           <MenubarSeparator />
+          <CmdItem id="import" />
           {is2d ? (
-            <CmdItem id="import" />
-          ) : (
-            <MenubarItem className={itemClass} onClick={() => void importFiles()}>
-              Import model or image…<MenubarShortcut>{`${SH}${M}K`}</MenubarShortcut>
-            </MenubarItem>
-          )}
-          {is2d ? (
-            <DialogItem dialog="export" label="Export…" shortcut={`${M}E`} />
+            <CmdItem id="export" />
           ) : (
             <MenubarSub>
               <MenubarSubTrigger className={itemClass}>Export as</MenubarSubTrigger>
@@ -176,13 +171,13 @@ function S3DMenubar({ service, rightOpen, setRightOpen }: { service: Service; ri
       <MenubarMenu>
         <MenubarTrigger className="h-6 px-2 py-0 text-xs">Edit</MenubarTrigger>
         <MenubarContent className={contentClass}>
-          {['undo', 'redo'].map((id) => (
+          {(['undo', 'redo'] as const).map((id) => (
             <CmdItem key={id} id={id} />
           ))}
           <MenubarSeparator />
           {is2d ? (
             <>
-              {['copy', 'cut', 'paste', 'duplicate', 'delete'].map((id) => (
+              {(['copy', 'cut', 'paste', 'duplicate', 'delete'] as const).map((id) => (
                 <CmdItem key={id} id={id} />
               ))}
               <MenubarSeparator />
@@ -192,14 +187,17 @@ function S3DMenubar({ service, rightOpen, setRightOpen }: { service: Service; ri
             <>
               {/* In a 3D scene the commands act on scene objects, not canvas nodes. */}
               <MenubarItem className={itemClass} disabled={!selected} onClick={() => selected && duplicateObject(selected)}>
-                Duplicate object<MenubarShortcut>{`${M}D`}</MenubarShortcut>
+                Duplicate object
+                <Keys id="scene-duplicate" />
               </MenubarItem>
               <MenubarItem className={itemClass} disabled={!selected} onClick={() => selected && deleteObject(selected)}>
-                Delete object<MenubarShortcut>⌫</MenubarShortcut>
+                Delete object
+                <Keys id="scene-delete" />
               </MenubarItem>
               <MenubarSeparator />
               <MenubarItem className={itemClass} disabled={!selected} onClick={() => selectObject(null)}>
-                Deselect<MenubarShortcut>Esc</MenubarShortcut>
+                Deselect
+                <Keys id="scene-deselect" />
               </MenubarItem>
             </>
           )}
@@ -210,18 +208,20 @@ function S3DMenubar({ service, rightOpen, setRightOpen }: { service: Service; ri
         <MenubarContent className={contentClass}>
           {is2d ? (
             <>
-              {[
-                'tool-frame',
-                'tool-section',
-                'tool-rect',
-                'tool-ellipse',
-                'tool-polygon',
-                'tool-star',
-                'tool-pen',
-                'tool-text',
-                'tool-3d',
-                'tool-comment',
-              ].map((id) => (
+              {(
+                [
+                  'tool-frame',
+                  'tool-section',
+                  'tool-rect',
+                  'tool-ellipse',
+                  'tool-polygon',
+                  'tool-star',
+                  'tool-pen',
+                  'tool-text',
+                  'tool-3d',
+                  'tool-comment',
+                ] as const
+              ).map((id) => (
                 <CmdItem key={id} id={id} />
               ))}
               <MenubarSeparator />
@@ -271,20 +271,23 @@ function S3DMenubar({ service, rightOpen, setRightOpen }: { service: Service; ri
                 checked={showRulers}
                 onCheckedChange={() => st().set({ showRulers: !showRulers })}
               >
-                Rulers<MenubarShortcut>{cmd('toggle-rulers').shortcut}</MenubarShortcut>
+                Rulers
+                <Keys id="toggle-rulers" />
               </MenubarCheckboxItem>
               <MenubarCheckboxItem className={checkClass} checked={showGrid} onCheckedChange={() => st().set({ showGrid: !showGrid })}>
-                Grid<MenubarShortcut>{cmd('toggle-grid').shortcut}</MenubarShortcut>
+                Grid
+                <Keys id="toggle-grid" />
               </MenubarCheckboxItem>
               <MenubarCheckboxItem
                 className={checkClass}
                 checked={snapToGrid}
                 onCheckedChange={() => st().set({ snapToGrid: !snapToGrid })}
               >
-                Snap to grid<MenubarShortcut>{cmd('toggle-snap').shortcut}</MenubarShortcut>
+                Snap to grid
+                <Keys id="toggle-snap" />
               </MenubarCheckboxItem>
               <MenubarSeparator />
-              {['zoom-in', 'zoom-out', 'zoom-fit', 'zoom-selection', 'zoom-100'].map((id) => (
+              {(['zoom-in', 'zoom-out', 'zoom-fit', 'zoom-selection', 'zoom-100'] as const).map((id) => (
                 <CmdItem key={id} id={id} />
               ))}
               <MenubarSeparator />
@@ -293,7 +296,8 @@ function S3DMenubar({ service, rightOpen, setRightOpen }: { service: Service; ri
           {!is2d && (
             <>
               <MenubarItem className={itemClass} disabled={!selected} onClick={() => sceneActions.frame?.(selected)}>
-                Frame selection<MenubarShortcut>F</MenubarShortcut>
+                Frame selection
+                <Keys id="scene-frame" />
               </MenubarItem>
               <MenubarItem className={itemClass} onClick={() => sceneActions.frame?.(null)}>
                 Frame all
@@ -353,19 +357,19 @@ function S3DMenubar({ service, rightOpen, setRightOpen }: { service: Service; ri
         <MenubarMenu>
           <MenubarTrigger className="h-6 px-2 py-0 text-xs">Object</MenubarTrigger>
           <MenubarContent className={contentClass}>
-            {['group', 'ungroup', 'frame-selection', 'add-auto-layout'].map((id) => (
+            {(['group', 'ungroup', 'frame-selection', 'add-auto-layout'] as const).map((id) => (
               <CmdItem key={id} id={id} />
             ))}
             <MenubarSeparator />
-            {['mask', 'union', 'subtract', 'intersect', 'exclude'].map((id) => (
+            {(['mask', 'union', 'subtract', 'intersect', 'exclude'] as const).map((id) => (
               <CmdItem key={id} id={id} />
             ))}
             <MenubarSeparator />
-            {['bring-front', 'bring-forward', 'send-backward', 'send-back'].map((id) => (
+            {(['bring-front', 'bring-forward', 'send-backward', 'send-back'] as const).map((id) => (
               <CmdItem key={id} id={id} />
             ))}
             <MenubarSeparator />
-            {['flip-h', 'flip-v', 'toggle-visible', 'toggle-lock', 'toggle-clip'].map((id) => (
+            {(['flip-h', 'flip-v', 'toggle-visible', 'toggle-lock', 'toggle-clip'] as const).map((id) => (
               <CmdItem key={id} id={id} />
             ))}
           </MenubarContent>
@@ -374,7 +378,7 @@ function S3DMenubar({ service, rightOpen, setRightOpen }: { service: Service; ri
       <MenubarMenu>
         <MenubarTrigger className="h-6 px-2 py-0 text-xs">Help</MenubarTrigger>
         <MenubarContent className={contentClass}>
-          <DialogItem dialog="shortcuts" label="Keyboard shortcuts" shortcut={`${M}/`} />
+          <CmdItem id="shortcuts-help" />
         </MenubarContent>
       </MenubarMenu>
       {!is2d && (
@@ -397,7 +401,7 @@ function S3DMenubar({ service, rightOpen, setRightOpen }: { service: Service; ri
             <PlayIcon />
           </TooltipTrigger>
           <TooltipContent side="bottom" className="text-xs">
-            Preview{cmd('play').shortcut && ` (${cmd('play').shortcut})`}
+            Preview{playKeys && ` (${playKeys})`}
           </TooltipContent>
         </Tooltip>
         <Button size="xs" className="h-6 px-2 text-xs" onClick={() => useS3DDialog.getState().setOpen('share')}>
@@ -479,6 +483,8 @@ function saveWidth(key: string, value: number) {
 // The menubar spans the full width above both sidebars; the sidebars wrap every S3D child route through <Outlet />.
 // Both sidebars resize by dragging their inner edge, and remember their width in this browser.
 function S3DLayout({ service }: { service: Service }) {
+  // The one dispatcher for the app's shortcuts. Both /s-3d and /s-design render through this layout, so it is mounted once here.
+  useDispatcher()
   const [rightOpen, setRightOpen] = useState(true)
   const [leftWidth, setLeftWidth] = useState(() => clamp(readWidth(`${service}:left-width`, LEFT.initial), LEFT))
   const [rightWidth, setRightWidth] = useState(() => clamp(readWidth(`${service}:right-width`, RIGHT.initial), RIGHT))

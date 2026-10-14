@@ -204,7 +204,11 @@ export function Conversation({
                           className="mb-3"
                         />
                         {/* The documents Sensei made sit between the thinking and the final answer. */}
-                        <ArtifactCards files={(message.attachments ?? []).filter(isArtifact)} messageId={message.id} chatId={message.chatId} />
+                        <ArtifactCards
+                          files={(message.attachments ?? []).filter(isArtifact)}
+                          messageId={message.id}
+                          chatId={message.chatId}
+                        />
                       </>
                     )}
                     {isReply && message.parts?.length ? (
