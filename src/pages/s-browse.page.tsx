@@ -12,7 +12,6 @@ import {
   PencilIcon,
   PlusIcon,
   RotateCwIcon,
-  SendIcon,
   Settings2Icon,
   ShieldCheckIcon,
   StarIcon,
@@ -24,6 +23,7 @@ import * as React from 'react'
 import { BsBrowserChrome } from 'react-icons/bs'
 import { Link, useSearchParams } from 'react-router-dom'
 
+import { BrowserAgentPanel } from '@/features/ask-sensei/components/browser-agent-panel'
 import { Button } from '@/components/ui/button'
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
@@ -34,7 +34,6 @@ import { cn } from '@/lib/utils'
 
 import { type Access, type SessionGrants, deleteGrants, loadGrants, saveGrants } from './s-browse.db'
 import { SBrowseWebMcp } from './s-browse.webmcp'
-import { useLiveCall } from '@/features/ask-sensei/components/live-call'
 
 /** Turns what was typed into a URL. Anything with spaces or no dot is sent to a Bing search instead. */
 function toUrl(input: string) {
@@ -127,13 +126,9 @@ function titleOf(session: Session) {
 function SBrowsePage() {
   const [open, setOpen] = React.useState<'left' | 'right' | null>(null)
   const [rightTab, setRightTab] = React.useState<'agent' | 'terminal' | 'cua'>('agent')
-  const [agentInput, setAgentInput] = React.useState('')
-  const [agentMessages, setAgentMessages] = React.useState<{ role: 'user' | 'assistant'; text: string }[]>([])
   const [terminalInput, setTerminalInput] = React.useState('')
   const [terminalOutput, setTerminalOutput] = React.useState<string[]>([])
   const [controlMode, setControlMode] = React.useState(false)
-  const [liveChatId, setLiveChatId] = React.useState<string | null>(null)
-  const liveCall = useLiveCall(liveChatId, setLiveChatId)
   const iframeRef = React.useRef<HTMLIFrameElement>(null)
   const leftPanelRef = React.useRef<HTMLDivElement>(null)
   const leftTriggerRef = React.useRef<HTMLButtonElement>(null)
@@ -314,15 +309,6 @@ function SBrowsePage() {
       document.removeEventListener('keydown', onKeyDown)
     }
   }, [open, pinned])
-
-  const toggleLiveCall = () => { if (liveCall.state === 'live' || liveCall.state === 'connecting') liveCall.end(); else void liveCall.start() }
-
-  const sendAgentMessage = () => {
-    const text = agentInput.trim()
-    if (!text) return
-    setAgentMessages((messages) => [...messages, { role: 'user', text }, { role: 'assistant', text: `I can help operate ${page ? hostOf(page) : 'the browser'}. Use CUA controls to move, click, or type in the page.` }])
-    setAgentInput('')
-  }
 
   const runTerminal = () => {
     const command = terminalInput.trim()
@@ -592,10 +578,7 @@ function SBrowsePage() {
           ))}
         </div>
         <div className="flex min-h-0 flex-1 flex-col">
-          {rightTab === 'agent' && <>
-            <ScrollArea className="min-h-0 flex-1 p-3"><div className="flex flex-col gap-2 text-xs">{agentMessages.length === 0 && <><div className="mb-2 flex items-center justify-between rounded-md border p-2"><span className="text-[11px]">Gemini Live {liveCall.state === 'live' ? 'connected' : liveCall.state === 'connecting' ? 'connecting…' : 'ready'}</span><Button size="xs" variant={liveCall.state === 'live' ? 'destructive' : 'default'} onClick={toggleLiveCall}>{liveCall.state === 'live' ? 'End call' : 'Start call'}</Button></div><p className="text-muted-foreground">Agent history will appear here.</p></>}{agentMessages.map((message, index) => <div key={index} className={cn('rounded-md p-2', message.role === 'user' ? 'bg-primary/10' : 'bg-muted')}><span className="mb-1 block text-[10px] font-medium uppercase text-muted-foreground">{message.role}</span>{message.text}</div>)}</div></ScrollArea>
-            <form onSubmit={(event) => { event.preventDefault(); sendAgentMessage() }} className="flex gap-1 border-t p-2"><Input aria-label="Agent message" value={agentInput} onChange={(event) => setAgentInput(event.target.value)} placeholder="Ask the browser agent…" className="h-8 text-xs" /><Button type="submit" size="icon-sm" aria-label="Send message"><SendIcon /></Button></form>
-          </>}
+          {rightTab === 'agent' && <BrowserAgentPanel page={page} />}
           {rightTab === 'terminal' && <><ScrollArea className="min-h-0 flex-1 bg-black p-3 font-mono text-[11px] text-green-300"><div>{terminalOutput.length ? terminalOutput.map((line, index) => <div key={index}>{line}</div>) : <span className="text-green-700">Terminal ready. Type help.</span>}</div></ScrollArea><form onSubmit={(event) => { event.preventDefault(); runTerminal() }} className="flex gap-1 border-t bg-black p-2"><Input aria-label="Terminal command" value={terminalInput} onChange={(event) => setTerminalInput(event.target.value)} placeholder="command" className="h-8 border-green-900 bg-black font-mono text-xs text-green-300" /></form></>}
           {rightTab === 'cua' && <div className="flex flex-col gap-3 p-3 text-xs"><p className="text-muted-foreground">Control the iframe with coordinate and keyboard events.</p><Button variant={controlMode ? 'default' : 'outline'} onClick={() => setControlMode((value) => !value)}><MousePointer2Icon />{controlMode ? 'Control mode on' : 'Enable control mode'}</Button><div className="grid grid-cols-2 gap-2"><Button variant="outline" onClick={() => sendCua('screenshot')}><CameraIcon />View window</Button><Button variant="outline" onClick={() => sendCua('keypress', { key: 'Enter' })}>Press Enter</Button></div><p className="text-[11px] text-muted-foreground">Pointer and keyboard actions are sent as <code>postMessage</code> events to the embedded page.</p></div>}
         </div>
