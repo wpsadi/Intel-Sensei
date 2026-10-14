@@ -1,8 +1,10 @@
-import { generateText } from 'ai'
 import { createGoogle } from '@ai-sdk/google'
+import { generateText } from 'ai'
+
+import { recordSdkUsage } from '@/ai/usage'
 import { GEMINI_KEY } from '@/ai/utils/gemini-key'
 import { MINI_STUFF_MODEL } from '@/constants/ai'
-import { recordSdkUsage } from '@/ai/usage'
+
 import { type Block, parseBlocks, toSpeech } from './blocks'
 import { NARRATION_CONFIG } from './config'
 

@@ -1,4 +1,5 @@
 import { SparklesIcon } from 'lucide-react'
+
 import { type BlockDefinition, block } from '../../insert'
 
 /** AI block for the "/" and "+" menus. */

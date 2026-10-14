@@ -1,8 +1,10 @@
 import { Extension } from '@tiptap/core'
-import { type MenuItem, rankMatches, renderSuggestion, runMenuItem } from './suggestion-menu'
-import { BLOCKS } from './blocks/registry'
 import { PluginKey } from '@tiptap/pm/state'
 import Suggestion from '@tiptap/suggestion'
+
+import { BLOCKS } from './blocks/registry'
+import { type MenuItem, rankMatches } from './menu-items'
+import { renderSuggestion, runMenuItem } from './suggestion-menu'
 
 export { hostPageId } from './blocks/insert'
 

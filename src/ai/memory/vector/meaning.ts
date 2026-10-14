@@ -1,5 +1,6 @@
 import { EMBEDDINGS } from '@/ai/inference/embeddings'
 import { GEMINI_KEY } from '@/ai/utils/gemini-key'
+
 import type { MemoryHit, VectorKind } from '../types'
 import { vectorIndex } from './vector-client'
 

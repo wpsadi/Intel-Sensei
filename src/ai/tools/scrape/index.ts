@@ -1,7 +1,8 @@
-import { writeSandboxFile } from '@/ai/sandbox/client'
-import { FIRECRAWL_KEY } from '@/ai/utils/firecrawl-key'
 import { tool } from 'ai'
 import { z } from 'zod'
+
+import { writeSandboxFile } from '@/ai/sandbox/client'
+import { FIRECRAWL_KEY } from '@/ai/utils/firecrawl-key'
 
 /** Most characters one scrape reply returns, about 8k tokens. A longer page is read in pieces with `offset`. */
 const REPLY_CHARS = 30_000
@@ -42,7 +43,8 @@ export function formatScrape(url: string, page: ScrapedPage, offset: number, sav
   const end = offset + part.length
   const notes = [
     saved && `The whole page (${total} characters) is saved as ${saved} in the sandbox: search it with grep or read it with head and tail.`,
-    end < total && `Showing characters ${offset}–${end} of ${total}.${saved ? '' : ` For more, call scrape again with offset ${end}, or use save_as to keep it in the sandbox.`}`,
+    end < total &&
+      `Showing characters ${offset}–${end} of ${total}.${saved ? '' : ` For more, call scrape again with offset ${end}, or use save_as to keep it in the sandbox.`}`,
     offset >= total && `offset ${offset} is past the end of the page (${total} characters).`,
   ].filter(Boolean)
   return [head, part, ...notes].join('\n\n')
@@ -54,7 +56,8 @@ export function formatScrape(url: string, page: ScrapedPage, offset: number, sav
  */
 export function createScrapeTool() {
   return tool({
-    description: 'Reads the text of a web page or PDF from its link, as markdown, using Firecrawl. It fetches from its own servers, so it works for links the browser cannot download because of CORS errors, and for pages that need rendering. Long pages come back in pieces: continue with offset. Use save_as to keep the whole page in the sandbox as a file, then search it with the terminal.',
+    description:
+      'Reads the text of a web page or PDF from its link, as markdown, using Firecrawl. It fetches from its own servers, so it works for links the browser cannot download because of CORS errors, and for pages that need rendering. Long pages come back in pieces: continue with offset. Use save_as to keep the whole page in the sandbox as a file, then search it with the terminal.',
     inputSchema: z.object({
       url: z.string().describe('The http or https link to read'),
       offset: z.number().int().min(0).optional().describe('Character to start from, to continue a long page. Default 0'),

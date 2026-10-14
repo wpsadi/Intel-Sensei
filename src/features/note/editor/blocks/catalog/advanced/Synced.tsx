@@ -1,7 +1,8 @@
 import { RefreshCwIcon } from 'lucide-react'
-import { type BlockDefinition, block } from '../../insert'
-import { useNoteStore } from '../../../../note.store'
+
 import { EMPTY_DOC } from '../../../../db/repo'
+import { useNoteStore } from '../../../../note.store'
+import { type BlockDefinition, block } from '../../insert'
 
 /** Synced block for the "/" and "+" menus. */
 export const SyncedBlock: BlockDefinition = {

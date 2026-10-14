@@ -63,7 +63,10 @@ export const PAGE_ROWS = 600
  * Preview images follow a fixed naming in each package; ones that are missing fall back to an icon in the UI.
  */
 export async function searchModels({ q, unit, page = 1, signal }: { q: string; unit?: string; page?: number; signal?: AbortSignal }) {
-  const res = await query({ q: q.trim() || undefined, owning_unit: unit, file_type: 'glb', start: (page - 1) * PAGE_ROWS, rows: PAGE_ROWS }, signal)
+  const res = await query(
+    { q: q.trim() || undefined, owning_unit: unit, file_type: 'glb', start: (page - 1) * PAGE_ROWS, rows: PAGE_ROWS },
+    signal,
+  )
   const byId = new Map<string, { title: string; glb: Row['content'] }>()
   for (const r of res.rows) {
     const id = r.content.model_url

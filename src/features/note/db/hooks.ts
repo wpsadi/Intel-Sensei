@@ -1,13 +1,13 @@
-import { selectAncestry, selectChildren, useNoteStore } from '../note.store'
 import { useEffect, useState } from 'react'
-import { resolveMedia } from './media'
 import { useShallow } from 'zustand/react/shallow'
+
+import { selectAncestry, selectChildren, useNoteStore } from '../note.store'
+import { resolveMedia } from './media'
 
 /* Read hooks over the note store. `undefined` while loading. */
 
 /** `undefined` while loading, `null` when the page does not exist. */
-export const usePage = (id: string | undefined) =>
-  useNoteStore((s) => (!s.ready ? undefined : id ? (s.pages[id] ?? null) : null))
+export const usePage = (id: string | undefined) => useNoteStore((s) => (!s.ready ? undefined : id ? (s.pages[id] ?? null) : null))
 
 /** `null` lists workspace roots; `undefined` skips the list. */
 export const useChildPages = (parentId: string | null | undefined) =>
@@ -21,11 +21,9 @@ export const useChildPages = (parentId: string | null | undefined) =>
 
 export const useAllPages = () => useNoteStore(useShallow((s) => (s.ready ? Object.values(s.pages) : undefined)))
 
-export const useAncestry = (id: string | undefined) =>
-  useNoteStore(useShallow((s) => (s.ready ? selectAncestry(s, id) : undefined)))
+export const useAncestry = (id: string | undefined) => useNoteStore(useShallow((s) => (s.ready ? selectAncestry(s, id) : undefined)))
 
-export const useDatabase = (id: string | undefined) =>
-  useNoteStore((s) => (!s.ready ? undefined : id ? s.databases[id] : undefined))
+export const useDatabase = (id: string | undefined) => useNoteStore((s) => (!s.ready ? undefined : id ? s.databases[id] : undefined))
 
 export const useDatabases = () => useNoteStore(useShallow((s) => (s.ready ? Object.values(s.databases) : undefined)))
 
@@ -49,13 +47,16 @@ export const useSetting = (key: string) => useNoteStore((s) => (s.ready ? (s.set
 
 export function useMediaUrl(src: string | undefined) {
   const [url, setUrl] = useState('')
+  // Clearing the source clears the URL right away (during render, not in an effect); a new source keeps the
+  // previous URL until it resolves.
+  if (!src && url) setUrl('')
   useEffect(() => {
+    if (!src) return
     let alive = true
-    if (src) resolveMedia(src).then((resolved) => alive && setUrl(resolved))
-    else setUrl('')
+    resolveMedia(src).then((resolved) => alive && setUrl(resolved))
     return () => {
       alive = false
     }
   }, [src])
-  return url
+  return src ? url : ''
 }

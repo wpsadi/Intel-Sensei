@@ -1,4 +1,5 @@
 import { VideoIcon } from 'lucide-react'
+
 import { type BlockDefinition, block } from '../../insert'
 
 /** Video block for the "/" and "+" menus. */

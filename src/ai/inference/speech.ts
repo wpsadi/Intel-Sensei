@@ -1,5 +1,6 @@
-import { experimental_generateSpeech as generateSpeech } from 'ai'
 import { createGoogle } from '@ai-sdk/google'
+import { experimental_generateSpeech as generateSpeech } from 'ai'
+
 import { TTS_MODEL } from '@/constants/ai'
 
 /** The voice that reads replies aloud. */

@@ -1,27 +1,31 @@
-import { ScrollArea } from '@/components/ui/scroll-area'
-import 'leaflet/dist/leaflet.css'
-import { Bar, BarChart, CartesianGrid, Cell, Line, LineChart, Pie, PieChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts'
-import type { Page, PropertyDef, View } from '../../db/types'
-import { parsePlace, readValue } from '../properties'
-import { useEffect, useRef } from 'react'
 import L from 'leaflet'
-import { VIEW_LABELS } from '../../db/repo'
-import type { ViewProps } from './types'
-import { groupRows } from './basic'
-import { pageTitle } from '../../editor/nodes/pages'
+
+import 'leaflet/dist/leaflet.css'
+import { useEffect, useLayoutEffect, useRef } from 'react'
+import { Bar, BarChart, CartesianGrid, Cell, Line, LineChart, Pie, PieChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts'
+
+import { ScrollArea } from '@/components/ui/scroll-area'
+
 import { useViews } from '../../db/hooks'
+import { VIEW_LABELS } from '../../db/repo'
+import type { Page, PropertyDef, View } from '../../db/types'
+import { pageTitle } from '../../editor/nodes/page-utils'
+import { parsePlace, readValue } from '../property-values'
+import { groupRows } from './group-rows'
+import type { ViewProps } from './types'
 
 /* ----------------------------------- map ----------------------------------- */
 
 export function MapView(props: ViewProps) {
   const { database, view, rows, openRow } = props
-  const placeProp =
-    database.properties.find((p) => p.id === view.placeProperty) ?? database.properties.find((p) => p.type === 'place')
+  const placeProp = database.properties.find((p) => p.id === view.placeProperty) ?? database.properties.find((p) => p.type === 'place')
   const container = useRef<HTMLDivElement>(null)
   const map = useRef<L.Map | null>(null)
   const layer = useRef<L.LayerGroup | null>(null)
   const openRef = useRef(openRow)
-  openRef.current = openRow
+  useLayoutEffect(() => {
+    openRef.current = openRow
+  })
 
   useEffect(() => {
     if (!container.current) return
@@ -62,7 +66,7 @@ export function MapView(props: ViewProps) {
 const PALETTE = ['#2563eb', '#16a34a', '#ea580c', '#9333ea', '#db2777', '#0891b2', '#ca8a04', '#64748b']
 
 /** Groups rows by `view.groupBy` and aggregates `view.valueProperty` (or counts rows). */
-export function chartData(database: ViewProps['database'], view: View, rows: Page[]) {
+function chartData(database: ViewProps['database'], view: View, rows: Page[]) {
   const groupProp: PropertyDef | undefined =
     database.properties.find((p) => p.id === view.groupBy) ?? database.properties.find((p) => p.type === 'status' || p.type === 'select')
   const valueProp = database.properties.find((p) => p.id === view.valueProperty && p.type === 'number')

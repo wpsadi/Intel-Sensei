@@ -1,6 +1,7 @@
 import { Check, Copy, Loader2, Square, Volume2 } from 'lucide-react'
 import { type ReactNode, useEffect, useRef, useState } from 'react'
 import { toast } from 'sonner'
+
 import { Button } from '@/components/ui/button'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
 import { useReadAloud } from '@/features/ask-sensei/components/use-read-aloud'
@@ -8,7 +9,17 @@ import { copyText } from '@/lib/clipboard'
 import { cn } from '@/lib/utils'
 
 /** One icon button with a tooltip, for the row under a reply. */
-export function ReplyAction({ label, onClick, disabled, children }: { label: string; onClick: () => void; disabled?: boolean; children: ReactNode }) {
+export function ReplyAction({
+  label,
+  onClick,
+  disabled,
+  children,
+}: {
+  label: string
+  onClick: () => void
+  disabled?: boolean
+  children: ReactNode
+}) {
   return (
     <Tooltip>
       <TooltipTrigger
@@ -42,8 +53,15 @@ function CopyAction({ label, text }: { label: string; text: string }) {
   return (
     <ReplyAction label={copied ? 'Copied' : label} onClick={() => void copy()}>
       <span className="relative grid size-4 place-items-center">
-        <Copy className={cn('col-start-1 row-start-1 transition-all duration-200', copied ? 'scale-50 opacity-0' : 'scale-100 opacity-100')} />
-        <Check className={cn('col-start-1 row-start-1 text-green-500 transition-all duration-200', copied ? 'scale-100 opacity-100' : 'scale-50 opacity-0')} />
+        <Copy
+          className={cn('col-start-1 row-start-1 transition-all duration-200', copied ? 'scale-50 opacity-0' : 'scale-100 opacity-100')}
+        />
+        <Check
+          className={cn(
+            'col-start-1 row-start-1 text-green-500 transition-all duration-200',
+            copied ? 'scale-100 opacity-100' : 'scale-50 opacity-0',
+          )}
+        />
       </span>
     </ReplyAction>
   )
@@ -54,7 +72,17 @@ function CopyAction({ label, text }: { label: string; text: string }) {
  * reply's rendered text: that text is what is read, and the word being spoken is highlighted inside it.
  * `children` adds more buttons to the row, such as trying again.
  */
-export function ReplyActions({ text, speakId, hideCopyAndSpeech, children }: { text: string; speakId: string; hideCopyAndSpeech?: boolean; children?: ReactNode }) {
+export function ReplyActions({
+  text,
+  speakId,
+  hideCopyAndSpeech,
+  children,
+}: {
+  text: string
+  speakId: string
+  hideCopyAndSpeech?: boolean
+  children?: ReactNode
+}) {
   const { state, toggle } = useReadAloud()
   const reading = state?.id === speakId ? state.status : null
 
@@ -79,7 +107,12 @@ export function ReplyActions({ text, speakId, hideCopyAndSpeech, children }: { t
 export function CopyMessage({ text, className }: { text: string; className?: string }) {
   return (
     <TooltipProvider>
-      <div className={cn('flex items-center gap-1 text-muted-foreground opacity-0 transition-opacity group-hover/user:opacity-100 focus-within:opacity-100', className)}>
+      <div
+        className={cn(
+          'flex items-center gap-1 text-muted-foreground opacity-0 transition-opacity group-hover/user:opacity-100 focus-within:opacity-100',
+          className,
+        )}
+      >
         <CopyAction label="Copy message" text={text} />
       </div>
     </TooltipProvider>

@@ -1,12 +1,15 @@
-import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
-import { PageIcon, pageTitle } from '../editor/nodes/pages'
-import { Undo2Icon, Trash2Icon } from 'lucide-react'
-import { Link } from 'react-router-dom'
-import type { Page } from '../db/types'
-import { Button } from '@/components/ui/button'
-import { useAllPages } from '../db/hooks'
-import { useNoteStore } from '../note.store'
+import { Trash2Icon, Undo2Icon } from 'lucide-react'
 import { useState } from 'react'
+import { Link } from 'react-router-dom'
+
+import { Button } from '@/components/ui/button'
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
+
+import { useAllPages } from '../db/hooks'
+import type { Page } from '../db/types'
+import { pageTitle } from '../editor/nodes/page-utils'
+import { PageIcon } from '../editor/nodes/PageIcon'
+import { useNoteStore } from '../note.store'
 
 /** Every trashed page in one flat list, newest first. Opening one shows it read-only with a banner. */
 export function TrashView() {
@@ -36,7 +39,12 @@ export function TrashView() {
             <button type="button" title="Restore" onClick={() => restorePage(page.id, false)} className="rounded p-1 hover:bg-background">
               <Undo2Icon className="size-4" />
             </button>
-            <button type="button" title="Delete forever" onClick={() => setPendingDelete(page)} className="rounded p-1 text-red-500 hover:bg-background">
+            <button
+              type="button"
+              title="Delete forever"
+              onClick={() => setPendingDelete(page)}
+              className="rounded p-1 text-red-500 hover:bg-background"
+            >
               <Trash2Icon className="size-4" />
             </button>
           </div>

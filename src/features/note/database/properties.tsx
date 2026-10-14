@@ -1,64 +1,21 @@
 import { CheckIcon, PlusIcon, XIcon } from 'lucide-react'
-import type { Database, DateValue, Page, PropertyDef, PropertyType, PropertyValue, SelectOption } from '../db/types'
-import { useNoteStore } from '../note.store'
-import { cn } from '@/lib/utils'
-import { formatDate } from '../editor/nodes/inline'
-import { usePeople } from '../db/hooks'
 import { useState } from 'react'
 
-export const PROPERTY_TYPES: { type: PropertyType; label: string }[] = [
-  { type: 'text', label: 'Text' },
-  { type: 'number', label: 'Number' },
-  { type: 'select', label: 'Select' },
-  { type: 'multi_select', label: 'Multi-select' },
-  { type: 'status', label: 'Status' },
-  { type: 'date', label: 'Date' },
-  { type: 'checkbox', label: 'Checkbox' },
-  { type: 'url', label: 'URL' },
-  { type: 'person', label: 'Person' },
-  { type: 'place', label: 'Place (lat, lng)' },
-  { type: 'created_time', label: 'Created time' },
-]
+import { cn } from '@/lib/utils'
 
-export const OPTION_COLORS = ['gray', 'brown', 'orange', 'yellow', 'green', 'blue', 'purple', 'pink', 'red']
-
-/* -------------------------------- value access ----------------------------- */
-
-export function readValue(row: Page, prop: PropertyDef): PropertyValue {
-  if (prop.type === 'title') return row.title
-  if (prop.type === 'created_time') return new Date(row.createdAt).toISOString()
-  return row.properties[prop.id] ?? null
-}
-
-export async function writeValue(row: Page, prop: PropertyDef, value: PropertyValue) {
-  const store = useNoteStore.getState()
-  if (prop.type === 'title') return store.updatePage(row.id, { title: String(value ?? '') })
-  if (prop.type === 'created_time') return
-  return store.setPageProperty(row.id, prop.id, value)
-}
-
-export const dateStart = (value: PropertyValue) => (value && typeof value === 'object' && 'start' in value ? value.start : '')
-
-/** A sortable / groupable plain representation of any value. */
-export function valueText(prop: PropertyDef, value: PropertyValue): string {
-  if (value === null || value === undefined) return ''
-  if (prop.type === 'select' || prop.type === 'status') return prop.options?.find((o) => o.id === value)?.name ?? ''
-  if (prop.type === 'multi_select') return (value as string[]).map((id) => prop.options?.find((o) => o.id === id)?.name).filter(Boolean).join(', ')
-  if (prop.type === 'date') return dateStart(value)
-  if (prop.type === 'checkbox') return value ? 'Checked' : 'Unchecked'
-  return String(value)
-}
-
-export const parsePlace = (value: PropertyValue): [number, number] | null => {
-  const match = String(value ?? '').match(/(-?\d+(?:\.\d+)?)\s*,\s*(-?\d+(?:\.\d+)?)/)
-  return match ? [Number(match[1]), Number(match[2])] : null
-}
+import { usePeople } from '../db/hooks'
+import type { Database, DateValue, Page, PropertyDef, PropertyValue, SelectOption } from '../db/types'
+import { formatDate } from '../editor/nodes/format-date'
+import { useNoteStore } from '../note.store'
+import { OPTION_COLORS, readValue, writeValue } from './property-values'
 
 /* ---------------------------------- display -------------------------------- */
 
 export function OptionTag({ option, onRemove }: { option: SelectOption; onRemove?: () => void }) {
   return (
-    <span className={cn('inline-flex max-w-full items-center gap-1 truncate rounded px-1.5 text-[13px] leading-5', `snote-tag-${option.color}`)}>
+    <span
+      className={cn('inline-flex max-w-full items-center gap-1 truncate rounded px-1.5 text-[13px] leading-5', `snote-tag-${option.color}`)}
+    >
       {option.name}
       {onRemove && (
         <button type="button" onClick={onRemove} className="opacity-60 hover:opacity-100">
@@ -93,7 +50,12 @@ export function PropertyDisplay({ prop, row }: { prop: PropertyDef; row: Page })
       return value ? <CheckIcon className="size-4" /> : null
     case 'date': {
       const date = value as DateValue
-      return <span>{formatDate(date.start)}{date.end ? ` → ${formatDate(date.end)}` : ''}</span>
+      return (
+        <span>
+          {formatDate(date.start)}
+          {date.end ? ` → ${formatDate(date.end)}` : ''}
+        </span>
+      )
     }
     case 'created_time':
       return <span>{formatDate(String(value), true)}</span>
@@ -112,7 +74,13 @@ export function PropertyDisplay({ prop, row }: { prop: PropertyDef; row: Page })
 
 /* ----------------------------------- editing ------------------------------- */
 
-function OptionPicker({ database, prop, selected, multi, onChange }: {
+function OptionPicker({
+  database,
+  prop,
+  selected,
+  multi,
+  onChange,
+}: {
   database: Database
   prop: PropertyDef
   selected: string[]
@@ -131,7 +99,11 @@ function OptionPicker({ database, prop, selected, multi, onChange }: {
   }
 
   const create = async () => {
-    const option: SelectOption = { id: crypto.randomUUID(), name: query.trim(), color: OPTION_COLORS[options.length % OPTION_COLORS.length] }
+    const option: SelectOption = {
+      id: crypto.randomUUID(),
+      name: query.trim(),
+      color: OPTION_COLORS[options.length % OPTION_COLORS.length],
+    }
     await updateDatabase(database.id, {
       properties: database.properties.map((p) => (p.id === prop.id ? { ...p, options: [...options, option] } : p)),
     })
@@ -156,7 +128,12 @@ function OptionPicker({ database, prop, selected, multi, onChange }: {
         />
       </div>
       {filtered.map((option) => (
-        <button key={option.id} type="button" onClick={() => toggle(option.id)} className="flex w-full items-center justify-between rounded px-2 py-1 hover:bg-muted">
+        <button
+          key={option.id}
+          type="button"
+          onClick={() => toggle(option.id)}
+          className="flex w-full items-center justify-between rounded px-2 py-1 hover:bg-muted"
+        >
           <OptionTag option={option} />
           {selected.includes(option.id) && <CheckIcon className="size-3.5" />}
         </button>
@@ -171,7 +148,12 @@ function OptionPicker({ database, prop, selected, multi, onChange }: {
 }
 
 /** Click-to-edit cell. Used by table rows, the row page header and forms. */
-export function PropertyEditor({ database, prop, row, onDraft }: {
+export function PropertyEditor({
+  database,
+  prop,
+  row,
+  onDraft,
+}: {
   database: Database
   prop: PropertyDef
   row: Page
@@ -212,14 +194,32 @@ export function PropertyEditor({ database, prop, row, onDraft }: {
         />
       )
     case 'checkbox':
-      return <input type="checkbox" checked={Boolean(value)} onChange={(event) => commit(event.target.checked)} className="m-1.5 size-4 accent-blue-500" />
+      return (
+        <input
+          type="checkbox"
+          checked={Boolean(value)}
+          onChange={(event) => commit(event.target.checked)}
+          className="m-1.5 size-4 accent-blue-500"
+        />
+      )
     case 'date': {
       const date = (value as DateValue | null) ?? { start: '' }
       return (
         <div className="flex items-center gap-1">
-          <input type="date" value={date.start} onChange={(event) => commit(event.target.value ? { ...date, start: event.target.value } : null)} className={inputClass} />
+          <input
+            type="date"
+            value={date.start}
+            onChange={(event) => commit(event.target.value ? { ...date, start: event.target.value } : null)}
+            className={inputClass}
+          />
           {date.start && (
-            <input type="date" value={date.end ?? ''} title="End date" onChange={(event) => commit({ ...date, end: event.target.value || undefined })} className={cn(inputClass, 'text-muted-foreground')} />
+            <input
+              type="date"
+              value={date.end ?? ''}
+              title="End date"
+              onChange={(event) => commit({ ...date, end: event.target.value || undefined })}
+              className={cn(inputClass, 'text-muted-foreground')}
+            />
           )}
         </div>
       )
@@ -253,8 +253,16 @@ export function PropertyEditor({ database, prop, row, onDraft }: {
       const selected = prop.type === 'multi_select' ? ((value as string[]) ?? []) : value ? [String(value)] : []
       return (
         <div className="relative">
-          <button type="button" onClick={() => setOpen(!open)} className="flex min-h-7 w-full flex-wrap items-center gap-1 rounded px-1.5 text-left hover:bg-muted/60">
-            {selected.length ? <PropertyDisplay prop={prop} row={{ ...row, properties: { ...row.properties, [prop.id]: value } }} /> : <span className="text-sm text-muted-foreground">Empty</span>}
+          <button
+            type="button"
+            onClick={() => setOpen(!open)}
+            className="flex min-h-7 w-full flex-wrap items-center gap-1 rounded px-1.5 text-left hover:bg-muted/60"
+          >
+            {selected.length ? (
+              <PropertyDisplay prop={prop} row={{ ...row, properties: { ...row.properties, [prop.id]: value } }} />
+            ) : (
+              <span className="text-sm text-muted-foreground">Empty</span>
+            )}
           </button>
           {open && (
             <>

@@ -1,19 +1,42 @@
 // @vitest-environment jsdom
 import { Editor } from '@tiptap/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+
 import type { Page } from '../db/types'
 import { BLOCKS } from '../editor/blocks/registry'
 import { buildExtensions } from '../editor/extensions'
 import { registerLiveEditor } from '../editor/live-editors'
 import { useNoteStore } from '../note.store'
 import { deleteBlocks, insertBlocks, listBlocks, moveBlock, readBlock, updateBlock } from './blocks'
-import { BLOCK_TYPES, insertBlocks as insertSchema, parseArgs } from './schemas'
 import { forgetRead } from './read-guard'
+import { BLOCK_TYPES, insertBlocks as insertSchema, parseArgs } from './schemas'
 
-const DOC = { type: 'doc', content: [{ type: 'heading', attrs: { level: 1 }, content: [{ type: 'text', text: 'Plan' }] }, { type: 'paragraph', content: [{ type: 'text', text: 'Intro' }] }] }
+const DOC = {
+  type: 'doc',
+  content: [
+    { type: 'heading', attrs: { level: 1 }, content: [{ type: 'text', text: 'Plan' }] },
+    { type: 'paragraph', content: [{ type: 'text', text: 'Intro' }] },
+  ],
+}
 const page: Page = {
-  id: 'p1', parentId: null, parentType: 'workspace', kind: 'page', title: 'Launch', icon: '', cover: '', content: JSON.stringify(DOC), properties: {},
-  favorite: false, trashed: false, font: 'default', smallText: false, fullWidth: false, locked: false, order: 0, createdAt: 0, updatedAt: 0,
+  id: 'p1',
+  parentId: null,
+  parentType: 'workspace',
+  kind: 'page',
+  title: 'Launch',
+  icon: '',
+  cover: '',
+  content: JSON.stringify(DOC),
+  properties: {},
+  favorite: false,
+  trashed: false,
+  font: 'default',
+  smallText: false,
+  fullWidth: false,
+  locked: false,
+  order: 0,
+  createdAt: 0,
+  updatedAt: 0,
 }
 
 let editor: Editor
@@ -33,7 +56,10 @@ describe('S-Note block tools', () => {
 
   it('turns Markdown written into a text block into real blocks', async () => {
     await readBlock({ block: '1' }, ctx)
-    const result = await updateBlock({ block: '1', text: '# The Proposal\n*By Anton Chekhov*\n\n---\n\n## Summary\n\n1. One\n2. Two\n' }, ctx)
+    const result = await updateBlock(
+      { block: '1', text: '# The Proposal\n*By Anton Chekhov*\n\n---\n\n## Summary\n\n1. One\n2. Two\n' },
+      ctx,
+    )
     expect(result).toMatchObject({ status: 'updated' })
     const types = editor.getJSON().content!.map((node) => node.type)
     expect(types).toEqual(expect.arrayContaining(['heading', 'horizontalRule', 'orderedList']))
@@ -80,7 +106,13 @@ describe('S-Note block tools', () => {
         { type: 'todo', items: ['Book venue', '[x] Pick date'] },
         { type: 'callout', text: 'Budget is tight', attrs: { icon: '💸' } },
         { type: 'code', text: 'npm run build', attrs: { language: 'bash' } },
-        { type: 'table', rows: [['Item', 'Cost'], ['Venue', '500']] },
+        {
+          type: 'table',
+          rows: [
+            ['Item', 'Cost'],
+            ['Venue', '500'],
+          ],
+        },
         { type: 'markdown', text: '## Notes\n\nSome **bold** prose' },
       ],
     })
@@ -92,7 +124,11 @@ describe('S-Note block tools', () => {
     expect(readBlock({ block: '2' }, ctx)).toMatchObject({ attrs: { icon: '💸' } })
     expect(readBlock({ block: '3' }, ctx)).toMatchObject({ text: 'npm run build', attrs: { language: 'bash' } })
     expect(readBlock({ blocks: ['1.1', '3', '99'] }, ctx)).toMatchObject({
-      blocks: [{ block: '1.1', text: 'Pick date' }, { block: '3', text: 'npm run build' }, { block: '99', error: expect.any(String) }],
+      blocks: [
+        { block: '1.1', text: 'Pick date' },
+        { block: '3', text: 'npm run build' },
+        { block: '99', error: expect.any(String) },
+      ],
     })
   })
 
@@ -116,7 +152,16 @@ describe('S-Note block tools', () => {
 
   it('converts a block in the middle of a note into any other kind', async () => {
     listBlocks({ page: 1 }, ctx)
-    await insertBlocks(parseArgs(insertSchema, { position: { where: 'after', block: '1' }, blocks: [{ type: 'bullet', items: ['Venue', 'Food'] }, { type: 'text', text: 'Outro' }] }), ctx)
+    await insertBlocks(
+      parseArgs(insertSchema, {
+        position: { where: 'after', block: '1' },
+        blocks: [
+          { type: 'bullet', items: ['Venue', 'Food'] },
+          { type: 'text', text: 'Outro' },
+        ],
+      }),
+      ctx,
+    )
     listBlocks({ page: 1 }, ctx)
 
     // The paragraph between the heading and the list becomes a callout with the same text.
@@ -127,19 +172,34 @@ describe('S-Note block tools', () => {
     listBlocks({ page: 1 }, ctx)
     await updateBlock({ block: '2', convert_to: 'todo' }, ctx)
     const kinds = listBlocks({ page: 1 }, ctx).blocks.map((b) => [b.type, b.text])
-    expect(kinds.slice(0, 4)).toEqual([['h1', 'Plan'], ['callout', 'Intro'], ['todo', 'Venue Food'], ['text', 'Outro']])
+    expect(kinds.slice(0, 4)).toEqual([
+      ['h1', 'Plan'],
+      ['callout', 'Intro'],
+      ['todo', 'Venue Food'],
+      ['text', 'Outro'],
+    ])
     expect(readBlock({ block: '2.1' }, ctx)).toMatchObject({ type: 'todo_item', text: 'Food' })
   })
 
   it('editing one block leaves every other block exactly as it was', async () => {
     listBlocks({ page: 1 }, ctx)
-    await insertBlocks(parseArgs(insertSchema, { blocks: [{ type: 'todo', items: ['A', 'B'] }, { type: 'callout', text: 'Keep me' }] }), ctx)
+    await insertBlocks(
+      parseArgs(insertSchema, {
+        blocks: [
+          { type: 'todo', items: ['A', 'B'] },
+          { type: 'callout', text: 'Keep me' },
+        ],
+      }),
+      ctx,
+    )
     const before = editor.getJSON().content!
     listBlocks({ page: 1 }, ctx)
     await updateBlock({ block: '1', text: 'Changed' }, ctx)
     const after = editor.getJSON().content!
     expect(after).toHaveLength(before.length)
-    after.forEach((node, i) => (i === 1 ? expect((node.content?.[0] as { text?: string } | undefined)?.text).toBe('Changed') : expect(node).toEqual(before[i])))
+    after.forEach((node, i) =>
+      i === 1 ? expect((node.content?.[0] as { text?: string } | undefined)?.text).toBe('Changed') : expect(node).toEqual(before[i]),
+    )
   })
 
   it('never empties a note unless asked to', async () => {
@@ -158,11 +218,19 @@ describe('S-Note block tools', () => {
     listBlocks({ page: 1 }, ctx)
     const moved = await moveBlock({ block: '1', position: { where: 'start' } }, ctx)
     expect(moved.now_at).toBe('0')
-    expect(listBlocks({ page: 1 }, ctx).blocks.map((b) => b.text).filter(Boolean)).toEqual(['Intro', 'Plan'])
+    expect(
+      listBlocks({ page: 1 }, ctx)
+        .blocks.map((b) => b.text)
+        .filter(Boolean),
+    ).toEqual(['Intro', 'Plan'])
 
     listBlocks({ page: 1 }, ctx)
     await deleteBlocks({ blocks: ['0'] }, ctx)
-    expect(listBlocks({ page: 1 }, ctx).blocks.map((b) => b.text).filter(Boolean)).toEqual(['Plan'])
+    expect(
+      listBlocks({ page: 1 }, ctx)
+        .blocks.map((b) => b.text)
+        .filter(Boolean),
+    ).toEqual(['Plan'])
   })
 
   it('refuses to edit a locked note', async () => {

@@ -1,26 +1,40 @@
 import { ArrowDownIcon } from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
+
+import { currentTodos } from '@/ai/utils/messages'
 import { Button } from '@/components/ui/button'
 import { SidebarInset, SidebarProvider, SidebarTrigger } from '@/components/ui/sidebar'
 import { Toaster } from '@/components/ui/sonner'
-import { currentTodos } from '@/ai/utils/messages'
 import { useAskSenseiStore } from '@/features/ask-sensei/ask-sensei.store'
 import { ChatComposer } from '@/features/ask-sensei/components/chat-composer'
-import { CALL_LEVEL_VAR } from '@/features/ask-sensei/components/live-call'
-import { ContextUsage } from '@/features/ask-sensei/components/context-usage'
-import type { ChatAttachment } from '@/features/note/db/types'
+import { ChatList } from '@/features/ask-sensei/components/chat-list'
 import { ChatTodoQueue } from '@/features/ask-sensei/components/chat-plan'
 import { ChatQuestionsCard } from '@/features/ask-sensei/components/chat-questions'
-import { ChatList } from '@/features/ask-sensei/components/chat-list'
+import { ContextUsage } from '@/features/ask-sensei/components/context-usage'
 import { CONVERSATION_END_ID, Conversation } from '@/features/ask-sensei/components/conversation'
+import { CALL_LEVEL_VAR } from '@/features/ask-sensei/components/live-call'
+import type { ChatAttachment } from '@/features/note/db/types'
 
 /** The open chat is the URL: /ask-sensei/:chatId. Chats and messages are saved in IndexedDB through the Ask Sensei store. */
 function AskSenseiPage() {
   const { chatId } = useParams()
   const navigate = useNavigate()
-  const { ready, chats, messages, streamingId, stopReply, load, createChat, sendMessage, retryReply, renameChat, setTodosCollapsed, regenerateTitle, deleteChat } =
-    useAskSenseiStore()
+  const {
+    ready,
+    chats,
+    messages,
+    streamingId,
+    stopReply,
+    load,
+    createChat,
+    sendMessage,
+    retryReply,
+    renameChat,
+    setTodosCollapsed,
+    regenerateTitle,
+    deleteChat,
+  } = useAskSenseiStore()
   const [atBottom, setAtBottom] = useState(true)
   const [inCall, setInCall] = useState(false)
 
@@ -125,7 +139,11 @@ function AskSenseiPage() {
                 onOpenChange={(open) => void setTodosCollapsed(activeChat.id, !open)}
               />
             )}
-            <ChatComposer chatId={activeChat?.id ?? null} onChatOpened={openChat} onSend={send} onCallChange={setInCall}
+            <ChatComposer
+              chatId={activeChat?.id ?? null}
+              onChatOpened={openChat}
+              onSend={send}
+              onCallChange={setInCall}
               context={<ContextUsage messages={activeMessages} />}
               streaming={!!streamingId}
               onStop={stopReply}

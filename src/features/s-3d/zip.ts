@@ -1,18 +1,37 @@
 import { unzip } from 'fflate'
+
 import { convertModel, isConvertible } from './convert'
 
 const MIME: Record<string, string> = {
-  png: 'image/png', jpg: 'image/jpeg', jpeg: 'image/jpeg', webp: 'image/webp', ktx2: 'image/ktx2', bin: 'application/octet-stream',
+  png: 'image/png',
+  jpg: 'image/jpeg',
+  jpeg: 'image/jpeg',
+  webp: 'image/webp',
+  ktx2: 'image/ktx2',
+  bin: 'application/octet-stream',
 }
 
 /** Native scene files of desktop 3D apps, which only those apps can read. */
 const NATIVE: Record<string, string> = {
-  max: '3ds Max (.max)', blend: 'Blender (.blend)', ma: 'Maya (.ma)', mb: 'Maya (.mb)', c4d: 'Cinema 4D (.c4d)', skp: 'SketchUp (.skp)',
-  '3dm': 'Rhino (.3dm)', hip: 'Houdini (.hip)', lwo: 'LightWave (.lwo)', zpr: 'ZBrush (.zpr)', ztl: 'ZBrush (.ztl)',
+  max: '3ds Max (.max)',
+  blend: 'Blender (.blend)',
+  ma: 'Maya (.ma)',
+  mb: 'Maya (.mb)',
+  c4d: 'Cinema 4D (.c4d)',
+  skp: 'SketchUp (.skp)',
+  '3dm': 'Rhino (.3dm)',
+  hip: 'Houdini (.hip)',
+  lwo: 'LightWave (.lwo)',
+  zpr: 'ZBrush (.zpr)',
+  ztl: 'ZBrush (.ztl)',
 }
 
 const ext = (name: string) => name.split('.').pop()!.toLowerCase()
-const base = (name: string) => name.split('/').pop()!.replace(/\.[^.]+$/, '')
+const base = (name: string) =>
+  name
+    .split('/')
+    .pop()!
+    .replace(/\.[^.]+$/, '')
 
 function unzipAsync(data: Uint8Array) {
   return new Promise<Record<string, Uint8Array>>((resolve, reject) => unzip(data, (err, out) => (err ? reject(err) : resolve(out))))
@@ -48,7 +67,10 @@ export async function modelsFromZip(zip: File): Promise<File[]> {
   for (const name of names) {
     if (ext(name) === 'glb') out.push(new File([entries[name] as BlobPart], `${base(name)}.glb`, { type: 'model/gltf-binary' }))
     else if (ext(name) === 'gltf') {
-      const json = JSON.parse(new TextDecoder().decode(entries[name])) as { buffers?: { uri?: string }[]; images?: { uri?: string; mimeType?: string }[] }
+      const json = JSON.parse(new TextDecoder().decode(entries[name])) as {
+        buffers?: { uri?: string }[]
+        images?: { uri?: string; mimeType?: string }[]
+      }
       const inline = (item: { uri?: string; mimeType?: string }, fallback: string) => {
         if (!item.uri || item.uri.startsWith('data:')) return
         const bytes = resolveIn(entries, name, item.uri)
@@ -72,7 +94,10 @@ export async function modelsFromZip(zip: File): Promise<File[]> {
   if (!out.length) {
     // Authoring-app files cannot be read in a browser; say which ones so the user knows what to export instead.
     const native = [...new Set(names.map(ext).filter((e) => NATIVE[e]))].map((e) => NATIVE[e])
-    if (native.length) throw new Error(`only ${native.join(', ')} files inside, which can't be opened in a browser. Export the model as GLB, FBX or OBJ and zip that.`)
+    if (native.length)
+      throw new Error(
+        `only ${native.join(', ')} files inside, which can't be opened in a browser. Export the model as GLB, FBX or OBJ and zip that.`,
+      )
     throw new Error('no 3D model inside (supported: GLB, GLTF, OBJ, FBX, STL, PLY)')
   }
   return out

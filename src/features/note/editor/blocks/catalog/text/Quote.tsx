@@ -1,4 +1,5 @@
 import { QuoteIcon } from 'lucide-react'
+
 import { type BlockDefinition, chain } from '../../insert'
 
 /** Quote block for the "/" and "+" menus. */

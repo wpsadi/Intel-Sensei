@@ -1,8 +1,10 @@
-import { PASTE_MAX_CHARS } from '@/ai/sandbox/engine'
-import { readSandboxFile } from '@/ai/sandbox/client'
-import { editNote } from '../webmcp/tools'
 import { tool } from 'ai'
 import { z } from 'zod'
+
+import { readSandboxFile } from '@/ai/sandbox/client'
+import { PASTE_MAX_CHARS } from '@/ai/sandbox/engine'
+
+import { editNote } from '../webmcp/tools'
 
 /** Lines a PDF broke mid-sentence are joined; a new paragraph starts after a blank line or a line ending a sentence. */
 function paragraphsOf(text: string) {
@@ -33,7 +35,8 @@ export function reflowMarkdown(text: string) {
   const parts = text.split(/^--- Page (\d+) ---$/m)
   if (parts.length === 1) return paragraphsOf(text).join('\n\n')
   const sections = [paragraphsOf(parts[0]).join('\n\n')]
-  for (let i = 1; i < parts.length; i += 2) sections.push([`### Page ${parts[i]}`, paragraphsOf(parts[i + 1]).join('\n\n')].filter(Boolean).join('\n\n'))
+  for (let i = 1; i < parts.length; i += 2)
+    sections.push([`### Page ${parts[i]}`, paragraphsOf(parts[i + 1]).join('\n\n')].filter(Boolean).join('\n\n'))
   return sections.filter(Boolean).join('\n\n')
 }
 
@@ -43,11 +46,17 @@ export function reflowMarkdown(text: string) {
  */
 export function createPasteFileTool() {
   return tool({
-    description: 'Pastes the text of a file from the sandbox into a note without retyping it. Use after preparing the text with the terminal, for example `pdftotext guide.pdf -f 2 -l 6 guide.txt`, when the user asks to put a PDF or other file\'s content into a note. Read the note first with read_note.',
+    description:
+      "Pastes the text of a file from the sandbox into a note without retyping it. Use after preparing the text with the terminal, for example `pdftotext guide.pdf -f 2 -l 6 guide.txt`, when the user asks to put a PDF or other file's content into a note. Read the note first with read_note.",
     inputSchema: z.object({
       note: z.string().min(1).describe('The note to paste into: its title or id from search_notes'),
       path: z.string().min(1).describe('The text file in the sandbox, such as guide.txt'),
-      reflow: z.boolean().optional().describe('Join lines that were broken mid-sentence and turn "--- Page N ---" markers into headings. Use for text from a PDF. Default false'),
+      reflow: z
+        .boolean()
+        .optional()
+        .describe(
+          'Join lines that were broken mid-sentence and turn "--- Page N ---" markers into headings. Use for text from a PDF. Default false',
+        ),
       mode: z.enum(['append', 'prepend']).optional().describe('Add at the end of the note (default) or the start'),
     }),
     execute: async ({ note, path, reflow, mode }, { abortSignal }) => {
@@ -56,7 +65,11 @@ export function createPasteFileTool() {
       const cut = text.length > PASTE_MAX_CHARS
       if (cut) text = text.slice(0, PASTE_MAX_CHARS)
       const body = reflow ? reflowMarkdown(text) : text
-      const done = await editNote({ note, content: cut ? `${body}\n\n*The text was cut short at this point because it was too long to paste in one go.*` : body, mode: mode ?? 'append' })
+      const done = await editNote({
+        note,
+        content: cut ? `${body}\n\n*The text was cut short at this point because it was too long to paste in one go.*` : body,
+        mode: mode ?? 'append',
+      })
       return `Pasted ${text.length} characters of "${path}" into "${done.title}"${cut ? ', cut short because it was too long' : ''}.`
     },
   })

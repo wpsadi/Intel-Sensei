@@ -1,14 +1,14 @@
-import type { ReactElement, ReactNode } from 'react'
 import { ContextMenu } from '@base-ui/react/context-menu'
 import { ChevronRightIcon } from 'lucide-react'
+import type { ReactElement, ReactNode } from 'react'
+
 import { cmd } from '@/features/s-3d/commands'
+
+import type { MenuEntry } from './command-menus'
 
 const itemClass =
   'flex cursor-default items-center gap-6 rounded-sm px-2 py-1 text-xs outline-hidden select-none data-highlighted:bg-accent data-highlighted:text-accent-foreground data-disabled:pointer-events-none data-disabled:opacity-40'
 const popupClass = 'z-50 min-w-48 rounded-md bg-popover p-1 text-popover-foreground shadow-md ring-1 ring-foreground/10 outline-none'
-
-/** An entry is a command id, '-' for a separator, or a submenu. */
-export type MenuEntry = string | '-' | { label: string; items: MenuEntry[] }
 
 function Entries({ items }: { items: MenuEntry[] }) {
   return items.map((entry, i) => {
@@ -54,13 +54,3 @@ export function CommandContextMenu({ items, children, render }: { items: () => M
     </ContextMenu.Root>
   )
 }
-
-export const NODE_MENU: MenuEntry[] = [
-  'copy', 'cut', 'paste', 'duplicate', 'delete', '-',
-  'group', 'frame-selection', 'ungroup', 'add-auto-layout', '-',
-  { label: 'Arrange', items: ['bring-front', 'bring-forward', 'send-backward', 'send-back'] },
-  { label: 'Boolean', items: ['union', 'subtract', 'intersect', 'exclude', '-', 'mask'] },
-  { label: 'Flip', items: ['flip-h', 'flip-v'] }, '-',
-  'toggle-visible', 'toggle-lock', 'toggle-clip', '-', 'zoom-selection',
-]
-export const CANVAS_MENU: MenuEntry[] = ['paste', 'select-all', '-', 'import', '-', 'zoom-fit', 'zoom-100', '-', 'toggle-rulers', 'toggle-grid', 'toggle-snap']

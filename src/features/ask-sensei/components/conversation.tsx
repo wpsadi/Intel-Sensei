@@ -1,22 +1,23 @@
-import { Bubble, Message, MessageContent } from '@/components/ui/chat'
 import { CircleStop, RotateCcw } from 'lucide-react'
-import { Checkpoint, CheckpointIcon } from '@/components/ai-elements/checkpoint'
-import { Separator } from '@/components/ui/separator'
 import { useEffect, useRef } from 'react'
 import { useLocation } from 'react-router-dom'
-import type { ChatAttachment, ChatMessage } from '@/features/note/db/types'
+import { toast } from 'sonner'
+
+import { Checkpoint, CheckpointIcon } from '@/components/ai-elements/checkpoint'
 import { ComposerAttachmentChip } from '@/components/assistant-ui/elements/composer'
-import { resolveMedia } from '@/features/note/db/media'
-import { useMediaUrl } from '@/features/note/db/hooks'
-import { ChatReasoning } from '@/features/ask-sensei/components/chat-reasoning'
+import { CopyMessage, ReplyAction, ReplyActions } from '@/components/reply-actions'
+import { Bubble, Message, MessageContent } from '@/components/ui/chat'
+import { ScrollArea } from '@/components/ui/scroll-area'
+import { Separator } from '@/components/ui/separator'
 import { ChatPlanCard } from '@/features/ask-sensei/components/chat-plan'
 import { ChatQuestionsCard } from '@/features/ask-sensei/components/chat-questions'
+import { ChatReasoning } from '@/features/ask-sensei/components/chat-reasoning'
 import { ChatSearches } from '@/features/ask-sensei/components/chat-searches'
-import { ScrollArea } from '@/components/ui/scroll-area'
 import { Markdown } from '@/features/ask-sensei/components/markdown'
-import { CopyMessage, ReplyAction, ReplyActions } from '@/components/reply-actions'
+import { useMediaUrl } from '@/features/note/db/hooks'
+import { resolveMedia } from '@/features/note/db/media'
+import type { ChatAttachment, ChatMessage } from '@/features/note/db/types'
 import { cn } from '@/lib/utils'
-import { toast } from 'sonner'
 
 /** Element id of the marker at the end of the list. The page scrolls to it from the down arrow. */
 export const CONVERSATION_END_ID = 'conversation-end'
@@ -27,7 +28,19 @@ function ReplyDot() {
 }
 
 /** Copy, read aloud and try again, shown in a row under each Sensei reply. */
-function ResponseActions({ id, text, onRetry, disabled, interrupted }: { id: string; text: string; onRetry: () => void; disabled: boolean; interrupted?: boolean }) {
+function ResponseActions({
+  id,
+  text,
+  onRetry,
+  disabled,
+  interrupted,
+}: {
+  id: string
+  text: string
+  onRetry: () => void
+  disabled: boolean
+  interrupted?: boolean
+}) {
   // A stopped reply is unfinished, so only trying again is offered.
   return (
     <ReplyActions text={text} speakId={id} hideCopyAndSpeech={interrupted}>
@@ -145,7 +158,8 @@ export function Conversation({
         {messages.map((message) => {
           const isReply = message.role === 'assistant'
           const isStreaming = message.id === streamingId
-          const isWaiting = isReply && isStreaming && !message.content && !message.reasoning && !message.plan && !message.searches && !message.questions
+          const isWaiting =
+            isReply && isStreaming && !message.content && !message.reasoning && !message.plan && !message.searches && !message.questions
           return (
             <Message key={message.id} id={message.id} align={isReply ? 'start' : 'end'} className="scroll-mt-6">
               {/* An interrupted reply takes the full row, so its checkpoint line runs across the chat. */}
@@ -190,7 +204,9 @@ export function Conversation({
                         {isReply && message.plan && <ChatPlanCard plan={message.plan} isStreaming={isStreaming && !message.content} />}
                         <Markdown>{message.content}</Markdown>
                         {/* Unanswered questions are pinned above the input instead. */}
-                        {isReply && message.questions && (message.questions.answers || !isStreaming) && <ChatQuestionsCard message={message} isStreaming={isStreaming} />}
+                        {isReply && message.questions && (message.questions.answers || !isStreaming) && (
+                          <ChatQuestionsCard message={message} isStreaming={isStreaming} />
+                        )}
                       </>
                     )}
                   </Bubble>
@@ -206,7 +222,15 @@ export function Conversation({
                     <span className="shrink-0 text-sm font-medium">Interrupted</span>
                   </Checkpoint>
                 )}
-                {isReply && !isStreaming && <ResponseActions id={message.id} text={message.content} onRetry={onRetry} disabled={!!streamingId} interrupted={message.interrupted} />}
+                {isReply && !isStreaming && (
+                  <ResponseActions
+                    id={message.id}
+                    text={message.content}
+                    onRetry={onRetry}
+                    disabled={!!streamingId}
+                    interrupted={message.interrupted}
+                  />
+                )}
               </MessageContent>
             </Message>
           )

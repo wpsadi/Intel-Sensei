@@ -1,5 +1,5 @@
 /// <reference lib="webworker" />
-import { PYODIDE_INDEX_URL, type ExecResult, type PyodideLike, mountFile, prepare, readFile, runShell, writeTextFile } from './engine'
+import { type ExecResult, PYODIDE_INDEX_URL, type PyodideLike, mountFile, prepare, readFile, runShell, writeTextFile } from './engine'
 
 /** What the page asks for. `id` pairs a request with its reply. */
 export type SandboxRequest = { id: number } & (
@@ -29,7 +29,8 @@ function python() {
 }
 
 /** A Python traceback ends with the exception line, which is the part worth showing. */
-const errorLine = (error: unknown) => (error instanceof Error ? error.message : String(error)).trim().split('\n').at(-1) || 'The sandbox failed'
+const errorLine = (error: unknown) =>
+  (error instanceof Error ? error.message : String(error)).trim().split('\n').at(-1) || 'The sandbox failed'
 
 self.onmessage = async (event: MessageEvent<SandboxRequest>) => {
   const request = event.data

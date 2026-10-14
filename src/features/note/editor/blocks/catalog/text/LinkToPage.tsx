@@ -1,4 +1,5 @@
 import { FileSymlinkIcon } from 'lucide-react'
+
 import { type BlockDefinition, block } from '../../insert'
 
 /** Link to page block for the "/" and "+" menus. */

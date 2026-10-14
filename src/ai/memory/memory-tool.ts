@@ -1,5 +1,6 @@
 import { tool } from 'ai'
 import { z } from 'zod'
+
 import { episodicMemory } from './episodic/episodic'
 import { proceduralMemory } from './procedural/procedural'
 import { semanticMemory } from './semantic/semantic'
@@ -25,9 +26,17 @@ const memoryInput = z.object({
     ),
   text: z.string().optional().describe('The fact, event, procedure instructions or session note to save.'),
   name: z.string().optional().describe('Short name of the procedure, for save_procedure.'),
-  id: z.string().optional().describe('The id in brackets of the item, for update_fact, forget_fact, forget_procedure and forget_session_note.'),
+  id: z
+    .string()
+    .optional()
+    .describe('The id in brackets of the item, for update_fact, forget_fact, forget_procedure and forget_session_note.'),
   query: z.string().optional().describe('Short search terms (1-4 words) for the search commands.'),
-  pinned: z.boolean().optional().describe('For remember_fact: true (default) for a short fact that is always relevant, false for longer knowledge that is only found by searching.'),
+  pinned: z
+    .boolean()
+    .optional()
+    .describe(
+      'For remember_fact: true (default) for a short fact that is always relevant, false for longer knowledge that is only found by searching.',
+    ),
 })
 
 const day = (time: number) => new Date(time).toISOString().slice(0, 10)
@@ -68,7 +77,12 @@ export function createMemoryTool({ chatId }: { chatId?: string } = {}) {
         if (!hits.length) return 'No matching episodes.'
         // Each hit says whether it happened in this chat, which the model already has in front of it.
         return JSON.stringify(
-          hits.map(({ item }) => ({ date: day(item.createdAt), role: item.role, content: item.content, belongsToThisChat: !!chatId && item.chatId === chatId })),
+          hits.map(({ item }) => ({
+            date: day(item.createdAt),
+            role: item.role,
+            content: item.content,
+            belongsToThisChat: !!chatId && item.chatId === chatId,
+          })),
         )
       }
       case 'save_procedure':
@@ -79,7 +93,9 @@ export function createMemoryTool({ chatId }: { chatId?: string } = {}) {
         return 'Procedure removed.'
       case 'search_procedures': {
         const hits = await proceduralMemory.search(need(query, 'query'))
-        return hits.length ? hits.map(({ item }) => `[${item.id}] ${item.name}: ${item.instructions}`).join('\n') : 'No matching procedures.'
+        return hits.length
+          ? hits.map(({ item }) => `[${item.id}] ${item.name}: ${item.instructions}`).join('\n')
+          : 'No matching procedures.'
       }
       case 'note_session':
         await sessionMemory.add(session(), need(text, 'text'))

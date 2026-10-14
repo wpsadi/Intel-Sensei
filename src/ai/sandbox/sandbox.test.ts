@@ -1,9 +1,11 @@
 import { loadPyodide } from 'pyodide'
 import { beforeAll, describe, expect, it } from 'vitest'
+
+import { formatScrape, scrapePage } from '@/ai/tools/scrape'
 import { reflowMarkdown } from '@/features/note/sensei-widget/paste-file'
+
 import { type PyodideLike, mountFile, prepare, readFile, runShell, safeName, writeTextFile } from './engine'
 import { formatExec } from './tools'
-import { formatScrape, scrapePage } from '@/ai/tools/scrape'
 
 /** A small PDF with one line of text per page, built by hand so the test needs no fixture file. */
 function makePdf(pages: string[]) {
@@ -15,7 +17,8 @@ function makePdf(pages: string[]) {
   pages.forEach((text, index) => {
     const pageId = pageIds[index]
     const stream = `BT /F1 18 Tf 72 720 Td (${text}) Tj ET`
-    objects[pageId] = `<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 3 0 R >> >> /Contents ${pageId + 1} 0 R >>`
+    objects[pageId] =
+      `<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 3 0 R >> >> /Contents ${pageId + 1} 0 R >>`
     objects[pageId + 1] = `<< /Length ${stream.length} >>\nstream\n${stream}\nendstream`
   })
   let out = '%PDF-1.4\n'
@@ -191,7 +194,9 @@ describe('reply text', () => {
 
 describe('paste markdown', () => {
   it('joins broken lines, keeps sentences apart and escapes list-like starts', () => {
-    expect(reflowMarkdown('First line\nof one sentence.\nNext sentence here.\n\n- not a list')).toBe('First line of one sentence.\n\nNext sentence here.\n\n\\- not a list')
+    expect(reflowMarkdown('First line\nof one sentence.\nNext sentence here.\n\n- not a list')).toBe(
+      'First line of one sentence.\n\nNext sentence here.\n\n\\- not a list',
+    )
   })
 
   it('turns page markers into headings', () => {
@@ -229,8 +234,12 @@ describe('scrape', () => {
     }) as typeof fetch
     try {
       expect(await scrapePage('https://a.com/x')).toEqual({ markdown: '# Hi', title: 'T', status: 200 })
-      expect(sent).toEqual({ url: 'https://api.firecrawl.dev/v2/scrape', body: { url: 'https://a.com/x', formats: ['markdown'], onlyMainContent: true } })
-      globalThis.fetch = (async () => new Response(JSON.stringify({ success: false, error: 'Rate limited' }), { status: 429 })) as typeof fetch
+      expect(sent).toEqual({
+        url: 'https://api.firecrawl.dev/v2/scrape',
+        body: { url: 'https://a.com/x', formats: ['markdown'], onlyMainContent: true },
+      })
+      globalThis.fetch = (async () =>
+        new Response(JSON.stringify({ success: false, error: 'Rate limited' }), { status: 429 })) as typeof fetch
       await expect(scrapePage('https://a.com/x')).rejects.toThrow('Rate limited')
     } finally {
       globalThis.fetch = original

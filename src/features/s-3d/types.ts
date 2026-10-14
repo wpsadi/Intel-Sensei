@@ -22,14 +22,43 @@ export type Shape3D = 'cube' | 'sphere' | 'torus' | 'cylinder' | 'cone' | 'torus
 export type Vec3 = [number, number, number]
 
 export type Geometry3D =
-  | 'box' | 'roundedBox' | 'sphere' | 'cylinder' | 'cone' | 'capsule' | 'torus' | 'torusKnot'
-  | 'plane' | 'circle' | 'ring' | 'icosahedron' | 'dodecahedron' | 'octahedron' | 'tetrahedron' | 'lathe' | 'extrude'
-  | 'tube' | 'helix' | 'wave'
+  | 'box'
+  | 'roundedBox'
+  | 'sphere'
+  | 'cylinder'
+  | 'cone'
+  | 'capsule'
+  | 'torus'
+  | 'torusKnot'
+  | 'plane'
+  | 'circle'
+  | 'ring'
+  | 'icosahedron'
+  | 'dodecahedron'
+  | 'octahedron'
+  | 'tetrahedron'
+  | 'lathe'
+  | 'extrude'
+  | 'tube'
+  | 'helix'
+  | 'wave'
   /** Baked triangles in `Obj3D.mesh`: what joining and remeshing produce. */
   | 'mesh'
 
-
-export type TexturePattern = 'checker' | 'stripes' | 'ridges' | 'dots' | 'grid' | 'bricks' | 'noise' | 'wood' | 'waves' | 'weave' | 'fur' | 'pores' | 'hide'
+export type TexturePattern =
+  | 'checker'
+  | 'stripes'
+  | 'ridges'
+  | 'dots'
+  | 'grid'
+  | 'bricks'
+  | 'noise'
+  | 'wood'
+  | 'waves'
+  | 'weave'
+  | 'fur'
+  | 'pores'
+  | 'hide'
 
 /** An indexed triangle mesh in the object's local space. `colors` are linear RGB per vertex. */
 export interface MeshData3D {
@@ -194,7 +223,16 @@ export interface Stroke {
 }
 
 export type Effect =
-  | { id: string; kind: 'drop-shadow' | 'inner-shadow'; x: number; y: number; blur: number; spread: number; color: string; visible: boolean }
+  | {
+      id: string
+      kind: 'drop-shadow' | 'inner-shadow'
+      x: number
+      y: number
+      blur: number
+      spread: number
+      color: string
+      visible: boolean
+    }
   | { id: string; kind: 'layer-blur' | 'background-blur'; radius: number; visible: boolean }
   | { id: string; kind: 'glass'; blur: number; tint: string; visible: boolean }
   | { id: string; kind: 'noise'; amount: number; visible: boolean }

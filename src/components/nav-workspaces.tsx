@@ -1,8 +1,7 @@
-import {
-  Collapsible,
-  CollapsibleContent,
-  CollapsibleTrigger,
-} from "@/components/ui/collapsible"
+import { ChevronRightIcon, MoreHorizontalIcon, PlusIcon } from 'lucide-react'
+import { Link } from 'react-router-dom'
+
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible'
 import {
   SidebarGroup,
   SidebarGroupContent,
@@ -14,9 +13,7 @@ import {
   SidebarMenuSub,
   SidebarMenuSubButton,
   SidebarMenuSubItem,
-} from "@/components/ui/sidebar"
-import { ChevronRightIcon, PlusIcon, MoreHorizontalIcon } from "lucide-react"
-import { Link } from "react-router-dom"
+} from '@/components/ui/sidebar'
 
 export function NavWorkspaces({
   workspaces,
@@ -47,12 +44,10 @@ export function NavWorkspaces({
                   className="left-2 bg-sidebar-accent text-sidebar-accent-foreground data-open:rotate-90"
                   showOnHover
                 >
-                  <ChevronRightIcon
-                  />
+                  <ChevronRightIcon />
                 </SidebarMenuAction>
                 <SidebarMenuAction showOnHover>
-                  <PlusIcon
-                  />
+                  <PlusIcon />
                 </SidebarMenuAction>
                 <CollapsibleContent>
                   <SidebarMenuSub>
@@ -71,8 +66,7 @@ export function NavWorkspaces({
           ))}
           <SidebarMenuItem>
             <SidebarMenuButton className="text-sidebar-foreground/70">
-              <MoreHorizontalIcon
-              />
+              <MoreHorizontalIcon />
               <span>More</span>
             </SidebarMenuButton>
           </SidebarMenuItem>

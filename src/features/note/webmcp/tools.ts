@@ -1,8 +1,9 @@
 import type { z } from 'zod'
+
 import type { Database, Page, PropertyDef, PropertyValue, SelectOption } from '../db/types'
+import { getLiveEditor } from '../editor/live-editors'
 import { selectAncestry, selectChildren, useNoteStore } from '../note.store'
 import { docToText } from './content'
-import { getLiveEditor } from '../editor/live-editors'
 import { assertRead, forgetRead, markRead } from './read-guard'
 import type * as S from './schemas'
 
@@ -34,11 +35,7 @@ function valueText(prop: PropertyDef, value: PropertyValue): string {
 const titleOf = (page: Page) => pageTitle(page.kind === 'database' ? state().databases[page.databaseId ?? '']?.title : page.title)
 
 /** "Parent / Child" path above the page, so agents can tell same-named notes apart. */
-const pathOf = (page: Page) =>
-  selectAncestry(state(), page.id)
-    .slice(0, -1)
-    .map(titleOf)
-    .join(' / ')
+const pathOf = (page: Page) => selectAncestry(state(), page.id).slice(0, -1).map(titleOf).join(' / ')
 
 /** A note's document as JSON text: live from its open editor (which may be ahead of the last save), saved otherwise. */
 const contentOf = (page: Page) => {
@@ -58,7 +55,9 @@ export function findPage(ref: string, { trashed = false } = {}): Page {
   if (!matches.length) matches = pool.filter((page) => titleOf(page).toLowerCase().includes(needle))
   if (matches.length === 1) return matches[0]
   if (!matches.length) {
-    throw new Error(`No ${trashed ? 'trashed ' : ''}note matches "${ref}". Call search_notes${trashed ? ' with in_trash: true' : ''} to find the right one.`)
+    throw new Error(
+      `No ${trashed ? 'trashed ' : ''}note matches "${ref}". Call search_notes${trashed ? ' with in_trash: true' : ''} to find the right one.`,
+    )
   }
   const options = matches.slice(0, 5).map((page) => `"${titleOf(page)}" (id ${page.id}${pathOf(page) ? `, in ${pathOf(page)}` : ''})`)
   throw new Error(`"${ref}" matches ${matches.length} notes: ${options.join('; ')}. Ask the user which one, then pass its id.`)
@@ -105,17 +104,33 @@ export function searchNotes({ query, inside, favorites_only, in_trash, page }: z
   const { items, ...meta } = paginate(found, page)
   return {
     ...meta,
-    notes: items.map((p) => ({ ...brief(p), kind: p.kind, favorite: p.favorite || undefined, edited: new Date(p.updatedAt).toISOString().slice(0, 10) })),
+    notes: items.map((p) => ({
+      ...brief(p),
+      kind: p.kind,
+      favorite: p.favorite || undefined,
+      edited: new Date(p.updatedAt).toISOString().slice(0, 10),
+    })),
   }
 }
 
 export function readNote({ note, offset }: z.output<typeof S.readNote>) {
   const page = findPage(note)
   const children = selectChildren(state(), page.id).map(titleOf)
-  const base = { ...brief(page), untitled: page.title || page.kind === 'database' ? undefined : true, kind: page.kind, locked: page.locked || undefined, favorite: page.favorite || undefined }
+  const base = {
+    ...brief(page),
+    untitled: page.title || page.kind === 'database' ? undefined : true,
+    kind: page.kind,
+    locked: page.locked || undefined,
+    favorite: page.favorite || undefined,
+  }
   if (page.kind === 'database') {
     const database = state().databases[page.databaseId ?? '']
-    return { ...base, columns: database?.properties.map((p) => `${p.name} (${p.type})`), row_count: database ? selectChildren(state(), database.id).length : 0, hint: 'Use query_database to read rows.' }
+    return {
+      ...base,
+      columns: database?.properties.map((p) => `${p.name} (${p.type})`),
+      row_count: database ? selectChildren(state(), database.id).length : 0,
+      hint: 'Use query_database to read rows.',
+    }
   }
   const content = contentOf(page)
   if (content) markRead(page.id, JSON.parse(content))
@@ -172,7 +187,10 @@ async function listInParent(parent: Page, childId: string) {
   return true
 }
 
-export async function createNote({ title, content, inside, icon, as_database, open }: z.output<typeof S.createNote>, go: (path: string) => void) {
+export async function createNote(
+  { title, content, inside, icon, as_database, open }: z.output<typeof S.createNote>,
+  go: (path: string) => void,
+) {
   const store = state()
   const parent = inside ? findPage(inside) : undefined
   if (parent?.kind === 'database') throw new Error(`"${titleOf(parent)}" is a database. Add rows to it with update_database_rows instead.`)
@@ -200,7 +218,10 @@ export async function createNote({ title, content, inside, icon, as_database, op
     title,
     inside: parent ? titleOf(parent) : 'workspace',
     opened: open,
-    ...(parent && { linked_in_parent: listed, ...(!listed && { note: `"${titleOf(parent)}" is locked, so a link to the new note was not added to its body.` }) }),
+    ...(parent && {
+      linked_in_parent: listed,
+      ...(!listed && { note: `"${titleOf(parent)}" is locked, so a link to the new note was not added to its body.` }),
+    }),
   }
 }
 
@@ -212,7 +233,8 @@ export async function editNote(args: z.output<typeof S.editNote>) {
   if (page.locked && locked !== false && changesBody) {
     throw new Error(`"${titleOf(page)}" is locked. Ask the user before unlocking it (pass locked: false).`)
   }
-  if (content !== undefined && page.kind === 'database') throw new Error(`"${titleOf(page)}" is a database. Use update_database_rows to change its rows.`)
+  if (content !== undefined && page.kind === 'database')
+    throw new Error(`"${titleOf(page)}" is a database. Use update_database_rows to change its rows.`)
 
   const patch: Partial<Page> = {}
   if (icon !== undefined) patch.icon = icon
@@ -225,7 +247,8 @@ export async function editNote(args: z.output<typeof S.editNote>) {
     if (page.kind === 'database' && page.databaseId) await store.updateDatabase(page.databaseId, { title })
     else patch.title = title
   }
-  if (!Object.keys(patch).length && title === undefined && content === undefined) throw new Error('Nothing to change. Pass content, title, icon or a setting.')
+  if (!Object.keys(patch).length && title === undefined && content === undefined)
+    throw new Error('Nothing to change. Pass content, title, icon or a setting.')
 
   const changed = [...Object.keys(patch), ...(title !== undefined && !patch.title ? ['title'] : [])]
   if (content !== undefined) {
@@ -252,7 +275,8 @@ export async function duplicateNote({ note }: z.output<typeof S.duplicateNote>) 
 
 export async function moveNotes({ notes, inside }: z.output<typeof S.moveNotes>) {
   const target = inside ? findPage(inside) : undefined
-  if (target?.kind === 'database') throw new Error(`"${titleOf(target)}" is a database; notes can only move under text notes or the workspace.`)
+  if (target?.kind === 'database')
+    throw new Error(`"${titleOf(target)}" is a database; notes can only move under text notes or the workspace.`)
   const pages = notes.map((ref) => findPage(ref))
   for (const page of pages) {
     if (target && (page.id === target.id || isInside(target, page.id))) {
@@ -266,7 +290,11 @@ export async function moveNotes({ notes, inside }: z.output<typeof S.moveNotes>)
 export async function trashNotes({ notes, restore }: z.output<typeof S.trashNotes>) {
   const pages = notes.map((ref) => findPage(ref, { trashed: !!restore }))
   await Promise.all(pages.map((page) => state().setPageTrashed(page.id, !restore)))
-  return { status: restore ? 'restored' : 'trashed', notes: pages.map(titleOf), note: restore ? undefined : 'Sub-notes moved too. Restore with trash_notes and restore: true.' }
+  return {
+    status: restore ? 'restored' : 'trashed',
+    notes: pages.map(titleOf),
+    note: restore ? undefined : 'Sub-notes moved too. Restore with trash_notes and restore: true.',
+  }
 }
 
 export async function deleteNotesForever({ notes }: z.output<typeof S.deleteNotesForever>) {
@@ -283,7 +311,12 @@ const cellText = (prop: PropertyDef, value: PropertyValue) =>
 const rowCells = (database: Database, row: Page) => {
   const cells: Record<string, string> = { id: row.id }
   for (const prop of database.properties) {
-    const text = prop.type === 'title' ? titleOf(row) : prop.type === 'created_time' ? new Date(row.createdAt).toISOString().slice(0, 10) : cellText(prop, row.properties[prop.id] ?? null)
+    const text =
+      prop.type === 'title'
+        ? titleOf(row)
+        : prop.type === 'created_time'
+          ? new Date(row.createdAt).toISOString().slice(0, 10)
+          : cellText(prop, row.properties[prop.id] ?? null)
     if (text) cells[prop.name] = clip(text)
   }
   return cells
@@ -291,7 +324,10 @@ const rowCells = (database: Database, row: Page) => {
 
 const findColumn = (database: Database, name: string) => {
   const prop = database.properties.find((p) => p.name.toLowerCase() === name.trim().toLowerCase())
-  if (!prop) throw new Error(`"${database.title || 'This database'}" has no column "${name}". Columns: ${database.properties.map((p) => p.name).join(', ')}.`)
+  if (!prop)
+    throw new Error(
+      `"${database.title || 'This database'}" has no column "${name}". Columns: ${database.properties.map((p) => p.name).join(', ')}.`,
+    )
   return prop
 }
 
@@ -319,12 +355,16 @@ export function parseDate(text: string) {
   return Number.isNaN(parsed.getTime()) ? undefined : parsed
 }
 
-export const isoDay = (date: Date) => `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`
+export const isoDay = (date: Date) =>
+  `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`
 
 const OPTION_COLORS = ['gray', 'blue', 'green', 'orange', 'purple', 'pink', 'red', 'yellow']
 
 /** Converts what the agent said into the value a column stores, adding select options and people as needed. */
-async function toCell(prop: PropertyDef, raw: z.output<typeof S.updateDatabaseRows>['rows'][number]['values'][string]): Promise<PropertyValue> {
+async function toCell(
+  prop: PropertyDef,
+  raw: z.output<typeof S.updateDatabaseRows>['rows'][number]['values'][string],
+): Promise<PropertyValue> {
   if (raw === null || raw === '') return null
   const text = Array.isArray(raw) ? raw.join(', ') : String(raw)
   switch (prop.type) {
@@ -352,8 +392,13 @@ async function toCell(prop: PropertyDef, raw: z.output<typeof S.updateDatabaseRo
         const trimmed = name.trim()
         const option = prop.options?.find((o) => o.name.toLowerCase() === trimmed.toLowerCase())
         if (option) return option.id
-        if (prop.type === 'status') throw new Error(`"${prop.name}" has no status "${trimmed}". Choose one of: ${prop.options?.map((o) => o.name).join(', ')}.`)
-        const created: SelectOption = { id: crypto.randomUUID(), name: trimmed, color: OPTION_COLORS[(prop.options?.length ?? 0) % OPTION_COLORS.length] }
+        if (prop.type === 'status')
+          throw new Error(`"${prop.name}" has no status "${trimmed}". Choose one of: ${prop.options?.map((o) => o.name).join(', ')}.`)
+        const created: SelectOption = {
+          id: crypto.randomUUID(),
+          name: trimmed,
+          color: OPTION_COLORS[(prop.options?.length ?? 0) % OPTION_COLORS.length],
+        }
         prop.options = [...(prop.options ?? []), created]
         return created.id
       })
@@ -380,7 +425,11 @@ export async function updateDatabaseRows({ database: ref, rows }: z.output<typeo
       const needle = row.trim().toLowerCase()
       const matches = existing.filter((r) => r.id === row || titleOf(r).toLowerCase() === needle)
       if (matches.length !== 1) {
-        throw new Error(matches.length ? `${matches.length} rows are named "${row}"; pass the row id from query_database.` : `No row "${row}" in "${database.title || 'this database'}". Omit row to add it as a new row. Nothing was changed.`)
+        throw new Error(
+          matches.length
+            ? `${matches.length} rows are named "${row}"; pass the row id from query_database.`
+            : `No row "${row}" in "${database.title || 'this database'}". Omit row to add it as a new row. Nothing was changed.`,
+        )
       }
       target = matches[0]
     }
@@ -394,7 +443,8 @@ export async function updateDatabaseRows({ database: ref, rows }: z.output<typeo
     planned.push({ target, title, cells })
   }
 
-  if (JSON.stringify(database.properties) !== JSON.stringify(original.properties)) await store.updateDatabase(database.id, { properties: database.properties })
+  if (JSON.stringify(database.properties) !== JSON.stringify(original.properties))
+    await store.updateDatabase(database.id, { properties: database.properties })
   const results = []
   for (const { target, title, cells } of planned) {
     if (target) {

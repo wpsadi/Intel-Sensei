@@ -1,6 +1,7 @@
 import { PanelTopIcon } from 'lucide-react'
-import { type BlockDefinition, chain } from '../../insert'
+
 import { tabsContent } from '../../../nodes/layout'
+import { type BlockDefinition, chain } from '../../insert'
 
 /** Tabs block for the "/" and "+" menus. */
 export const TabsBlock: BlockDefinition = {

@@ -1,4 +1,5 @@
 import { type DBSchema, type IDBPDatabase, openDB } from 'idb'
+
 import type { Episode, Procedure, SemanticFact, SessionNote, VectorRecord } from './types'
 
 interface IMemoryDB extends DBSchema {
@@ -54,7 +55,8 @@ export function getMemoryDb() {
           const kind = (record.kind as string) === 'archival' ? 'semantic' : 'episodic'
           await vectors.put({ ...record, kind, key: `${kind}:${record.refId}` })
         }
-        for (const name of ['core', 'notes', 'conversations']) (db as unknown as { deleteObjectStore(name: string): void }).deleteObjectStore(name)
+        for (const name of ['core', 'notes', 'conversations'])
+          (db as unknown as { deleteObjectStore(name: string): void }).deleteObjectStore(name)
       }
     },
     blocking() {

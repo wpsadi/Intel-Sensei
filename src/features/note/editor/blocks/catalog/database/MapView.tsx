@@ -1,4 +1,5 @@
 import { MapIcon } from 'lucide-react'
+
 import { type BlockDefinition, database } from '../../insert'
 
 /** Map view block for the "/" and "+" menus. */

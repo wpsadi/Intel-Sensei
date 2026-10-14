@@ -1,8 +1,10 @@
-import { CopyIcon, MessageSquareIcon, Heading1Icon, Heading2Icon, Heading3Icon, QuoteIcon, Trash2Icon, TypeIcon } from 'lucide-react'
 import type { Editor } from '@tiptap/react'
+import { CopyIcon, Heading1Icon, Heading2Icon, Heading3Icon, MessageSquareIcon, QuoteIcon, Trash2Icon, TypeIcon } from 'lucide-react'
 import { useRef } from 'react'
-import { useCloseOnOutsidePress } from '../nodes/helpers'
+
 import { cn } from '@/lib/utils'
+
+import { useCloseOnOutsidePress } from '../nodes/block-utils'
 
 interface BlockActionsProps {
   editor: Editor

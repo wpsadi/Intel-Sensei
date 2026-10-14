@@ -1,4 +1,5 @@
 import { MinusIcon } from 'lucide-react'
+
 import { type BlockDefinition, chain } from '../../insert'
 
 /** Divider block for the "/" and "+" menus. */

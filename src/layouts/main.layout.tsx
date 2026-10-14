@@ -1,9 +1,10 @@
-import { Outlet } from 'react-router-dom'
-import { SettingsDialog } from '@/components/settings-dialog'
-import { startNoteSync } from '@/features/note/note.store'
 import { useEffect } from 'react'
 import { DndProvider } from 'react-dnd'
 import { HTML5Backend } from 'react-dnd-html5-backend'
+import { Outlet } from 'react-router-dom'
+
+import { SettingsDialog } from '@/components/settings-dialog'
+import { startNoteSync } from '@/features/note/note.store'
 
 function MainLayout() {
   useEffect(() => startNoteSync(), [])

@@ -1,11 +1,13 @@
+import { BoxIcon, EyeIcon, EyeOffIcon, FolderIcon, LightbulbIcon, PackageIcon, PlusIcon, XIcon } from 'lucide-react'
 import { useState } from 'react'
-import { pickFiles, storeFile } from '../files'
-import { TEXTURE_PATTERNS } from '../render/textures'
-import { PlusIcon, XIcon, BoxIcon, EyeIcon, EyeOffIcon, FolderIcon, LightbulbIcon, PackageIcon } from 'lucide-react'
+
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { cn } from '@/lib/utils'
+
+import { pickFiles, storeFile } from '../files'
 import { Check, ColorField, NumberField, Section, Sel, TextField } from '../inspector/fields'
 import { DEFAULT_MATERIAL, DEFAULT_POINTS, GEOMETRY_PARAMS, MATERIAL_PRESETS, sceneOf } from '../render/scene3d'
+import { TEXTURE_PATTERNS } from '../render/textures'
 import { useS3D } from '../store'
 import type { Geometry3D, Light3D, Material3D, Obj3D, Scene3D, Vec3 } from '../types'
 import { editObject, editScene, selectObject } from './edit'
@@ -42,7 +44,11 @@ export function SceneOutliner() {
             key={o.id}
             onClick={() => selectObject(o.id)}
             onDoubleClick={() => setRenaming(o.id)}
-            className={cn('group flex h-7 cursor-default items-center gap-1.5 pr-2 text-xs hover:bg-accent/60', edit.selected === o.id && 'bg-primary/15 text-foreground', !o.visible && 'opacity-50')}
+            className={cn(
+              'group flex h-7 cursor-default items-center gap-1.5 pr-2 text-xs hover:bg-accent/60',
+              edit.selected === o.id && 'bg-primary/15 text-foreground',
+              !o.visible && 'opacity-50',
+            )}
             style={{ paddingLeft: 8 + depth * 14 }}
           >
             <Icon className={cn('size-3.5 shrink-0', o.kind === 'light' ? 'text-yellow-500' : 'text-violet-500')} />
@@ -51,14 +57,32 @@ export function SceneOutliner() {
                 autoFocus
                 defaultValue={o.name}
                 className="h-5 min-w-0 flex-1 rounded-sm border border-primary bg-background px-1 outline-none"
-                onBlur={(e) => { const v = e.currentTarget.value.trim(); if (v) editObject(o.id, (x) => { x.name = v }); setRenaming(null) }}
-                onKeyDown={(e) => { e.stopPropagation(); if (e.key === 'Enter') e.currentTarget.blur(); if (e.key === 'Escape') setRenaming(null) }}
+                onBlur={(e) => {
+                  const v = e.currentTarget.value.trim()
+                  if (v)
+                    editObject(o.id, (x) => {
+                      x.name = v
+                    })
+                  setRenaming(null)
+                }}
+                onKeyDown={(e) => {
+                  e.stopPropagation()
+                  if (e.key === 'Enter') e.currentTarget.blur()
+                  if (e.key === 'Escape') setRenaming(null)
+                }}
               />
-            ) : <span className="min-w-0 flex-1 truncate">{o.name}</span>}
+            ) : (
+              <span className="min-w-0 flex-1 truncate">{o.name}</span>
+            )}
             <button
               type="button"
               title={o.visible ? 'Hide' : 'Show'}
-              onClick={(e) => { e.stopPropagation(); editObject(o.id, (x) => { x.visible = !x.visible }) }}
+              onClick={(e) => {
+                e.stopPropagation()
+                editObject(o.id, (x) => {
+                  x.visible = !x.visible
+                })
+              }}
               className={cn('text-muted-foreground hover:text-foreground', o.visible && 'opacity-0 group-hover:opacity-100')}
             >
               {o.visible ? <EyeIcon className="size-3.5" /> : <EyeOffIcon className="size-3.5" />}
@@ -74,7 +98,14 @@ function Vec3Field({ title, value, step, onChange }: { title: string; value: Vec
   return (
     <div className="grid grid-cols-3 gap-1">
       {(['X', 'Y', 'Z'] as const).map((axis, i) => (
-        <NumberField key={axis} label={axis} title={`${title} ${axis}`} step={step} value={value[i]} onChange={(v) => onChange(value.map((x, j) => (j === i ? v : x)) as Vec3)} />
+        <NumberField
+          key={axis}
+          label={axis}
+          title={`${title} ${axis}`}
+          step={step}
+          value={value[i]}
+          onChange={(v) => onChange(value.map((x, j) => (j === i ? v : x)) as Vec3)}
+        />
       ))}
     </div>
   )
@@ -89,18 +120,40 @@ function PointsEditor({ dims, points, onChange }: { dims: 2 | 3; points: number[
       {points.map((p, i) => (
         <div key={i} className="flex items-center gap-1">
           <div className="grid flex-1 gap-1" style={{ gridTemplateColumns: `repeat(${dims}, minmax(0, 1fr))` }}>
-            {axes.map((axis, j) => <NumberField key={axis} label={axis} title={`Point ${i + 1} ${axis}`} step={0.05} value={p[j] ?? 0} onChange={(v) => setAt(i, j, v)} />)}
+            {axes.map((axis, j) => (
+              <NumberField
+                key={axis}
+                label={axis}
+                title={`Point ${i + 1} ${axis}`}
+                step={0.05}
+                value={p[j] ?? 0}
+                onChange={(v) => setAt(i, j, v)}
+              />
+            ))}
           </div>
-          <button type="button" title="Remove point" disabled={points.length <= 2} className="rounded p-0.5 text-muted-foreground hover:bg-muted disabled:opacity-30" onClick={() => onChange(points.filter((_, a) => a !== i))}><XIcon className="size-3" /></button>
+          <button
+            type="button"
+            title="Remove point"
+            disabled={points.length <= 2}
+            className="rounded p-0.5 text-muted-foreground hover:bg-muted disabled:opacity-30"
+            onClick={() => onChange(points.filter((_, a) => a !== i))}
+          >
+            <XIcon className="size-3" />
+          </button>
         </div>
       ))}
-      <button type="button" className="flex items-center justify-center gap-1 rounded border border-dashed py-0.5 text-[11px] text-muted-foreground hover:bg-muted"
+      <button
+        type="button"
+        className="flex items-center justify-center gap-1 rounded border border-dashed py-0.5 text-[11px] text-muted-foreground hover:bg-muted"
         onClick={() => {
           const last = points.at(-1) ?? new Array(dims).fill(0)
           const prev = points.at(-2) ?? last
           // Continue in the direction of the last segment so the new point is easy to find.
           onChange([...points, last.map((c, j) => c + (c - (prev[j] ?? c)) || 0.25)])
-        }}><PlusIcon className="size-3" /> Add point</button>
+        }}
+      >
+        <PlusIcon className="size-3" /> Add point
+      </button>
     </div>
   )
 }
@@ -110,91 +163,345 @@ const LABEL = 'text-[11px] text-muted-foreground'
 function ObjectInspector({ o }: { o: Obj3D }) {
   const set = (recipe: (x: Obj3D) => void) => editObject(o.id, recipe)
   const mat = { ...DEFAULT_MATERIAL, ...o.material }
-  const setMat = (patch: Partial<Material3D>) => set((x) => { x.material = { ...DEFAULT_MATERIAL, ...x.material, ...patch } })
+  const setMat = (patch: Partial<Material3D>) =>
+    set((x) => {
+      x.material = { ...DEFAULT_MATERIAL, ...x.material, ...patch }
+    })
   const geo = o.geometry ?? 'box'
   return (
     <>
       <Section title={o.kind === 'light' ? 'Light' : o.kind === 'group' ? 'Group' : o.kind === 'model' ? 'Model' : 'Object'}>
-        <TextField value={o.name} onChange={(v) => set((x) => { x.name = v })} />
+        <TextField
+          value={o.name}
+          onChange={(v) =>
+            set((x) => {
+              x.name = v
+            })
+          }
+        />
       </Section>
       <Section title="Transform">
         <div className={LABEL}>Position</div>
-        <Vec3Field title="Position" step={0.05} value={o.position} onChange={(v) => set((x) => { x.position = v })} />
+        <Vec3Field
+          title="Position"
+          step={0.05}
+          value={o.position}
+          onChange={(v) =>
+            set((x) => {
+              x.position = v
+            })
+          }
+        />
         <div className={LABEL}>Rotation</div>
-        <Vec3Field title="Rotation" step={5} value={o.rotation} onChange={(v) => set((x) => { x.rotation = v })} />
+        <Vec3Field
+          title="Rotation"
+          step={5}
+          value={o.rotation}
+          onChange={(v) =>
+            set((x) => {
+              x.rotation = v
+            })
+          }
+        />
         <div className={LABEL}>Scale</div>
-        <Vec3Field title="Scale" step={0.05} value={o.scale} onChange={(v) => set((x) => { x.scale = v })} />
+        <Vec3Field
+          title="Scale"
+          step={0.05}
+          value={o.scale}
+          onChange={(v) =>
+            set((x) => {
+              x.scale = v
+            })
+          }
+        />
       </Section>
       {o.kind === 'mesh' && (
         <Section title="Geometry">
-          <Sel<Geometry3D> value={geo} options={(Object.keys(GEOMETRY_PARAMS) as Geometry3D[]).filter((g) => g !== 'mesh' || geo === 'mesh').map((g) => ({ value: g, label: g === 'mesh' ? `mesh (${(o.mesh?.indices.length ?? 0) / 3} triangles)` : g }))} onChange={(g) => set((x) => { x.geometry = g; x.params = {} })} />
+          <Sel<Geometry3D>
+            value={geo}
+            options={(Object.keys(GEOMETRY_PARAMS) as Geometry3D[])
+              .filter((g) => g !== 'mesh' || geo === 'mesh')
+              .map((g) => ({ value: g, label: g === 'mesh' ? `mesh (${(o.mesh?.indices.length ?? 0) / 3} triangles)` : g }))}
+            onChange={(g) =>
+              set((x) => {
+                x.geometry = g
+                x.params = {}
+              })
+            }
+          />
           <div className="grid grid-cols-2 gap-1">
             {Object.entries(GEOMETRY_PARAMS[geo]).map(([k, def]) => (
-              <NumberField key={k} label={k.slice(0, 3)} title={k} step={['detail', 'p', 'q', 'segments', 'turns', 'frequency', 'closed'].includes(k) ? 1 : k === 'arc' ? 5 : 0.01} min={0}
+              <NumberField
+                key={k}
+                label={k.slice(0, 3)}
+                title={k}
+                step={['detail', 'p', 'q', 'segments', 'turns', 'frequency', 'closed'].includes(k) ? 1 : k === 'arc' ? 5 : 0.01}
+                min={0}
                 value={typeof o.params?.[k] === 'number' ? (o.params[k] as number) : def}
-                onChange={(v) => set((x) => { x.params = { ...x.params, [k]: v } })} />
+                onChange={(v) =>
+                  set((x) => {
+                    x.params = { ...x.params, [k]: v }
+                  })
+                }
+              />
             ))}
           </div>
           {(geo === 'tube' || geo === 'lathe' || geo === 'extrude') && (
             <>
               <div className={LABEL}>{geo === 'tube' ? 'Path points' : geo === 'lathe' ? 'Profile (radius, y)' : 'Outline'}</div>
-              <PointsEditor dims={geo === 'tube' ? 3 : 2}
-                points={Array.isArray(o.params?.points) && (o.params.points as number[][]).length > 1 ? (o.params.points as number[][]) : DEFAULT_POINTS[geo]!}
-                onChange={(points) => set((x) => { x.params = { ...x.params, points } })} />
+              <PointsEditor
+                dims={geo === 'tube' ? 3 : 2}
+                points={
+                  Array.isArray(o.params?.points) && (o.params.points as number[][]).length > 1
+                    ? (o.params.points as number[][])
+                    : DEFAULT_POINTS[geo]!
+                }
+                onChange={(points) =>
+                  set((x) => {
+                    x.params = { ...x.params, points }
+                  })
+                }
+              />
             </>
           )}
         </Section>
       )}
       {o.kind === 'mesh' && (
         <Section title="Material">
-          <Sel<string> value="" options={[{ value: '', label: 'Apply preset…' }, ...Object.keys(MATERIAL_PRESETS).map((p) => ({ value: p, label: p }))]} onChange={(p) => p && setMat(MATERIAL_PRESETS[p])} />
-          <ColorField color={mat.color} opacity={mat.opacity} onChange={(color) => setMat({ color })} onOpacity={(opacity) => setMat({ opacity })} />
+          <Sel<string>
+            value=""
+            options={[{ value: '', label: 'Apply preset…' }, ...Object.keys(MATERIAL_PRESETS).map((p) => ({ value: p, label: p }))]}
+            onChange={(p) => p && setMat(MATERIAL_PRESETS[p])}
+          />
+          <ColorField
+            color={mat.color}
+            opacity={mat.opacity}
+            onChange={(color) => setMat({ color })}
+            onOpacity={(opacity) => setMat({ opacity })}
+          />
           <div className="grid grid-cols-2 gap-1">
-            <NumberField label="Met" title="Metalness" step={0.05} min={0} max={1} value={mat.metalness} onChange={(metalness) => setMat({ metalness })} />
-            <NumberField label="Rgh" title="Roughness" step={0.05} min={0} max={1} value={mat.roughness} onChange={(roughness) => setMat({ roughness })} />
-            <NumberField label="Gls" title="Glass (transmission)" step={0.05} min={0} max={1} value={mat.transmission} onChange={(transmission) => setMat({ transmission })} />
-            <NumberField label="Shn" title="Sheen (soft grazing highlight)" step={0.05} min={0} max={1} value={mat.sheen ?? 0} onChange={(sheen) => setMat({ sheen })} />
-            <NumberField label="Spc" title="Specular intensity" step={0.05} min={0} max={1} value={mat.specularIntensity ?? 1} onChange={(specularIntensity) => setMat({ specularIntensity })} />
-            <NumberField label="Coat" title="Clearcoat" step={0.05} min={0} max={1} value={mat.clearcoat} onChange={(clearcoat) => setMat({ clearcoat })} />
+            <NumberField
+              label="Met"
+              title="Metalness"
+              step={0.05}
+              min={0}
+              max={1}
+              value={mat.metalness}
+              onChange={(metalness) => setMat({ metalness })}
+            />
+            <NumberField
+              label="Rgh"
+              title="Roughness"
+              step={0.05}
+              min={0}
+              max={1}
+              value={mat.roughness}
+              onChange={(roughness) => setMat({ roughness })}
+            />
+            <NumberField
+              label="Gls"
+              title="Glass (transmission)"
+              step={0.05}
+              min={0}
+              max={1}
+              value={mat.transmission}
+              onChange={(transmission) => setMat({ transmission })}
+            />
+            <NumberField
+              label="Shn"
+              title="Sheen (soft grazing highlight)"
+              step={0.05}
+              min={0}
+              max={1}
+              value={mat.sheen ?? 0}
+              onChange={(sheen) => setMat({ sheen })}
+            />
+            <NumberField
+              label="Spc"
+              title="Specular intensity"
+              step={0.05}
+              min={0}
+              max={1}
+              value={mat.specularIntensity ?? 1}
+              onChange={(specularIntensity) => setMat({ specularIntensity })}
+            />
+            <NumberField
+              label="Coat"
+              title="Clearcoat"
+              step={0.05}
+              min={0}
+              max={1}
+              value={mat.clearcoat}
+              onChange={(clearcoat) => setMat({ clearcoat })}
+            />
           </div>
           <div className={LABEL}>Texture</div>
-          <Sel<string> value={mat.pattern ?? (mat.image ? 'image' : 'none')}
-            options={[{ value: 'none', label: 'None' }, ...TEXTURE_PATTERNS.map((p) => ({ value: p, label: p })), { value: 'image', label: 'Image…' }]}
+          <Sel<string>
+            value={mat.pattern ?? (mat.image ? 'image' : 'none')}
+            options={[
+              { value: 'none', label: 'None' },
+              ...TEXTURE_PATTERNS.map((p) => ({ value: p, label: p })),
+              { value: 'image', label: 'Image…' },
+            ]}
             onChange={async (v) => {
               if (v === 'none') return setMat({ pattern: undefined, image: undefined })
               if (v !== 'image') return setMat({ pattern: v as Material3D['pattern'], image: undefined })
               const [file] = await pickFiles('image/*', false)
               if (file) setMat({ pattern: undefined, image: await storeFile(file) })
-            }} />
+            }}
+          />
           {(mat.pattern || mat.image) && (
             <div className="grid grid-cols-2 gap-1">
-              <NumberField label="Rep" title="Texture repeat" step={0.25} min={0.1} value={mat.patternScale ?? 1} onChange={(patternScale) => setMat({ patternScale })} />
-              <NumberField label="Rdg" title="Ridges / bump depth" step={0.05} min={0} max={1} value={mat.bump ?? 0} onChange={(bump) => setMat({ bump })} />
+              <NumberField
+                label="Rep"
+                title="Texture repeat"
+                step={0.25}
+                min={0.1}
+                value={mat.patternScale ?? 1}
+                onChange={(patternScale) => setMat({ patternScale })}
+              />
+              <NumberField
+                label="Rdg"
+                title="Ridges / bump depth"
+                step={0.05}
+                min={0}
+                max={1}
+                value={mat.bump ?? 0}
+                onChange={(bump) => setMat({ bump })}
+              />
             </div>
           )}
           <div className={LABEL}>Glow</div>
           <ColorField color={mat.emissive} onChange={(emissive) => setMat({ emissive })} />
-          <NumberField label="Int" title="Glow intensity" step={0.1} min={0} value={mat.emissiveIntensity} onChange={(emissiveIntensity) => setMat({ emissiveIntensity })} />
+          <NumberField
+            label="Int"
+            title="Glow intensity"
+            step={0.1}
+            min={0}
+            value={mat.emissiveIntensity}
+            onChange={(emissiveIntensity) => setMat({ emissiveIntensity })}
+          />
           <Check label="Wireframe" checked={mat.wireframe} onChange={(wireframe) => setMat({ wireframe })} />
           <Check label="Flat shading" checked={mat.flatShading} onChange={(flatShading) => setMat({ flatShading })} />
         </Section>
       )}
       {o.kind === 'light' && o.light && (
         <Section title="Light settings">
-          <Sel<Light3D['type']> value={o.light.type} options={['directional', 'point', 'spot', 'hemisphere', 'ambient']} onChange={(type) => set((x) => { x.light = { ...x.light!, type } })} />
-          <ColorField color={o.light.color} onChange={(color) => set((x) => { x.light = { ...x.light!, color } })} />
-          <NumberField label="Int" title="Intensity" step={0.1} min={0} value={o.light.intensity} onChange={(intensity) => set((x) => { x.light = { ...x.light!, intensity } })} />
-          {o.light.type === 'spot' && <NumberField label="Ang" title="Cone angle" step={1} min={1} max={89} value={o.light.angle ?? 30} onChange={(angle) => set((x) => { x.light = { ...x.light!, angle } })} />}
-          <NumberField label="Size" title="Shadow softness (bigger = softer, like a larger light)" step={0.5} min={0} max={10} value={o.light.size ?? 0} onChange={(size) => set((x) => { x.light = { ...x.light!, size } })} />
-          <Check label="Cast shadows" checked={o.light.castShadow} onChange={(castShadow) => set((x) => { x.light = { ...x.light!, castShadow } })} />
+          <Sel<Light3D['type']>
+            value={o.light.type}
+            options={['directional', 'point', 'spot', 'hemisphere', 'ambient']}
+            onChange={(type) =>
+              set((x) => {
+                x.light = { ...x.light!, type }
+              })
+            }
+          />
+          <ColorField
+            color={o.light.color}
+            onChange={(color) =>
+              set((x) => {
+                x.light = { ...x.light!, color }
+              })
+            }
+          />
+          <NumberField
+            label="Int"
+            title="Intensity"
+            step={0.1}
+            min={0}
+            value={o.light.intensity}
+            onChange={(intensity) =>
+              set((x) => {
+                x.light = { ...x.light!, intensity }
+              })
+            }
+          />
+          {o.light.type === 'spot' && (
+            <NumberField
+              label="Ang"
+              title="Cone angle"
+              step={1}
+              min={1}
+              max={89}
+              value={o.light.angle ?? 30}
+              onChange={(angle) =>
+                set((x) => {
+                  x.light = { ...x.light!, angle }
+                })
+              }
+            />
+          )}
+          <NumberField
+            label="Size"
+            title="Shadow softness (bigger = softer, like a larger light)"
+            step={0.5}
+            min={0}
+            max={10}
+            value={o.light.size ?? 0}
+            onChange={(size) =>
+              set((x) => {
+                x.light = { ...x.light!, size }
+              })
+            }
+          />
+          <Check
+            label="Cast shadows"
+            checked={o.light.castShadow}
+            onChange={(castShadow) =>
+              set((x) => {
+                x.light = { ...x.light!, castShadow }
+              })
+            }
+          />
         </Section>
       )}
       {o.kind !== 'light' && (
         <Section title="Animation">
-          <Sel<string> value={o.animate?.kind ?? 'none'} options={['none', 'spin', 'float', 'pulse', 'orbit']} onChange={(k) => set((x) => { x.animate = k === 'none' ? undefined : { kind: k as NonNullable<Obj3D['animate']>['kind'], speed: x.animate?.speed ?? 1 } })} />
-          {o.animate && <NumberField label="Spd" title="Speed" step={0.1} min={0} value={o.animate.speed} onChange={(speed) => set((x) => { x.animate = { ...x.animate!, speed } })} />}
-          {o.animate?.kind === 'spin' && <Sel<string> value={o.animate.axis ?? 'y'} options={['x', 'y', 'z']} onChange={(axis) => set((x) => { x.animate = { ...x.animate!, axis: axis as 'x' | 'y' | 'z' } })} />}
-          {o.kind === 'mesh' && <Check label="Cast shadow" checked={o.castShadow ?? true} onChange={(castShadow) => set((x) => { x.castShadow = castShadow })} />}
+          <Sel<string>
+            value={o.animate?.kind ?? 'none'}
+            options={['none', 'spin', 'float', 'pulse', 'orbit']}
+            onChange={(k) =>
+              set((x) => {
+                x.animate = k === 'none' ? undefined : { kind: k as NonNullable<Obj3D['animate']>['kind'], speed: x.animate?.speed ?? 1 }
+              })
+            }
+          />
+          {o.animate && (
+            <NumberField
+              label="Spd"
+              title="Speed"
+              step={0.1}
+              min={0}
+              value={o.animate.speed}
+              onChange={(speed) =>
+                set((x) => {
+                  x.animate = { ...x.animate!, speed }
+                })
+              }
+            />
+          )}
+          {o.animate?.kind === 'spin' && (
+            <Sel<string>
+              value={o.animate.axis ?? 'y'}
+              options={['x', 'y', 'z']}
+              onChange={(axis) =>
+                set((x) => {
+                  x.animate = { ...x.animate!, axis: axis as 'x' | 'y' | 'z' }
+                })
+              }
+            />
+          )}
+          {o.kind === 'mesh' && (
+            <Check
+              label="Cast shadow"
+              checked={o.castShadow ?? true}
+              onChange={(castShadow) =>
+                set((x) => {
+                  x.castShadow = castShadow
+                })
+              }
+            />
+          )}
         </Section>
       )}
     </>
@@ -206,25 +513,144 @@ function SceneSettings({ scene }: { scene: Scene3D }) {
   return (
     <>
       <Section title="Scene">
-        <Check label="Transparent background" checked={scene.background === null} onChange={(v) => set((s) => { s.background = v ? null : '#f1f5f9' })} />
-        {scene.background !== null && <ColorField color={scene.background} onChange={(c) => set((s) => { s.background = c })} />}
-        <Sel<Scene3D['environment']> value={scene.environment} options={[{ value: 'studio', label: 'Studio lighting' }, { value: 'none', label: 'No environment' }]} onChange={(environment) => set((s) => { s.environment = environment })} />
-        <Check label="Shadows" checked={scene.shadows} onChange={(shadows) => set((s) => { s.shadows = shadows })} />
+        <Check
+          label="Transparent background"
+          checked={scene.background === null}
+          onChange={(v) =>
+            set((s) => {
+              s.background = v ? null : '#f1f5f9'
+            })
+          }
+        />
+        {scene.background !== null && (
+          <ColorField
+            color={scene.background}
+            onChange={(c) =>
+              set((s) => {
+                s.background = c
+              })
+            }
+          />
+        )}
+        <Sel<Scene3D['environment']>
+          value={scene.environment}
+          options={[
+            { value: 'studio', label: 'Studio lighting' },
+            { value: 'none', label: 'No environment' },
+          ]}
+          onChange={(environment) =>
+            set((s) => {
+              s.environment = environment
+            })
+          }
+        />
+        <Check
+          label="Shadows"
+          checked={scene.shadows}
+          onChange={(shadows) =>
+            set((s) => {
+              s.shadows = shadows
+            })
+          }
+        />
       </Section>
       <Section title="Ground">
-        <Check label="Show ground" checked={scene.ground.visible} onChange={(visible) => set((s) => { s.ground.visible = visible })} />
-        {scene.ground.visible && <ColorField color={scene.ground.color} onChange={(color) => set((s) => { s.ground.color = color })} />}
+        <Check
+          label="Show ground"
+          checked={scene.ground.visible}
+          onChange={(visible) =>
+            set((s) => {
+              s.ground.visible = visible
+            })
+          }
+        />
+        {scene.ground.visible && (
+          <ColorField
+            color={scene.ground.color}
+            onChange={(color) =>
+              set((s) => {
+                s.ground.color = color
+              })
+            }
+          />
+        )}
       </Section>
       <Section title="Look">
-        <NumberField label="Exp" title="Exposure (overall brightness)" step={0.05} min={0} value={scene.exposure ?? 1} onChange={(exposure) => set((s) => { s.exposure = exposure })} />
-        <NumberField label="Env" title="Environment light and reflections" step={0.05} min={0} value={scene.envIntensity ?? 0.6} onChange={(envIntensity) => set((s) => { s.envIntensity = envIntensity })} />
-        <NumberField label="Rot" title="Turn the environment, degrees" step={15} value={scene.envRotation ?? 0} onChange={(envRotation) => set((s) => { s.envRotation = envRotation })} />
-        <Sel<string> value={scene.toneMapping ?? 'aces'} options={['aces', 'neutral', 'linear', 'none']} onChange={(t) => set((s) => { s.toneMapping = t as Scene3D['toneMapping'] })} />
-        <Sel<string> value={scene.shadowQuality ?? 'normal'} options={[{ value: 'normal', label: 'Shadows: normal' }, { value: 'high', label: 'Shadows: high' }, { value: 'ultra', label: 'Shadows: ultra' }]} onChange={(q) => set((s) => { s.shadowQuality = q as Scene3D['shadowQuality'] })} />
+        <NumberField
+          label="Exp"
+          title="Exposure (overall brightness)"
+          step={0.05}
+          min={0}
+          value={scene.exposure ?? 1}
+          onChange={(exposure) =>
+            set((s) => {
+              s.exposure = exposure
+            })
+          }
+        />
+        <NumberField
+          label="Env"
+          title="Environment light and reflections"
+          step={0.05}
+          min={0}
+          value={scene.envIntensity ?? 0.6}
+          onChange={(envIntensity) =>
+            set((s) => {
+              s.envIntensity = envIntensity
+            })
+          }
+        />
+        <NumberField
+          label="Rot"
+          title="Turn the environment, degrees"
+          step={15}
+          value={scene.envRotation ?? 0}
+          onChange={(envRotation) =>
+            set((s) => {
+              s.envRotation = envRotation
+            })
+          }
+        />
+        <Sel<string>
+          value={scene.toneMapping ?? 'aces'}
+          options={['aces', 'neutral', 'linear', 'none']}
+          onChange={(t) =>
+            set((s) => {
+              s.toneMapping = t as Scene3D['toneMapping']
+            })
+          }
+        />
+        <Sel<string>
+          value={scene.shadowQuality ?? 'normal'}
+          options={[
+            { value: 'normal', label: 'Shadows: normal' },
+            { value: 'high', label: 'Shadows: high' },
+            { value: 'ultra', label: 'Shadows: ultra' },
+          ]}
+          onChange={(q) =>
+            set((s) => {
+              s.shadowQuality = q as Scene3D['shadowQuality']
+            })
+          }
+        />
       </Section>
       <Section title="Camera">
-        <NumberField label="FOV" title="Field of view" step={1} min={10} max={120} value={scene.camera.fov} onChange={(fov) => set((s) => { s.camera.fov = fov })} />
-        <div className="text-[11px] text-muted-foreground">Orbit to a view you like, then use the camera button in the toolbar to make it the scene camera.</div>
+        <NumberField
+          label="FOV"
+          title="Field of view"
+          step={1}
+          min={10}
+          max={120}
+          value={scene.camera.fov}
+          onChange={(fov) =>
+            set((s) => {
+              s.camera.fov = fov
+            })
+          }
+        />
+        <div className="text-[11px] text-muted-foreground">
+          Orbit to a view you like, then use the camera button in the toolbar to make it the scene camera.
+        </div>
       </Section>
     </>
   )

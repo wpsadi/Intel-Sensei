@@ -1,8 +1,10 @@
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { ChevronLeftIcon, ChevronRightIcon, RotateCcwIcon, XIcon } from 'lucide-react'
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
+
 import { Button } from '@/components/ui/button'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
-import { AnimationStyles, NodeView, RenderContext, type RenderCtx } from '@/features/s-3d/render/node-view'
+import { AnimationStyles, NodeView } from '@/features/s-3d/render/node-view'
+import { RenderContext, type RenderCtx } from '@/features/s-3d/render/render-context'
 import { useS3D } from '@/features/s-3d/store'
 import type { Doc, Interaction, SNode } from '@/features/s-3d/types'
 
@@ -21,11 +23,27 @@ function loadAnims(doc: Doc, rootId: string) {
   return out
 }
 
-export function Player({ doc, startPageId, startFrameId, hideUi, interactive = true, onClose }: { doc: Doc; startPageId?: string; startFrameId?: string; hideUi?: boolean; interactive?: boolean; onClose?: () => void }) {
+export function Player({
+  doc,
+  startPageId,
+  startFrameId,
+  hideUi,
+  interactive = true,
+  onClose,
+}: {
+  doc: Doc
+  startPageId?: string
+  startFrameId?: string
+  hideUi?: boolean
+  interactive?: boolean
+  onClose?: () => void
+}) {
   const [pageId, setPageId] = useState<string | undefined>(() => doc.pages.find((p) => p.id === startPageId)?.id ?? doc.pages[0]?.id)
   const page = doc.pages.find((p) => p.id === pageId) ?? doc.pages[0]
   const frames = useMemo(() => (page?.children ?? []).filter((id) => isFrame(doc.nodes[id]) && doc.nodes[id].visible), [doc, page])
-  const [frameId, setFrameId] = useState<string | undefined>(() => (startFrameId && frames.includes(startFrameId) ? startFrameId : frames[0]))
+  const [frameId, setFrameId] = useState<string | undefined>(() =>
+    startFrameId && frames.includes(startFrameId) ? startFrameId : frames[0],
+  )
   const [states, setStates] = useState<Record<string, string>>({})
   const [anims, setAnims] = useState<Record<string, string>>({})
   const [hidden, setHidden] = useState<Record<string, boolean>>({})
@@ -43,64 +61,75 @@ export function Player({ doc, startPageId, startFrameId, hideUi, interactive = t
     return () => ro.disconnect()
   }, [])
 
-  useEffect(() => {
-    if (!frameId || !frames.includes(frameId)) setFrameId(frames[0])
-  }, [frames, frameId])
+  if ((!frameId || !frames.includes(frameId)) && frameId !== frames[0]) setFrameId(frames[0])
 
-  useEffect(() => {
+  // Each frame (or document edit) starts from that frame's stored animations.
+  const [animsFor, setAnimsFor] = useState<{ doc: Doc; frameId: string | undefined } | null>(null)
+  if (!animsFor || animsFor.doc !== doc || animsFor.frameId !== frameId) {
+    setAnimsFor({ doc, frameId })
     if (frameId) setAnims(loadAnims(doc, frameId))
-  }, [doc, frameId])
+  }
 
   const go = useCallback((id: string | undefined, i?: Interaction) => {
     if (!id) return
-    setTransition((t) => ({ duration: i?.duration ?? 300, easing: i?.easing === 'spring' ? 'cubic-bezier(.34,1.56,.64,1)' : i?.easing ?? 'ease', key: t.key + 1 }))
+    setTransition((t) => ({
+      duration: i?.duration ?? 300,
+      easing: i?.easing === 'spring' ? 'cubic-bezier(.34,1.56,.64,1)' : (i?.easing ?? 'ease'),
+      key: t.key + 1,
+    }))
     setFrameId(id)
   }, [])
 
-  const run = useCallback((n: SNode, i: Interaction) => {
-    switch (i.action) {
-      case 'go-to-frame': {
-        const target = i.target && doc.nodes[i.target] ? i.target : undefined
-        if (target) {
-          const p = doc.pages.find((pg) => pg.children.includes(target))
-          if (p && p.id !== pageId) setPageId(p.id)
+  const run = useCallback(
+    (n: SNode, i: Interaction) => {
+      switch (i.action) {
+        case 'go-to-frame': {
+          const target = i.target && doc.nodes[i.target] ? i.target : undefined
+          if (target) {
+            const p = doc.pages.find((pg) => pg.children.includes(target))
+            if (p && p.id !== pageId) setPageId(p.id)
+          }
+          go(target, i)
+          break
         }
-        go(target, i)
-        break
-      }
-      case 'go-to-page':
-        if (i.target) {
-          setPageId(i.target)
-          setFrameId((doc.pages.find((p) => p.id === i.target)?.children ?? []).find((id) => isFrame(doc.nodes[id])))
+        case 'go-to-page':
+          if (i.target) {
+            setPageId(i.target)
+            setFrameId((doc.pages.find((p) => p.id === i.target)?.children ?? []).find((id) => isFrame(doc.nodes[id])))
+          }
+          break
+        case 'set-state': {
+          const target = i.target || n.id
+          setStates((s) => ({ ...s, [target]: i.value ?? '' }))
+          break
         }
-        break
-      case 'set-state': {
-        const target = i.target || n.id
-        setStates((s) => ({ ...s, [target]: i.value ?? '' }))
-        break
+        case 'toggle-visibility': {
+          const target = i.target || n.id
+          setHidden((h) => ({ ...h, [target]: !(h[target] ?? !doc.nodes[target]?.visible) }))
+          break
+        }
+        case 'open-url':
+          if (i.value) window.open(i.value, '_blank', 'noopener')
+          break
+        case 'animate': {
+          const target = i.target || n.id
+          if (!i.animation) break
+          setAnims((a) => ({ ...a, [target]: '' }))
+          requestAnimationFrame(() => setAnims((a) => ({ ...a, [target]: i.animation! })))
+          break
+        }
       }
-      case 'toggle-visibility': {
-        const target = i.target || n.id
-        setHidden((h) => ({ ...h, [target]: !(h[target] ?? !doc.nodes[target]?.visible) }))
-        break
-      }
-      case 'open-url':
-        if (i.value) window.open(i.value, '_blank', 'noopener')
-        break
-      case 'animate': {
-        const target = i.target || n.id
-        if (!i.animation) break
-        setAnims((a) => ({ ...a, [target]: '' }))
-        requestAnimationFrame(() => setAnims((a) => ({ ...a, [target]: i.animation! })))
-        break
-      }
-    }
-  }, [doc, go, pageId])
+    },
+    [doc, go, pageId],
+  )
 
-  const onTrigger = useCallback((n: SNode, trigger: 'click' | 'hover') => {
-    if (!interactive) return
-    for (const i of n.interactions) if (i.trigger === trigger) run(n, i)
-  }, [interactive, run])
+  const onTrigger = useCallback(
+    (n: SNode, trigger: 'click' | 'hover') => {
+      if (!interactive) return
+      for (const i of n.interactions) if (i.trigger === trigger) run(n, i)
+    },
+    [interactive, run],
+  )
 
   useEffect(() => {
     if (!interactive) return
@@ -136,32 +165,78 @@ export function Player({ doc, startPageId, startFrameId, hideUi, interactive = t
           <Select
             value={pageId ?? null}
             items={doc.pages.map((p) => ({ value: p.id, label: p.name }))}
-            onValueChange={(v) => { if (v) { setPageId(v); setFrameId(undefined) } }}
+            onValueChange={(v) => {
+              if (v) {
+                setPageId(v)
+                setFrameId(undefined)
+              }
+            }}
           >
             <SelectTrigger size="sm" aria-label="Page" className="h-7 max-w-40 rounded-md border-transparent bg-white/10 px-2 text-xs">
               <SelectValue />
             </SelectTrigger>
             <SelectContent className="dark">
-              {doc.pages.map((p) => <SelectItem key={p.id} value={p.id} className="text-xs">{p.name}</SelectItem>)}
+              {doc.pages.map((p) => (
+                <SelectItem key={p.id} value={p.id} className="text-xs">
+                  {p.name}
+                </SelectItem>
+              ))}
             </SelectContent>
           </Select>
           <Select
             value={frameId ?? null}
             items={frames.map((id) => ({ value: id, label: doc.nodes[id].name }))}
-            onValueChange={(v) => { if (v) go(v) }}
+            onValueChange={(v) => {
+              if (v) go(v)
+            }}
           >
-            <SelectTrigger size="sm" aria-label="Frame" className="h-7 max-w-48 rounded-md border-transparent bg-white/10 px-2 text-xs" disabled={!frames.length}>
+            <SelectTrigger
+              size="sm"
+              aria-label="Frame"
+              className="h-7 max-w-48 rounded-md border-transparent bg-white/10 px-2 text-xs"
+              disabled={!frames.length}
+            >
               <SelectValue placeholder="No frames" />
             </SelectTrigger>
             <SelectContent className="dark">
-              {frames.map((id) => <SelectItem key={id} value={id} className="text-xs">{doc.nodes[id].name}</SelectItem>)}
+              {frames.map((id) => (
+                <SelectItem key={id} value={id} className="text-xs">
+                  {doc.nodes[id].name}
+                </SelectItem>
+              ))}
             </SelectContent>
           </Select>
-          <Button size="icon-sm" variant="ghost" className="text-white" aria-label="Previous" disabled={index <= 0} onClick={() => go(frames[index - 1])}><ChevronLeftIcon /></Button>
-          <span className="tabular-nums opacity-70">{index + 1} / {frames.length}</span>
-          <Button size="icon-sm" variant="ghost" className="text-white" aria-label="Next" disabled={index >= frames.length - 1} onClick={() => go(frames[index + 1])}><ChevronRightIcon /></Button>
-          <Button size="icon-sm" variant="ghost" className="text-white" aria-label="Restart" onClick={restart}><RotateCcwIcon /></Button>
-          {onClose && <Button size="icon-sm" variant="ghost" className="ml-auto text-white" aria-label="Close" onClick={onClose}><XIcon /></Button>}
+          <Button
+            size="icon-sm"
+            variant="ghost"
+            className="text-white"
+            aria-label="Previous"
+            disabled={index <= 0}
+            onClick={() => go(frames[index - 1])}
+          >
+            <ChevronLeftIcon />
+          </Button>
+          <span className="tabular-nums opacity-70">
+            {index + 1} / {frames.length}
+          </span>
+          <Button
+            size="icon-sm"
+            variant="ghost"
+            className="text-white"
+            aria-label="Next"
+            disabled={index >= frames.length - 1}
+            onClick={() => go(frames[index + 1])}
+          >
+            <ChevronRightIcon />
+          </Button>
+          <Button size="icon-sm" variant="ghost" className="text-white" aria-label="Restart" onClick={restart}>
+            <RotateCcwIcon />
+          </Button>
+          {onClose && (
+            <Button size="icon-sm" variant="ghost" className="ml-auto text-white" aria-label="Close" onClick={onClose}>
+              <XIcon />
+            </Button>
+          )}
         </div>
       )}
       <div ref={box} className="relative min-h-0 flex-1 overflow-hidden">
@@ -170,8 +245,13 @@ export function Player({ doc, startPageId, startFrameId, hideUi, interactive = t
             <div
               key={`${frameId}-${transition.key}`}
               style={{
-                position: 'absolute', left: (size.w - frame.w * scale) / 2, top: (size.h - frame.h * scale) / 2, width: frame.w, height: frame.h,
-                transform: `scale(${scale})`, transformOrigin: '0 0',
+                position: 'absolute',
+                left: (size.w - frame.w * scale) / 2,
+                top: (size.h - frame.h * scale) / 2,
+                width: frame.w,
+                height: frame.h,
+                transform: `scale(${scale})`,
+                transformOrigin: '0 0',
                 animation: transition.duration ? `s3d-enter ${transition.duration}ms ${transition.easing} both` : undefined,
               }}
             >

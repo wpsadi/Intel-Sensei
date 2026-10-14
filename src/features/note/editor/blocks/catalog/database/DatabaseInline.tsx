@@ -1,4 +1,5 @@
 import { DatabaseIcon } from 'lucide-react'
+
 import { type BlockDefinition, database } from '../../insert'
 
 /** Database - Inline block for the "/" and "+" menus. */

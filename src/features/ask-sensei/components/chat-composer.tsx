@@ -1,6 +1,7 @@
-import { useEffect, useMemo, useRef, useState, type ClipboardEvent, type KeyboardEvent, type ReactNode } from 'react'
 import { AudioLines, Mic, MicOff, PhoneOff, X } from 'lucide-react'
+import { type ClipboardEvent, type KeyboardEvent, type ReactNode, useEffect, useMemo, useRef, useState } from 'react'
 import { toast } from 'sonner'
+
 import {
   Composer,
   ComposerActions,
@@ -15,12 +16,13 @@ import {
 } from '@/components/assistant-ui/elements/composer'
 import { mono } from '@/components/assistant-ui/elements/surfaces'
 import { Button } from '@/components/ui/button'
-import { useLiveCall } from '@/features/ask-sensei/components/live-call'
 import { useAskSenseiStore } from '@/features/ask-sensei/ask-sensei.store'
-import { formatElapsed, useVoiceNote } from './use-voice-note'
+import { useLiveCall } from '@/features/ask-sensei/components/live-call'
 import { deleteMedia, putMedia } from '@/features/note/db/media'
 import type { ChatAttachment } from '@/features/note/db/types'
 import { cn } from '@/lib/utils'
+
+import { formatElapsed, useVoiceNote } from './use-voice-note'
 
 /** Pasted text longer than this many lines, or bigger than this many bytes, goes in as a text attachment instead of filling the box. */
 const PASTE_ATTACH_LINES = 30
@@ -70,7 +72,11 @@ export function ChatComposer({
   const [recalled, setRecalled] = useState<number | null>(null)
   const draftBeforeRecall = useRef('')
 
-  useEffect(() => setRecalled(null), [chatId])
+  const [recallChatId, setRecallChatId] = useState(chatId)
+  if (recallChatId !== chatId) {
+    setRecallChatId(chatId)
+    setRecalled(null)
+  }
 
   /** Shows an earlier message (an index into sentTexts), or the saved draft for null, with the caret at the end. */
   const recall = (index: number | null, textarea: HTMLTextAreaElement) => {
@@ -120,7 +126,9 @@ export function ChatComposer({
       .map((item) => item.getAsFile())
       .filter((file): file is File => !!file)
       // Screenshots arrive named "image.png"; give them a name that says where they came from.
-      .map((file) => (file.name === 'image.png' ? new File([file], `Pasted image ${new Date().toLocaleTimeString()}.png`, { type: file.type }) : file))
+      .map((file) =>
+        file.name === 'image.png' ? new File([file], `Pasted image ${new Date().toLocaleTimeString()}.png`, { type: file.type }) : file,
+      )
     const text = event.clipboardData.getData('text/plain')
     const longText = text.split('\n').length > PASTE_ATTACH_LINES || new Blob([text]).size > PASTE_ATTACH_BYTES
     if (files.length || longText) event.preventDefault()

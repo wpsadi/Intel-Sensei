@@ -1,5 +1,6 @@
 import { tool } from 'ai'
 import { z } from 'zod'
+
 import { chatWithGemini } from '@/ai/inference/chat'
 import { writeNarration } from '@/ai/narration'
 import { GEMINI_KEY } from '@/ai/utils/gemini-key'
@@ -31,14 +32,20 @@ export interface DeepAnswerOptions {
 export function createDeepAnswerTool({ chatId, history, onAnswer, onPlan, onTodos, todos, onSearches }: DeepAnswerOptions) {
   return tool({
     description:
-      'Write a detailed answer on the user\'s screen for a question that needs depth: an explanation, walkthrough, code, comparison, table or research. Use it only for those, not for simple questions or small talk. Returns a short script to say aloud.',
+      "Write a detailed answer on the user's screen for a question that needs depth: an explanation, walkthrough, code, comparison, table or research. Use it only for those, not for simple questions or small talk. Returns a short script to say aloud.",
     inputSchema: z.object({ question: z.string().describe("The user's question, with the context needed to answer it in depth") }),
     execute: async ({ question }, { toolCallId, abortSignal }) => {
       const apiKey = GEMINI_KEY.value
       if (!apiKey) throw new Error('Add your Gemini API key in Settings → AI features.')
       const answer = await chatWithGemini(
         apiKey,
-        [...history(), { role: 'user', content: `${question}\n\n(This is a live voice call. Write the complete answer in Markdown: it is shown on the user's screen while a voice reads a short summary of it.)` }],
+        [
+          ...history(),
+          {
+            role: 'user',
+            content: `${question}\n\n(This is a live voice call. Write the complete answer in Markdown: it is shown on the user's screen while a voice reads a short summary of it.)`,
+          },
+        ],
         (soFar) => onAnswer(toolCallId, soFar),
         undefined,
         abortSignal,

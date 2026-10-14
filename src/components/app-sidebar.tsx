@@ -1,130 +1,99 @@
-"use client"
+'use client'
 
-import * as React from "react"
-
-import { NavMain } from "@/components/nav-main"
-import { NavSecondary } from "@/components/nav-secondary"
-import { TeamSwitcher } from "@/components/team-switcher"
 import {
-  Sidebar,
-  SidebarContent,
-  SidebarHeader,
-  SidebarRail,
-} from "@/components/ui/sidebar"
-import { TerminalIcon, AudioLinesIcon, SearchIcon, SparklesIcon, HomeIcon, InboxIcon, Settings2Icon, MessageCircleQuestionIcon, NotebookPenIcon, DraftingCompassIcon, PenToolIcon, DollarSignIcon } from "lucide-react"
+  AudioLinesIcon,
+  DollarSignIcon,
+  DraftingCompassIcon,
+  HomeIcon,
+  InboxIcon,
+  MessageCircleQuestionIcon,
+  NotebookPenIcon,
+  PenToolIcon,
+  SearchIcon,
+  Settings2Icon,
+  SparklesIcon,
+  TerminalIcon,
+} from 'lucide-react'
+import * as React from 'react'
+
+import { NavMain } from '@/components/nav-main'
+import { NavSecondary } from '@/components/nav-secondary'
+import { TeamSwitcher } from '@/components/team-switcher'
+import { Sidebar, SidebarContent, SidebarHeader, SidebarRail } from '@/components/ui/sidebar'
 
 // This is sample data.
 const data = {
   teams: [
     {
-      name: "Acme Inc",
-      logo: (
-        <TerminalIcon
-        />
-      ),
-      plan: "Enterprise",
+      name: 'Acme Inc',
+      logo: <TerminalIcon />,
+      plan: 'Enterprise',
     },
     {
-      name: "Acme Corp.",
-      logo: (
-        <AudioLinesIcon
-        />
-      ),
-      plan: "Startup",
+      name: 'Acme Corp.',
+      logo: <AudioLinesIcon />,
+      plan: 'Startup',
     },
     {
-      name: "Evil Corp.",
-      logo: (
-        <TerminalIcon
-        />
-      ),
-      plan: "Free",
+      name: 'Evil Corp.',
+      logo: <TerminalIcon />,
+      plan: 'Free',
     },
   ],
   navMain: [
     {
-      title: "Search",
-      url: "#",
-      icon: (
-        <SearchIcon
-        />
-      ),
+      title: 'Search',
+      url: '#',
+      icon: <SearchIcon />,
     },
     {
-      title: "Ask Sensei",
-      url: "/ask-sensei",
-      icon: (
-        <SparklesIcon
-        />
-      ),
+      title: 'Ask Sensei',
+      url: '/ask-sensei',
+      icon: <SparklesIcon />,
     },
     {
-      title: "Home",
-      url: "#",
-      icon: (
-        <HomeIcon
-        />
-      ),
+      title: 'Home',
+      url: '#',
+      icon: <HomeIcon />,
       isActive: true,
     },
     {
-      title: "Inbox",
-      url: "#",
-      icon: (
-        <InboxIcon
-        />
-      ),
-      badge: "10",
+      title: 'Inbox',
+      url: '#',
+      icon: <InboxIcon />,
+      badge: '10',
     },
     {
-      title: "SNote",
-      url: "/s-note",
-      icon: (
-        <NotebookPenIcon
-        />
-      ),
+      title: 'SNote',
+      url: '/s-note',
+      icon: <NotebookPenIcon />,
     },
     {
-      title: "S-Design",
-      url: "/s-design",
-      icon: (
-        <PenToolIcon
-        />
-      ),
+      title: 'S-Design',
+      url: '/s-design',
+      icon: <PenToolIcon />,
     },
     {
-      title: "S3D",
-      url: "/s-3d",
-      icon: (
-        <DraftingCompassIcon
-        />
-      ),
+      title: 'S3D',
+      url: '/s-3d',
+      icon: <DraftingCompassIcon />,
     },
   ],
   navSecondary: [
     {
-      title: "AI usage",
-      url: "/ai-usage",
-      icon: (
-        <DollarSignIcon
-        />
-      ),
+      title: 'AI usage',
+      url: '/ai-usage',
+      icon: <DollarSignIcon />,
     },
     {
-      title: "Settings",
-      url: "?settings=open",
-      icon: (
-        <Settings2Icon
-        />
-      ),
+      title: 'Settings',
+      url: '?settings=open',
+      icon: <Settings2Icon />,
     },
     {
-      title: "Help",
-      url: "#",
-      icon: (
-        <MessageCircleQuestionIcon
-        />
-      ),
+      title: 'Help',
+      url: '#',
+      icon: <MessageCircleQuestionIcon />,
     },
   ],
 }

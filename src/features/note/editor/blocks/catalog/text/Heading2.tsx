@@ -1,4 +1,5 @@
 import { Heading2Icon } from 'lucide-react'
+
 import { type BlockDefinition, chain } from '../../insert'
 
 /** Heading 2 block for the "/" and "+" menus. */

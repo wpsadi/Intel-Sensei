@@ -1,15 +1,16 @@
-import { currentTodos, messageText } from '@/ai/utils/messages'
-import { episodicMemory, sessionMemory } from '@/ai/memory'
 import { toast } from 'sonner'
 import { create } from 'zustand'
-import type { Chat, ChatAnswers, ChatAttachment, ChatMessage } from '@/features/note/db/types'
-import { deleteMedia } from '@/features/note/db/media'
-import { chatMessagesRepo, chatsRepo } from '@/features/note/db/repo'
-import { uid } from '@/features/note/db/idb'
+
 import { chatWithGemini } from '@/ai/inference/chat'
 import { generateChatTitle } from '@/ai/inference/title'
-import type { ChatTurn } from '@/ai/utils/messages'
+import { episodicMemory, sessionMemory } from '@/ai/memory'
 import { GEMINI_KEY } from '@/ai/utils/gemini-key'
+import { currentTodos, messageText } from '@/ai/utils/messages'
+import type { ChatTurn } from '@/ai/utils/messages'
+import { uid } from '@/features/note/db/idb'
+import { deleteMedia } from '@/features/note/db/media'
+import { chatMessagesRepo, chatsRepo } from '@/features/note/db/repo'
+import type { Chat, ChatAnswers, ChatAttachment, ChatMessage } from '@/features/note/db/types'
 
 /** Chats and their messages. IndexedDB is the source of truth; this store is the in-memory copy the UI reads. */
 interface AskSenseiState {
@@ -31,7 +32,14 @@ interface AskSenseiState {
   /** Drops Sensei's last reply and streams a new one for the same question. */
   retryReply(chatId: string): Promise<void>
   /** Saves one message from a live call. Called again with the same id as the transcript grows. */
-  saveCallMessage(chatId: string, id: string, role: ChatMessage['role'], content: string, reasoning?: string, extras?: Pick<ChatMessage, 'parts' | 'todos'>): Promise<void>
+  saveCallMessage(
+    chatId: string,
+    id: string,
+    role: ChatMessage['role'],
+    content: string,
+    reasoning?: string,
+    extras?: Pick<ChatMessage, 'parts' | 'todos'>,
+  ): Promise<void>
   renameChat(id: string, title: string): Promise<void>
   setTodosCollapsed(id: string, collapsed: boolean): Promise<void>
   regenerateTitle(id: string): Promise<void>
@@ -40,7 +48,6 @@ interface AskSenseiState {
 
 const NO_KEY_REPLY = 'Add your Gemini API key in Settings → AI features to chat with Sensei.'
 const DEFAULT_TITLE = 'New chat'
-
 
 const historyOf = (messages: ChatMessage[]): ChatTurn[] =>
   messages
@@ -152,7 +159,18 @@ export const useAskSenseiStore = create<AskSenseiState>()((set, get) => {
     if (abort === controller) abort = null
     patchMessage(chatId, reply.id, { content: finalText, reasoning: thoughts, reasoningSeconds, interrupted })
     set({ streamingId: null })
-    await chatMessagesRepo.put({ ...reply, content: finalText, reasoning: thoughts, reasoningSeconds, interrupted, plan, todos: replyTodos, usage, searches, questions })
+    await chatMessagesRepo.put({
+      ...reply,
+      content: finalText,
+      reasoning: thoughts,
+      reasoningSeconds,
+      interrupted,
+      plan,
+      todos: replyTodos,
+      usage,
+      searches,
+      questions,
+    })
     await touchChat(chatId)
     if (!interrupted) void episodicMemory.append({ id: reply.id, chatId, role: 'assistant', content: finalText })
   }
@@ -162,7 +180,10 @@ export const useAskSenseiStore = create<AskSenseiState>()((set, get) => {
     const key = GEMINI_KEY.value
     const transcript = (get().messages[id] ?? [])
       .slice(0, 6)
-      .map((message) => `${message.role === 'user' ? 'User' : 'Sensei'}: ${message.content || message.attachments?.map((file) => file.name).join(', ') || ''}`)
+      .map(
+        (message) =>
+          `${message.role === 'user' ? 'User' : 'Sensei'}: ${message.content || message.attachments?.map((file) => file.name).join(', ') || ''}`,
+      )
       .join('\n')
     if (!key || !transcript.trim()) return
     const title = await generateChatTitle(key, transcript)

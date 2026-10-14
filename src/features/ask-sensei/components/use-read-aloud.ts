@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { toast } from 'sonner'
+
 import { generateReplySpeech } from '@/ai/inference/speech'
 import { GEMINI_KEY } from '@/ai/utils/gemini-key'
 
@@ -113,7 +114,8 @@ export function useReadAloud() {
           const range = new Range()
           range.setStart(word.node, word.from)
           range.setEnd(word.node, word.to)
-          if (highlights && 'Highlight' in window) highlights.set(HIGHLIGHT, new (window as unknown as { Highlight: new (r: Range) => unknown }).Highlight(range))
+          if (highlights && 'Highlight' in window)
+            highlights.set(HIGHLIGHT, new (window as unknown as { Highlight: new (r: Range) => unknown }).Highlight(range))
           frame = requestAnimationFrame(tick)
         }
         tick()

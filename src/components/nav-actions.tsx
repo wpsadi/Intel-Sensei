@@ -1,11 +1,24 @@
-import * as React from "react"
-
-import { Button } from "@/components/ui/button"
 import {
-  Popover,
-  PopoverContent,
-  PopoverTrigger,
-} from "@/components/ui/popover"
+  ArrowDownIcon,
+  ArrowUpIcon,
+  BellIcon,
+  ChartLineIcon,
+  CopyIcon,
+  CornerUpLeftIcon,
+  CornerUpRightIcon,
+  FileTextIcon,
+  GalleryVerticalEndIcon,
+  LinkIcon,
+  MoreHorizontalIcon,
+  Settings2Icon,
+  StarIcon,
+  Trash2Icon,
+  TrashIcon,
+} from 'lucide-react'
+import * as React from 'react'
+
+import { Button } from '@/components/ui/button'
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import {
   Sidebar,
   SidebarContent,
@@ -14,141 +27,83 @@ import {
   SidebarMenu,
   SidebarMenuButton,
   SidebarMenuItem,
-} from "@/components/ui/sidebar"
-import { Settings2Icon, FileTextIcon, LinkIcon, CopyIcon, CornerUpRightIcon, Trash2Icon, CornerUpLeftIcon, ChartLineIcon, GalleryVerticalEndIcon, TrashIcon, BellIcon, ArrowUpIcon, ArrowDownIcon, StarIcon, MoreHorizontalIcon } from "lucide-react"
+} from '@/components/ui/sidebar'
 
 const data = [
   [
     {
-      label: "Customize Page",
-      icon: (
-        <Settings2Icon
-        />
-      ),
+      label: 'Customize Page',
+      icon: <Settings2Icon />,
     },
     {
-      label: "Turn into wiki",
-      icon: (
-        <FileTextIcon
-        />
-      ),
+      label: 'Turn into wiki',
+      icon: <FileTextIcon />,
     },
   ],
   [
     {
-      label: "Copy Link",
-      icon: (
-        <LinkIcon
-        />
-      ),
+      label: 'Copy Link',
+      icon: <LinkIcon />,
     },
     {
-      label: "Duplicate",
-      icon: (
-        <CopyIcon
-        />
-      ),
+      label: 'Duplicate',
+      icon: <CopyIcon />,
     },
     {
-      label: "Move to",
-      icon: (
-        <CornerUpRightIcon
-        />
-      ),
+      label: 'Move to',
+      icon: <CornerUpRightIcon />,
     },
     {
-      label: "Move to Trash",
-      icon: (
-        <Trash2Icon
-        />
-      ),
+      label: 'Move to Trash',
+      icon: <Trash2Icon />,
     },
   ],
   [
     {
-      label: "Undo",
-      icon: (
-        <CornerUpLeftIcon
-        />
-      ),
+      label: 'Undo',
+      icon: <CornerUpLeftIcon />,
     },
     {
-      label: "View analytics",
-      icon: (
-        <ChartLineIcon
-        />
-      ),
+      label: 'View analytics',
+      icon: <ChartLineIcon />,
     },
     {
-      label: "Version History",
-      icon: (
-        <GalleryVerticalEndIcon
-        />
-      ),
+      label: 'Version History',
+      icon: <GalleryVerticalEndIcon />,
     },
     {
-      label: "Show delete pages",
-      icon: (
-        <TrashIcon
-        />
-      ),
+      label: 'Show delete pages',
+      icon: <TrashIcon />,
     },
     {
-      label: "Notifications",
-      icon: (
-        <BellIcon
-        />
-      ),
+      label: 'Notifications',
+      icon: <BellIcon />,
     },
   ],
   [
     {
-      label: "Import",
-      icon: (
-        <ArrowUpIcon
-        />
-      ),
+      label: 'Import',
+      icon: <ArrowUpIcon />,
     },
     {
-      label: "Export",
-      icon: (
-        <ArrowDownIcon
-        />
-      ),
+      label: 'Export',
+      icon: <ArrowDownIcon />,
     },
   ],
 ]
 export function NavActions() {
-  const [isOpen, setIsOpen] = React.useState(false)
-  React.useEffect(() => {
-    setIsOpen(true)
-  }, [])
+  const [isOpen, setIsOpen] = React.useState(true)
   return (
     <div className="flex items-center gap-2 text-sm">
-      <div className="hidden font-medium text-muted-foreground md:inline-block">
-        Edit Oct 08
-      </div>
+      <div className="hidden font-medium text-muted-foreground md:inline-block">Edit Oct 08</div>
       <Button variant="ghost" size="icon" className="h-7 w-7">
-        <StarIcon
-        />
+        <StarIcon />
       </Button>
       <Popover open={isOpen} onOpenChange={setIsOpen}>
-        <PopoverTrigger
-          render={
-            <Button
-              variant="ghost"
-              size="icon"
-              className="h-7 w-7 data-open:bg-accent"
-            />
-          }
-        >
-          <MoreHorizontalIcon
-          />
+        <PopoverTrigger render={<Button variant="ghost" size="icon" className="h-7 w-7 data-open:bg-accent" />}>
+          <MoreHorizontalIcon />
         </PopoverTrigger>
-        <PopoverContent
-          className="w-56 overflow-hidden rounded-lg p-0"
-          align="end"
-        >
+        <PopoverContent className="w-56 overflow-hidden rounded-lg p-0" align="end">
           <Sidebar collapsible="none" className="bg-transparent">
             <SidebarContent>
               {data.map((group, index) => (

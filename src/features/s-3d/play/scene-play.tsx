@@ -1,6 +1,8 @@
-import { Suspense, lazy, useEffect } from 'react'
 import { XIcon } from 'lucide-react'
+import { Suspense, lazy, useEffect } from 'react'
+
 import { Button } from '@/components/ui/button'
+
 import { sceneOf } from '../render/scene3d'
 import { useS3D } from '../store'
 
@@ -33,8 +35,12 @@ export function ScenePlay() {
         </Suspense>
       )}
       {!scene && <div className="grid h-full place-items-center text-sm text-white/60">There is no 3D scene to preview.</div>}
-      <Button variant="secondary" size="icon-sm" className="absolute top-3 right-3" aria-label="Exit preview" onClick={close}><XIcon /></Button>
-      <div className="pointer-events-none absolute bottom-3 left-1/2 -translate-x-1/2 rounded-md bg-black/40 px-2 py-1 text-[11px] text-white/70">Drag to orbit · Scroll to zoom · Esc to exit</div>
+      <Button variant="secondary" size="icon-sm" className="absolute top-3 right-3" aria-label="Exit preview" onClick={close}>
+        <XIcon />
+      </Button>
+      <div className="pointer-events-none absolute bottom-3 left-1/2 -translate-x-1/2 rounded-md bg-black/40 px-2 py-1 text-[11px] text-white/70">
+        Drag to orbit · Scroll to zoom · Esc to exit
+      </div>
     </div>
   )
 }

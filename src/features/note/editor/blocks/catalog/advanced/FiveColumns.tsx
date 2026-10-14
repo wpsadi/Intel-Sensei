@@ -1,6 +1,7 @@
 import { Columns3CogIcon } from 'lucide-react'
-import { type BlockDefinition, chain } from '../../insert'
+
 import { columnsContent } from '../../../nodes/layout'
+import { type BlockDefinition, chain } from '../../insert'
 
 /** 5 columns block for the "/" and "+" menus. */
 export const FiveColumnsBlock: BlockDefinition = {

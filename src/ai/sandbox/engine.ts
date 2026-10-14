@@ -20,7 +20,11 @@ export const PASTE_MAX_CHARS = 400_000
 
 /** The part of the Pyodide API the engine uses, so a test can pass the real build and the worker can pass its own. */
 export interface PyodideLike {
-  FS: { writeFile(path: string, data: Uint8Array): void; readFile(path: string): Uint8Array; analyzePath(path: string): { exists: boolean } }
+  FS: {
+    writeFile(path: string, data: Uint8Array): void
+    readFile(path: string): Uint8Array
+    analyzePath(path: string): { exists: boolean }
+  }
   globals: { set(name: string, value: unknown): void }
   runPython(code: string): unknown
   runPythonAsync(code: string): Promise<unknown>
@@ -66,7 +70,12 @@ export const runShell = (py: PyodideLike, command: string) => exec(py, 'run_shel
 
 /** A name that is safe as a single file name inside the sandbox. */
 export function safeName(name: string) {
-  return name.replace(/[\\/\0]/g, '_').replace(/^\.+$/, '_').trim() || 'file'
+  return (
+    name
+      .replace(/[\\/\0]/g, '_')
+      .replace(/^\.+$/, '_')
+      .trim() || 'file'
+  )
 }
 
 /** Writes a file into the home folder and returns its path. A name already taken gets " (2)", " (3)" and so on. */

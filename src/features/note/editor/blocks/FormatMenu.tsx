@@ -1,9 +1,10 @@
-import { BaselineIcon, BoldIcon, CodeIcon, ItalicIcon, LinkIcon, StrikethroughIcon, UnderlineIcon } from 'lucide-react'
+import { NodeSelection } from '@tiptap/pm/state'
 import { type Editor, useEditorState } from '@tiptap/react'
 import { BubbleMenu } from '@tiptap/react/menus'
-import { NodeSelection } from '@tiptap/pm/state'
-import { cn } from '@/lib/utils'
+import { BaselineIcon, BoldIcon, CodeIcon, ItalicIcon, LinkIcon, StrikethroughIcon, UnderlineIcon } from 'lucide-react'
 import { useState } from 'react'
+
+import { cn } from '@/lib/utils'
 
 const TEXT_COLORS = [
   { name: 'Gray', value: '#6b7280' },

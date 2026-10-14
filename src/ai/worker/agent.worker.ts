@@ -1,7 +1,19 @@
-import { type JSONSchema7, type LanguageModel, type ModelMessage, type Tool, ToolLoopAgent, generateText, type ToolSet, jsonSchema, stepCountIs, tool } from 'ai'
-import { createOpenAI } from '@ai-sdk/openai'
-import { createGoogle } from '@ai-sdk/google'
 import { createAnthropic } from '@ai-sdk/anthropic'
+import { createGoogle } from '@ai-sdk/google'
+import { createOpenAI } from '@ai-sdk/openai'
+import {
+  type JSONSchema7,
+  type LanguageModel,
+  type ModelMessage,
+  type Tool,
+  ToolLoopAgent,
+  type ToolSet,
+  generateText,
+  jsonSchema,
+  stepCountIs,
+  tool,
+} from 'ai'
+
 import type { FromWorker, StreamPart, ToWorker } from './protocol'
 
 /**
@@ -16,13 +28,17 @@ const errorText = (e: unknown) => (e instanceof Error ? e.message : String(e))
 function modelFor(msg: Extract<ToWorker, { type: 'start' }>): LanguageModel {
   if (msg.provider === 'openai') return createOpenAI({ apiKey: msg.key, baseURL: msg.baseURL })(msg.model)
   // Anthropic refuses browser calls unless the request says it is deliberate; the key is the user's own, kept in their browser.
-  if (msg.provider === 'anthropic') return createAnthropic({ apiKey: msg.key, baseURL: msg.baseURL, headers: { 'anthropic-dangerous-direct-browser-access': 'true' } })(msg.model)
+  if (msg.provider === 'anthropic')
+    return createAnthropic({ apiKey: msg.key, baseURL: msg.baseURL, headers: { 'anthropic-dangerous-direct-browser-access': 'true' } })(
+      msg.model,
+    )
   return createGoogle({ apiKey: msg.key, baseURL: msg.baseURL })(msg.model)
 }
 
 /** Rough tokens of a message list: text at ~4 characters a token, each image or file at a flat cost. */
 function estimateTokens(messages: ModelMessage[]) {
-  let chars = 0, files = 0
+  let chars = 0,
+    files = 0
   const walk = (v: unknown) => {
     if (typeof v === 'string') chars += v.length
     else if (Array.isArray(v)) v.forEach(walk)
@@ -38,7 +54,8 @@ function estimateTokens(messages: ModelMessage[]) {
 
 /** A message as plain text for the summarizer: files left out, long tool output cut. */
 function asTranscript(m: ModelMessage) {
-  const parts = typeof m.content === 'string' ? [{ type: 'text', text: m.content }] : (m.content as { type: string; [k: string]: unknown }[])
+  const parts =
+    typeof m.content === 'string' ? [{ type: 'text', text: m.content }] : (m.content as { type: string; [k: string]: unknown }[])
   const lines = parts.map((p) => {
     if (p.type === 'text' || p.type === 'reasoning') return String(p.text ?? '')
     if (p.type === 'tool-call') return `[called ${p.toolName} ${JSON.stringify(p.input).slice(0, 600)}]`
@@ -57,7 +74,12 @@ const KEEP_TAIL = 6
 type Spend = Omit<Extract<StreamPart, { type: 'spend' }>, 'type'>
 
 /** The billable token counts of a step, in the shape the usage log takes. */
-function spendOf(usage: { inputTokens?: number; outputTokens?: number; outputTokenDetails?: { reasoningTokens?: number }; inputTokenDetails?: { cacheReadTokens?: number; cacheWriteTokens?: number } }): Spend {
+function spendOf(usage: {
+  inputTokens?: number
+  outputTokens?: number
+  outputTokenDetails?: { reasoningTokens?: number }
+  inputTokenDetails?: { cacheReadTokens?: number; cacheWriteTokens?: number }
+}): Spend {
   return {
     inputTokens: usage.inputTokens ?? 0,
     outputTokens: usage.outputTokens ?? 0,
@@ -77,11 +99,18 @@ async function compact(model: LanguageModel, messages: ModelMessage[], signal: A
   const { text, usage } = await generateText({
     model,
     abortSignal: signal,
-    system: 'You compress an AI agent\'s working history so it can continue its task. Keep: the user\'s requests and goal word for word, decisions, constraints, every id that was created or changed (scenes, objects, nodes, pages, notes) with what it is, what is done and what is still to do, open problems, and the to-do list state. Drop chit-chat and raw data. Write compact markdown.',
+    system:
+      "You compress an AI agent's working history so it can continue its task. Keep: the user's requests and goal word for word, decisions, constraints, every id that was created or changed (scenes, objects, nodes, pages, notes) with what it is, what is done and what is still to do, open problems, and the to-do list state. Drop chit-chat and raw data. Write compact markdown.",
     prompt: older.map(asTranscript).join('\n\n').slice(-400_000),
   })
   onSpend({ ...spendOf(usage), compaction: true })
-  return [{ role: 'user' as const, content: `Summary of the earlier conversation and work (older messages were compacted to fit the context window):\n\n${text}` }, ...messages.slice(cut)]
+  return [
+    {
+      role: 'user' as const,
+      content: `Summary of the earlier conversation and work (older messages were compacted to fit the context window):\n\n${text}`,
+    },
+    ...messages.slice(cut),
+  ]
 }
 
 async function runPass(msg: Extract<ToWorker, { type: 'start' }>) {
@@ -103,7 +132,10 @@ async function runPass(msg: Extract<ToWorker, { type: 'start' }>) {
         ...(t.imageOutput && {
           toModelOutput: ({ output }: { output: { image: string; mediaType: string } }) => ({
             type: 'content' as const,
-            value: [{ type: 'text' as const, text: 'Rendered view:' }, { type: 'file' as const, mediaType: output.mediaType, data: { type: 'data' as const, data: output.image } }],
+            value: [
+              { type: 'text' as const, text: 'Rendered view:' },
+              { type: 'file' as const, mediaType: output.mediaType, data: { type: 'data' as const, data: output.image } },
+            ],
           }),
         }),
       } as never) as Tool,
@@ -119,12 +151,22 @@ async function runPass(msg: Extract<ToWorker, { type: 'start' }>) {
   const cache = msg.provider === 'anthropic'
   const ephemeral = { anthropic: { cacheControl: { type: 'ephemeral' } } }
   const withCache = (messages: ModelMessage[]) =>
-    !cache || !messages.length ? messages : messages.map((m, i) => (i === messages.length - 1 ? { ...m, providerOptions: { ...m.providerOptions, ...ephemeral } } : m)) as ModelMessage[]
+    !cache || !messages.length
+      ? messages
+      : (messages.map((m, i) =>
+          i === messages.length - 1 ? { ...m, providerOptions: { ...m.providerOptions, ...ephemeral } } : m,
+        ) as ModelMessage[])
   try {
     const agent = new ToolLoopAgent({
       model,
       ...((limit || cache) && {
-        prepareStep: async ({ messages, steps }: { messages: ModelMessage[]; steps: { usage?: { inputTokens?: number; outputTokens?: number } }[] }) => {
+        prepareStep: async ({
+          messages,
+          steps,
+        }: {
+          messages: ModelMessage[]
+          steps: { usage?: { inputTokens?: number; outputTokens?: number } }[]
+        }) => {
           const last = steps.at(-1)?.usage
           const used = Math.max(last ? (last.inputTokens ?? 0) + (last.outputTokens ?? 0) : 0, estimateTokens(messages))
           if (!limit || used < limit * 0.8) {
@@ -138,7 +180,8 @@ async function runPass(msg: Extract<ToWorker, { type: 'start' }>) {
           return { messages: withCache(next) }
         },
       }),
-      instructions: cache && msg.instructions ? { role: 'system', content: msg.instructions, providerOptions: ephemeral } : msg.instructions,
+      instructions:
+        cache && msg.instructions ? { role: 'system', content: msg.instructions, providerOptions: ephemeral } : msg.instructions,
       tools,
       ...(msg.maxSteps && { stopWhen: stepCountIs(msg.maxSteps) }),
       providerOptions: msg.providerOptions as never,
@@ -149,7 +192,13 @@ async function runPass(msg: Extract<ToWorker, { type: 'start' }>) {
       else if (p.type === 'reasoning-start') part({ type: 'reasoning-start' })
       else if (p.type === 'tool-call') part({ type: 'tool-call', toolCallId: p.toolCallId, toolName: p.toolName, input: p.input })
       // Images stay in the worker; the main thread only needs to know the call finished.
-      else if (p.type === 'tool-result') part({ type: 'tool-result', toolCallId: p.toolCallId, toolName: p.toolName, output: msg.tools[p.toolName]?.imageOutput ? null : p.output })
+      else if (p.type === 'tool-result')
+        part({
+          type: 'tool-result',
+          toolCallId: p.toolCallId,
+          toolName: p.toolName,
+          output: msg.tools[p.toolName]?.imageOutput ? null : p.output,
+        })
       else if (p.type === 'tool-error') part({ type: 'tool-error', toolCallId: p.toolCallId, toolName: p.toolName, error: String(p.error) })
       else if (p.type === 'finish-step') {
         const u = (p as { usage?: Parameters<typeof spendOf>[0] }).usage
@@ -158,18 +207,29 @@ async function runPass(msg: Extract<ToWorker, { type: 'start' }>) {
           lastContext = (u.inputTokens ?? 0) + (u.outputTokens ?? 0)
           part({ type: 'usage', contextTokens: lastContext, inputTokens: u.inputTokens ?? 0, outputTokens: u.outputTokens ?? 0 })
         }
-      }
-      else if (p.type === 'error' && !controller.signal.aborted) part({ type: 'error', error: errorText(p.error) })
+      } else if (p.type === 'error' && !controller.signal.aborted) part({ type: 'error', error: errorText(p.error) })
     }
     const messages = controller.signal.aborted ? [] : (await result.response).messages
     if (latest && !controller.signal.aborted) {
       // The last step's own messages are not in `latest` yet: its reply, plus tool results if it called tools.
       const steps = await result.steps
       const tail = 1 + ((steps.at(-1)?.toolResults?.length ?? 0) > 0 ? 1 : 0)
-      post({ type: 'done', runId: msg.runId, messages: [...(latest as ModelMessage[]), ...messages.slice(-tail)], replaced: true, aborted: false })
+      post({
+        type: 'done',
+        runId: msg.runId,
+        messages: [...(latest as ModelMessage[]), ...messages.slice(-tail)],
+        replaced: true,
+        aborted: false,
+      })
     } else post({ type: 'done', runId: msg.runId, messages, aborted: controller.signal.aborted })
   } catch (error) {
-    post({ type: 'done', runId: msg.runId, messages: [], aborted: controller.signal.aborted, error: controller.signal.aborted ? undefined : errorText(error) })
+    post({
+      type: 'done',
+      runId: msg.runId,
+      messages: [],
+      aborted: controller.signal.aborted,
+      error: controller.signal.aborted ? undefined : errorText(error),
+    })
   } finally {
     controllers.delete(msg.runId)
   }

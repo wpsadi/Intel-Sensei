@@ -1,19 +1,27 @@
+import { type GoogleLanguageModelOptions, createGoogle } from '@ai-sdk/google'
 import { type LanguageModelUsage, ToolLoopAgent } from 'ai'
-import { createGoogle, type GoogleLanguageModelOptions } from '@ai-sdk/google'
-import type { ChatAnswers, ChatPlan, ChatQuestion, ChatSearch, ChatTodoList, ChatUsage } from '@/features/note/db/types'
+
+import {
+  MEMORY_INSTRUCTIONS,
+  SCRATCHPAD_INSTRUCTIONS,
+  createMemoryTool,
+  createScratchpad,
+  createScratchpadTool,
+  disposeScratchpad,
+  memoryPrompt,
+} from '@/ai/memory'
+import { SANDBOX_INSTRUCTIONS, createSandboxTools } from '@/ai/sandbox/tools'
 import { ASK_INSTRUCTIONS, createAskTools } from '@/ai/tools/ask'
-import { createPlanTools, PLAN_INSTRUCTIONS } from '@/ai/tools/plan'
-import { createMemoryTool, createScratchpad, createScratchpadTool, disposeScratchpad, MEMORY_INSTRUCTIONS, memoryPrompt, SCRATCHPAD_INSTRUCTIONS } from '@/ai/memory'
-import { createTodoTools, TODO_INSTRUCTIONS } from '@/ai/tools/todo'
-import { createSearchTool, upsertSearch } from '@/ai/tools/search'
+import { PLAN_INSTRUCTIONS, createPlanTools } from '@/ai/tools/plan'
 import { createScrapeTool } from '@/ai/tools/scrape'
-import { createSandboxTools, SANDBOX_INSTRUCTIONS } from '@/ai/sandbox/tools'
+import { createSearchTool, upsertSearch } from '@/ai/tools/search'
+import { TODO_INSTRUCTIONS, createTodoTools } from '@/ai/tools/todo'
+import { recordSdkUsage } from '@/ai/usage'
+import { currentTimePrompt } from '@/ai/utils/current-time'
 import { type ChatTurn, toModelMessage } from '@/ai/utils/messages'
 import { thinkingOnly } from '@/ai/utils/thinking'
-import { currentTimePrompt } from '@/ai/utils/current-time'
 import { CHAT_MODEL } from '@/constants/ai'
-import { recordSdkUsage } from '@/ai/usage'
-
+import type { ChatAnswers, ChatPlan, ChatQuestion, ChatSearch, ChatTodoList, ChatUsage } from '@/features/note/db/types'
 
 /**
  * Sensei's persona for chat. It says nothing about how to think: asking for a thinking style made
@@ -40,7 +48,13 @@ export async function chatWithGemini(
   /** Receives every web search of this reply each time one starts or finishes. */
   onSearches?: (searches: ChatSearch[]) => void,
   /** The chat and the reply being written. Session memory is filtered by the chat, the scratchpad is tied to both. */
-  scope?: { chatId: string; messageId: string; /** Receives the token counts Gemini reported once the reply is done. */ onUsage?: (usage: ChatUsage) => void; /** The to-do list earlier replies left, for this reply to carry on. */ todos?: ChatTodoList; /** Shows Sensei's questions and resolves with the user's answers. */ onAsk?: (questions: ChatQuestion[]) => Promise<ChatAnswers> },
+  scope?: {
+    chatId: string
+    messageId: string
+    /** Receives the token counts Gemini reported once the reply is done. */ onUsage?: (usage: ChatUsage) => void
+    /** The to-do list earlier replies left, for this reply to carry on. */ todos?: ChatTodoList
+    /** Shows Sensei's questions and resolves with the user's answers. */ onAsk?: (questions: ChatQuestion[]) => Promise<ChatAnswers>
+  },
 ) {
   const scratchpad = scope ? createScratchpad(scope.chatId, scope.messageId) : undefined
   const google = createGoogle({ apiKey })
@@ -110,7 +124,8 @@ export async function chatWithGemini(
     if (scope?.onUsage) {
       const last = steps.at(-1)?.usage
       if (last) {
-        const sum = (pick: (usage: LanguageModelUsage) => number | undefined) => steps.reduce((total: number, step) => total + (pick(step.usage) ?? 0), 0)
+        const sum = (pick: (usage: LanguageModelUsage) => number | undefined) =>
+          steps.reduce((total: number, step) => total + (pick(step.usage) ?? 0), 0)
         scope.onUsage({
           contextTokens: (last.inputTokens ?? 0) + (last.outputTokens ?? 0),
           inputTokens: sum((usage) => usage.inputTokens),

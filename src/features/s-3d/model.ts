@@ -5,29 +5,101 @@ export const CONTAINER_TYPES: NodeType[] = ['frame', 'section', 'group', 'boolea
 export const isContainer = (n: SNode) => CONTAINER_TYPES.includes(n.type)
 
 export const solid = (color: string, opacity = 1): Fill => ({ id: uid(), kind: 'solid', color, opacity, visible: true })
-export const stroke = (color = '#000000', width = 1): Stroke => ({ id: uid(), color, opacity: 1, width, align: 'inside', dash: 0, visible: true })
+export const stroke = (color = '#000000', width = 1): Stroke => ({
+  id: uid(),
+  color,
+  opacity: 1,
+  width,
+  align: 'inside',
+  dash: 0,
+  visible: true,
+})
 
 const DEFAULT_NAMES: Record<NodeType, string> = {
-  frame: 'Frame', section: 'Section', group: 'Group', rect: 'Rectangle', ellipse: 'Ellipse', polygon: 'Polygon', star: 'Star',
-  vector: 'Vector', text: 'Text', image: 'Image', video: 'Video', shape3d: '3D Shape', model3d: '3D Model', boolean: 'Boolean', comment: 'Comment',
+  frame: 'Frame',
+  section: 'Section',
+  group: 'Group',
+  rect: 'Rectangle',
+  ellipse: 'Ellipse',
+  polygon: 'Polygon',
+  star: 'Star',
+  vector: 'Vector',
+  text: 'Text',
+  image: 'Image',
+  video: 'Video',
+  shape3d: '3D Shape',
+  model3d: '3D Model',
+  boolean: 'Boolean',
+  comment: 'Comment',
 }
 
 export function createNode(type: NodeType, parentId: string, patch: Partial<SNode> = {}): SNode {
   const fills: Fill[] =
-    type === 'frame' ? [solid('#ffffff')] : type === 'section' ? [solid('#e5e5e5', 0.5)]
-      : type === 'text' ? [solid('#111111')] : ['group', 'image', 'video', 'model3d', 'shape3d', 'comment', 'boolean'].includes(type) ? [] : [solid('#d9d9d9')]
+    type === 'frame'
+      ? [solid('#ffffff')]
+      : type === 'section'
+        ? [solid('#e5e5e5', 0.5)]
+        : type === 'text'
+          ? [solid('#111111')]
+          : ['group', 'image', 'video', 'model3d', 'shape3d', 'comment', 'boolean'].includes(type)
+            ? []
+            : [solid('#d9d9d9')]
   return {
-    id: uid(), type, name: DEFAULT_NAMES[type], parentId, children: [],
-    x: 0, y: 0, w: 100, h: 100, rotation: 0, opacity: 1, blend: 'normal',
-    visible: true, locked: false, expanded: true, clip: type === 'frame', mask: false, aspectLocked: type === 'image' || type === 'video',
-    radius: [0, 0, 0, 0], fills, strokes: type === 'vector' ? [stroke('#111111', 2)] : [], effects: [],
-    autoLayout: null, sizing: { h: 'fixed', v: 'fixed' }, constraints: { h: 'left', v: 'top' },
-    sides: type === 'star' ? 5 : 3, innerRatio: 0.4, path: '',
-    text: type === 'text'
-      ? { content: 'Text', fontFamily: 'Inter Variable', fontSize: 24, fontWeight: 400, italic: false, underline: false, strike: false, lineHeight: 1.2, letterSpacing: 0, align: 'left', verticalAlign: 'top', transform: 'none', autoSize: 'width' }
-      : null,
-    src: '', shape3d: 'cube', modelColor: '#6366f1', booleanOp: 'union',
-    states: [], interactions: [], exports: [], rev: 0, editedBy: '',
+    id: uid(),
+    type,
+    name: DEFAULT_NAMES[type],
+    parentId,
+    children: [],
+    x: 0,
+    y: 0,
+    w: 100,
+    h: 100,
+    rotation: 0,
+    opacity: 1,
+    blend: 'normal',
+    visible: true,
+    locked: false,
+    expanded: true,
+    clip: type === 'frame',
+    mask: false,
+    aspectLocked: type === 'image' || type === 'video',
+    radius: [0, 0, 0, 0],
+    fills,
+    strokes: type === 'vector' ? [stroke('#111111', 2)] : [],
+    effects: [],
+    autoLayout: null,
+    sizing: { h: 'fixed', v: 'fixed' },
+    constraints: { h: 'left', v: 'top' },
+    sides: type === 'star' ? 5 : 3,
+    innerRatio: 0.4,
+    path: '',
+    text:
+      type === 'text'
+        ? {
+            content: 'Text',
+            fontFamily: 'Inter Variable',
+            fontSize: 24,
+            fontWeight: 400,
+            italic: false,
+            underline: false,
+            strike: false,
+            lineHeight: 1.2,
+            letterSpacing: 0,
+            align: 'left',
+            verticalAlign: 'top',
+            transform: 'none',
+            autoSize: 'width',
+          }
+        : null,
+    src: '',
+    shape3d: 'cube',
+    modelColor: '#6366f1',
+    booleanOp: 'union',
+    states: [],
+    interactions: [],
+    exports: [],
+    rev: 0,
+    editedBy: '',
     ...patch,
   }
 }
@@ -165,7 +237,10 @@ export function shapePath(n: Pick<SNode, 'type' | 'w' | 'h' | 'radius' | 'sides'
 
 /** Translates every coordinate of an absolute-coordinate path (M/L/C/Q/Z only, as produced by the pen tool). */
 export function translatePath(path: string, dx: number, dy: number, sx = 1, sy = 1) {
-  return path.replace(/(-?\d*\.?\d+),(-?\d*\.?\d+)/g, (_, x, y) => `${((Number(x) + dx) * sx).toFixed(2)},${((Number(y) + dy) * sy).toFixed(2)}`)
+  return path.replace(
+    /(-?\d*\.?\d+),(-?\d*\.?\d+)/g,
+    (_, x, y) => `${((Number(x) + dx) * sx).toFixed(2)},${((Number(y) + dy) * sy).toFixed(2)}`,
+  )
 }
 
 export function pathBounds(path: string): Rect {
@@ -245,16 +320,34 @@ export function applyConstraints(doc: Doc, parent: SNode, oldW: number, oldH: nu
     const c = doc.nodes[cid]
     if (!c) continue
     switch (c.constraints.h) {
-      case 'right': c.x += dw; break
-      case 'left-right': c.w = Math.max(1, c.w + dw); break
-      case 'center': c.x += dw / 2; break
-      case 'scale': c.x *= parent.w / oldW; c.w *= parent.w / oldW; break
+      case 'right':
+        c.x += dw
+        break
+      case 'left-right':
+        c.w = Math.max(1, c.w + dw)
+        break
+      case 'center':
+        c.x += dw / 2
+        break
+      case 'scale':
+        c.x *= parent.w / oldW
+        c.w *= parent.w / oldW
+        break
     }
     switch (c.constraints.v) {
-      case 'bottom': c.y += dh; break
-      case 'top-bottom': c.h = Math.max(1, c.h + dh); break
-      case 'center': c.y += dh / 2; break
-      case 'scale': c.y *= parent.h / oldH; c.h *= parent.h / oldH; break
+      case 'bottom':
+        c.y += dh
+        break
+      case 'top-bottom':
+        c.h = Math.max(1, c.h + dh)
+        break
+      case 'center':
+        c.y += dh / 2
+        break
+      case 'scale':
+        c.y *= parent.h / oldH
+        c.h *= parent.h / oldH
+        break
     }
   }
 }
@@ -274,9 +367,42 @@ export function cloneSubtrees(nodes: Record<string, SNode>, rootIds: string[], p
 }
 
 export const FRAME_PRESETS: { group: string; items: { name: string; w: number; h: number }[] }[] = [
-  { group: 'Phone', items: [{ name: 'iPhone 16', w: 393, h: 852 }, { name: 'iPhone 16 Pro Max', w: 440, h: 956 }, { name: 'Android Large', w: 360, h: 800 }] },
-  { group: 'Tablet', items: [{ name: 'iPad Mini', w: 744, h: 1133 }, { name: 'iPad Pro 11"', w: 834, h: 1194 }] },
-  { group: 'Desktop', items: [{ name: 'Desktop', w: 1440, h: 1024 }, { name: 'MacBook Air', w: 1280, h: 832 }, { name: 'HD', w: 1920, h: 1080 }] },
-  { group: 'Social', items: [{ name: 'Instagram Post', w: 1080, h: 1080 }, { name: 'Instagram Story', w: 1080, h: 1920 }, { name: 'X Post', w: 1200, h: 675 }] },
-  { group: 'Paper', items: [{ name: 'A4', w: 595, h: 842 }, { name: 'Letter', w: 612, h: 792 }] },
+  {
+    group: 'Phone',
+    items: [
+      { name: 'iPhone 16', w: 393, h: 852 },
+      { name: 'iPhone 16 Pro Max', w: 440, h: 956 },
+      { name: 'Android Large', w: 360, h: 800 },
+    ],
+  },
+  {
+    group: 'Tablet',
+    items: [
+      { name: 'iPad Mini', w: 744, h: 1133 },
+      { name: 'iPad Pro 11"', w: 834, h: 1194 },
+    ],
+  },
+  {
+    group: 'Desktop',
+    items: [
+      { name: 'Desktop', w: 1440, h: 1024 },
+      { name: 'MacBook Air', w: 1280, h: 832 },
+      { name: 'HD', w: 1920, h: 1080 },
+    ],
+  },
+  {
+    group: 'Social',
+    items: [
+      { name: 'Instagram Post', w: 1080, h: 1080 },
+      { name: 'Instagram Story', w: 1080, h: 1920 },
+      { name: 'X Post', w: 1200, h: 675 },
+    ],
+  },
+  {
+    group: 'Paper',
+    items: [
+      { name: 'A4', w: 595, h: 842 },
+      { name: 'Letter', w: 612, h: 792 },
+    ],
+  },
 ]

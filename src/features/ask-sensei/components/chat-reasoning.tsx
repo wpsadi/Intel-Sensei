@@ -1,7 +1,8 @@
 import { AlertCircle, DatabaseIcon, WrenchIcon } from 'lucide-react'
 import { Fragment, type ReactNode } from 'react'
-import { Reasoning, ReasoningContent, ReasoningText, ReasoningTrigger } from '@/components/ai-elements/reasoning'
+
 import { ChainOfThoughtStep } from '@/components/ai-elements/chain-of-thought'
+import { Reasoning, ReasoningContent, ReasoningText, ReasoningTrigger } from '@/components/ai-elements/reasoning'
 import { Shimmer } from '@/components/ai-elements/shimmer'
 import type { ChatToolStep } from '@/features/note/db/types'
 

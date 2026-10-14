@@ -1,16 +1,18 @@
 import { ImageIcon, SmileIcon } from 'lucide-react'
-import { useNoteStore } from '../note.store'
-import { pickFile, putMedia } from '../db/media'
-import { useDatabase, useMediaUrl, usePage } from '../db/hooks'
-import { DatabaseView } from '../database/DatabaseView'
-import { IconPicker } from './IconPicker'
-import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
-import { PageIcon } from '../editor/nodes/pages'
-import { NoteEditor } from '../editor/NoteEditor'
-import type { Page } from '../db/types'
-import { PropertyEditor } from '../database/properties'
-import { displaySettings } from '../lib/display'
 import { useRef, useState } from 'react'
+
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
+
+import { DatabaseView } from '../database/DatabaseView'
+import { PropertyEditor } from '../database/properties'
+import { useDatabase, useMediaUrl, usePage } from '../db/hooks'
+import { pickFile, putMedia } from '../db/media'
+import type { Page } from '../db/types'
+import { PageIcon } from '../editor/nodes/PageIcon'
+import { NoteEditor } from '../editor/NoteEditor'
+import { displaySettings } from '../lib/display'
+import { useNoteStore } from '../note.store'
+import { IconPicker } from './IconPicker'
 
 const COVERS = [
   'linear-gradient(135deg,#f6d365,#fda085)',
@@ -58,12 +60,14 @@ function Cover({ page, locked }: { page: Page; locked: boolean }) {
     >
       {repositioning ? (
         <>
-          <div className="pointer-events-none absolute inset-x-0 top-1/2 mx-auto w-fit -translate-y-1/2 rounded bg-background/80 px-3 py-1 text-xs">Drag image to reposition</div>
+          <div className="pointer-events-none absolute inset-x-0 top-1/2 mx-auto w-fit -translate-y-1/2 rounded bg-background/80 px-3 py-1 text-xs">
+            Drag image to reposition
+          </div>
           <div className="absolute right-4 bottom-3 flex gap-1" onPointerDown={(event) => event.stopPropagation()}>
             <button
               type="button"
               onClick={() => {
-                updatePage(page.id,{ coverY: Math.round(y * 10) / 10 })
+                updatePage(page.id, { coverY: Math.round(y * 10) / 10 })
                 setDraftY(null)
               }}
               className={btn}
@@ -76,8 +80,14 @@ function Cover({ page, locked }: { page: Page; locked: boolean }) {
           </div>
         </>
       ) : (
-        <div className={`absolute right-4 bottom-3 flex gap-1 opacity-0 transition group-hover/cover:opacity-100 ${locked ? 'hidden' : ''}`}>
-          <button type="button" onClick={() => updatePage(page.id,{ cover: COVERS[(COVERS.indexOf(page.cover) + 1) % COVERS.length] })} className={btn}>
+        <div
+          className={`absolute right-4 bottom-3 flex gap-1 opacity-0 transition group-hover/cover:opacity-100 ${locked ? 'hidden' : ''}`}
+        >
+          <button
+            type="button"
+            onClick={() => updatePage(page.id, { cover: COVERS[(COVERS.indexOf(page.cover) + 1) % COVERS.length] })}
+            className={btn}
+          >
             Change cover
           </button>
           <button
@@ -85,7 +95,7 @@ function Cover({ page, locked }: { page: Page; locked: boolean }) {
             onClick={async () => {
               const file = await pickFile('image/*')
               if (!file) return
-              await updatePage(page.id,{ cover: await putMedia(file, file.name), coverY: 50 })
+              await updatePage(page.id, { cover: await putMedia(file, file.name), coverY: 50 })
               setDraftY(50)
             }}
             className={btn}
@@ -97,7 +107,7 @@ function Cover({ page, locked }: { page: Page; locked: boolean }) {
               Reposition
             </button>
           )}
-          <button type="button" onClick={() => updatePage(page.id,{ cover: '' })} className={btn}>
+          <button type="button" onClick={() => updatePage(page.id, { cover: '' })} className={btn}>
             Remove
           </button>
         </div>
@@ -143,7 +153,7 @@ export function PageView({ pageId }: { pageId: string }) {
   const title = page.kind === 'database' ? (fullPageDb?.title ?? '') : page.title
   // Full-page databases keep the page title and database title in step.
   const setTitle = (value: string) => {
-    updatePage(page.id,{ title: value })
+    updatePage(page.id, { title: value })
     if (fullPageDb) updateDatabase(fullPageDb.id, { title: value })
   }
 
@@ -158,27 +168,25 @@ export function PageView({ pageId }: { pageId: string }) {
         </div>
       )}
       {page.cover && <Cover page={page} locked={locked} />}
-      <div
-        className={
-          page.kind === 'database' ? 'px-8 sm:px-16' : view.fullWidth ? 'px-6 sm:px-12' : 'mx-auto max-w-3xl px-6 sm:px-12'
-        }
-      >
+      <div className={page.kind === 'database' ? 'px-8 sm:px-16' : view.fullWidth ? 'px-6 sm:px-12' : 'mx-auto max-w-3xl px-6 sm:px-12'}>
         <div className="relative">
           {/* Anchored to the page icon (or the "Add icon" button) and kept inside the viewport. */}
           <Popover open={picker} onOpenChange={setPicker}>
             {page.icon && (
-              <PopoverTrigger render={<button type="button" className={`${page.cover ? '-mt-10' : 'mt-12'} block text-7xl leading-none`} />}>
+              <PopoverTrigger
+                render={<button type="button" className={`${page.cover ? '-mt-10' : 'mt-12'} block text-7xl leading-none`} />}
+              >
                 <PageIcon icon={page.icon} className="size-20 text-7xl" />
               </PopoverTrigger>
             )}
             <PopoverContent align="start" anchor={page.icon ? undefined : addIconRef} className="w-auto rounded-md p-0">
               <IconPicker
                 onPick={(icon) => {
-                  updatePage(page.id,{ icon })
+                  updatePage(page.id, { icon })
                   setPicker(false)
                 }}
                 onRemove={() => {
-                  updatePage(page.id,{ icon: '' })
+                  updatePage(page.id, { icon: '' })
                   setPicker(false)
                 }}
               />
@@ -188,12 +196,21 @@ export function PageView({ pageId }: { pageId: string }) {
         <div className={`group/title ${page.icon || page.cover ? 'pt-4' : 'pt-16'}`}>
           <div className="mb-1 flex gap-1 text-sm text-muted-foreground opacity-0 transition group-hover/title:opacity-100">
             {!locked && !page.icon && (
-              <button ref={addIconRef} type="button" onClick={() => setPicker(true)} className="flex items-center gap-1 rounded px-2 py-0.5 hover:bg-muted">
+              <button
+                ref={addIconRef}
+                type="button"
+                onClick={() => setPicker(true)}
+                className="flex items-center gap-1 rounded px-2 py-0.5 hover:bg-muted"
+              >
                 <SmileIcon className="size-4" /> Add icon
               </button>
             )}
             {!locked && !page.cover && (
-              <button type="button" onClick={() => updatePage(page.id,{ cover: COVERS[0] })} className="flex items-center gap-1 rounded px-2 py-0.5 hover:bg-muted">
+              <button
+                type="button"
+                onClick={() => updatePage(page.id, { cover: COVERS[0] })}
+                className="flex items-center gap-1 rounded px-2 py-0.5 hover:bg-muted"
+              >
                 <ImageIcon className="size-4" /> Add cover
               </button>
             )}
@@ -222,7 +239,7 @@ export function PageView({ pageId }: { pageId: string }) {
             pageId={page.id}
             content={page.content}
             editable={!locked}
-            onChange={(content) => updatePage(page.id,{ content })}
+            onChange={(content) => updatePage(page.id, { content })}
           />
         )}
       </div>

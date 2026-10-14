@@ -1,4 +1,5 @@
 import { ImageIcon } from 'lucide-react'
+
 import { type BlockDefinition, block } from '../../insert'
 
 /** Image block for the "/" and "+" menus. */

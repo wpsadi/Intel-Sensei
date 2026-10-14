@@ -28,7 +28,16 @@ export async function storeFile(file: Blob, name = (file as File).name ?? 'file'
   const id = uid()
   const cache = await caches.open(BUCKET)
   await cache.put(keyFor(id), new Response(file, { headers: { 'Content-Type': file.type || 'application/octet-stream' } }))
-  const meta: FileMeta = { id, name, type: file.type, size: file.size, kind: kindOf({ name, type: file.type }), docId, addedAt: Date.now(), lastOpenedAt: Date.now() }
+  const meta: FileMeta = {
+    id,
+    name,
+    type: file.type,
+    size: file.size,
+    kind: kindOf({ name, type: file.type }),
+    docId,
+    addedAt: Date.now(),
+    lastOpenedAt: Date.now(),
+  }
   await (await getDb()).put('files', meta)
   return `${SCHEME}${id}`
 }

@@ -1,46 +1,55 @@
-import { useEffect, useRef, useState } from 'react'
-import type { ReactNode } from 'react'
 import { PlusIcon } from 'lucide-react'
+import { useRef, useState } from 'react'
+import type { ReactNode } from 'react'
 import { HexColorPicker } from 'react-colorful'
-import { cn } from '@/lib/utils'
+
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
+import { cn } from '@/lib/utils'
+
 import { useS3D } from '../store'
-import type { SNode } from '../types'
+import { MIXED, type Maybe, normHex } from './field-utils'
 
-export const MIXED = 'mixed' as const
-export type Maybe<T> = T | typeof MIXED
-
-/** The selected nodes, re-rendering when any of them changes. */
-export function useSelectedNodes() {
-  const selection = useS3D((s) => s.selection)
-  const nodes = useS3D((s) => s.doc.nodes)
-  return selection.map((id) => nodes[id]).filter(Boolean) as SNode[]
-}
-
-/** A shared value across nodes, or MIXED. */
-export function shared<T>(nodes: SNode[], pick: (n: SNode) => T): Maybe<T> {
-  if (!nodes.length) return MIXED
-  const first = JSON.stringify(pick(nodes[0]))
-  return nodes.every((n) => JSON.stringify(pick(n)) === first) ? pick(nodes[0]) : MIXED
-}
-
-export const update = (ids: string[], patch: Partial<SNode> | ((n: SNode) => void)) => useS3D.getState().updateNodes(ids, patch)
-
-export function Section({ title, onAdd, actions, children }: { title: string; onAdd?: () => void; actions?: ReactNode; children?: ReactNode }) {
+export function Section({
+  title,
+  onAdd,
+  actions,
+  children,
+}: {
+  title: string
+  onAdd?: () => void
+  actions?: ReactNode
+  children?: ReactNode
+}) {
   return (
     <div className="border-b px-3 py-2.5">
       <div className="mb-1.5 flex h-6 items-center gap-1">
         <span className="flex-1 text-[11px] font-semibold">{title}</span>
         {actions}
-        {onAdd && <IconBtn label={`Add ${title.toLowerCase()}`} onClick={onAdd}><PlusIcon /></IconBtn>}
+        {onAdd && (
+          <IconBtn label={`Add ${title.toLowerCase()}`} onClick={onAdd}>
+            <PlusIcon />
+          </IconBtn>
+        )}
       </div>
       {children && <div className="flex flex-col gap-1.5">{children}</div>}
     </div>
   )
 }
 
-export function IconBtn({ label, active, onClick, children, className }: { label: string; active?: boolean; onClick?: () => void; children: ReactNode; className?: string }) {
+export function IconBtn({
+  label,
+  active,
+  onClick,
+  children,
+  className,
+}: {
+  label: string
+  active?: boolean
+  onClick?: () => void
+  children: ReactNode
+  className?: string
+}) {
   return (
     <Tooltip>
       <TooltipTrigger
@@ -50,7 +59,11 @@ export function IconBtn({ label, active, onClick, children, className }: { label
             aria-label={label}
             aria-pressed={active}
             onClick={onClick}
-            className={cn('inline-flex size-6 shrink-0 items-center justify-center rounded text-muted-foreground hover:bg-accent hover:text-foreground [&_svg]:size-3.5', active && 'bg-accent text-foreground', className)}
+            className={cn(
+              'inline-flex size-6 shrink-0 items-center justify-center rounded text-muted-foreground hover:bg-accent hover:text-foreground [&_svg]:size-3.5',
+              active && 'bg-accent text-foreground',
+              className,
+            )}
           />
         }
       >
@@ -64,7 +77,17 @@ export function IconBtn({ label, active, onClick, children, className }: { label
 const round = (v: number) => Math.round(v * 100) / 100
 
 /** Numeric input with a scrubbable label, arrow-key nudging (shift ×10) and Enter to commit. */
-export function NumberField({ label, value, onChange, step = 1, min, max, suffix, className, title }: {
+export function NumberField({
+  label,
+  value,
+  onChange,
+  step = 1,
+  min,
+  max,
+  suffix,
+  className,
+  title,
+}: {
   label: ReactNode
   value: Maybe<number>
   onChange: (v: number, delta?: number) => void
@@ -110,8 +133,19 @@ export function NumberField({ label, value, onChange, step = 1, min, max, suffix
     window.addEventListener('pointerup', up)
   }
   return (
-    <label title={title} className={cn('flex h-7 min-w-0 items-center gap-1 rounded-md bg-muted/60 px-1.5 text-xs focus-within:ring-1 focus-within:ring-ring', className)}>
-      <span onPointerDown={scrub} className="flex shrink-0 cursor-ew-resize items-center text-[10px] text-muted-foreground select-none [&_svg]:size-3">{label}</span>
+    <label
+      title={title}
+      className={cn(
+        'flex h-7 min-w-0 items-center gap-1 rounded-md bg-muted/60 px-1.5 text-xs focus-within:ring-1 focus-within:ring-ring',
+        className,
+      )}
+    >
+      <span
+        onPointerDown={scrub}
+        className="flex shrink-0 cursor-ew-resize items-center text-[10px] text-muted-foreground select-none [&_svg]:size-3"
+      >
+        {label}
+      </span>
       <input
         className="w-full min-w-0 bg-transparent outline-none"
         value={shown}
@@ -140,9 +174,23 @@ export function NumberField({ label, value, onChange, step = 1, min, max, suffix
   )
 }
 
-export function TextField({ value, onChange, placeholder, className }: { value: string; onChange: (v: string) => void; placeholder?: string; className?: string }) {
+export function TextField({
+  value,
+  onChange,
+  placeholder,
+  className,
+}: {
+  value: string
+  onChange: (v: string) => void
+  placeholder?: string
+  className?: string
+}) {
   const [draft, setDraft] = useState(value)
-  useEffect(() => setDraft(value), [value])
+  const [prevValue, setPrevValue] = useState(value)
+  if (value !== prevValue) {
+    setPrevValue(value)
+    setDraft(value)
+  }
   return (
     <input
       className={cn('h-7 w-full min-w-0 rounded-md bg-muted/60 px-2 text-xs outline-none focus:ring-1 focus:ring-ring', className)}
@@ -158,7 +206,19 @@ export function TextField({ value, onChange, placeholder, className }: { value: 
   )
 }
 
-export function Sel<T extends string>({ value, options, onChange, className, title }: { value: Maybe<T>; options: (T | { value: T; label: string })[]; onChange: (v: T) => void; className?: string; title?: string }) {
+export function Sel<T extends string>({
+  value,
+  options,
+  onChange,
+  className,
+  title,
+}: {
+  value: Maybe<T>
+  options: (T | { value: T; label: string })[]
+  onChange: (v: T) => void
+  className?: string
+  title?: string
+}) {
   return (
     <select
       title={title}
@@ -170,7 +230,11 @@ export function Sel<T extends string>({ value, options, onChange, className, tit
       {value === MIXED && <option value="">Mixed</option>}
       {options.map((o) => {
         const opt = typeof o === 'string' ? { value: o, label: o } : o
-        return <option key={opt.value} value={opt.value}>{opt.label}</option>
+        return (
+          <option key={opt.value} value={opt.value}>
+            {opt.label}
+          </option>
+        )
       })}
     </select>
   )
@@ -178,16 +242,18 @@ export function Sel<T extends string>({ value, options, onChange, className, tit
 
 /* ---------- color ---------- */
 
-export const normHex = (hex: string) => {
-  let h = hex.replace('#', '').trim()
-  if (h.length === 3) h = h.split('').map((c) => c + c).join('')
-  return /^[0-9a-f]{6}$/i.test(h) ? `#${h.toLowerCase()}` : null
-}
 const toRgb = (hex: string) => {
   const n = parseInt((normHex(hex) ?? '#000000').slice(1), 16)
   return [(n >> 16) & 255, (n >> 8) & 255, n & 255]
 }
-const fromRgb = (r: number, g: number, b: number) => `#${[r, g, b].map((v) => Math.round(Math.max(0, Math.min(255, v))).toString(16).padStart(2, '0')).join('')}`
+const fromRgb = (r: number, g: number, b: number) =>
+  `#${[r, g, b]
+    .map((v) =>
+      Math.round(Math.max(0, Math.min(255, v)))
+        .toString(16)
+        .padStart(2, '0'),
+    )
+    .join('')}`
 function toHsl(hex: string) {
   const [r, g, b] = toRgb(hex).map((v) => v / 255)
   const max = Math.max(r, g, b)
@@ -213,7 +279,17 @@ function fromHsl(h: number, s: number, l: number) {
 }
 
 /** Swatch + hex input; the swatch opens a picker with a saturation/hue picker, HEX, RGB and HSL editors and optional opacity. */
-export function ColorField({ color, opacity, onChange, onOpacity }: { color: Maybe<string>; opacity?: Maybe<number>; onChange: (c: string) => void; onOpacity?: (o: number) => void }) {
+export function ColorField({
+  color,
+  opacity,
+  onChange,
+  onOpacity,
+}: {
+  color: Maybe<string>
+  opacity?: Maybe<number>
+  onChange: (c: string) => void
+  onOpacity?: (o: number) => void
+}) {
   const c = color === MIXED ? '#000000' : color
   const [mode, setMode] = useState<'hex' | 'rgb' | 'hsl'>('hex')
   const rgb = toRgb(c)
@@ -222,7 +298,9 @@ export function ColorField({ color, opacity, onChange, onOpacity }: { color: May
   return (
     <div className="flex min-w-0 flex-1 items-center gap-1">
       <Popover>
-        <PopoverTrigger render={<button type="button" aria-label="Edit color" className="size-6 shrink-0 rounded border" style={{ background: c }} />} />
+        <PopoverTrigger
+          render={<button type="button" aria-label="Edit color" className="size-6 shrink-0 rounded border" style={{ background: c }} />}
+        />
         <PopoverContent side="left" className="w-56 p-2 text-xs">
           <div className="flex flex-col gap-2">
             {/* One drag is one undo step: the gesture spans pointer down to pointer up. */}
@@ -239,31 +317,92 @@ export function ColorField({ color, opacity, onChange, onOpacity }: { color: May
             >
               <HexColorPicker color={c} onChange={onChange} />
             </div>
-            <Sel value={mode} options={[{ value: 'hex', label: 'HEX' }, { value: 'rgb', label: 'RGB' }, { value: 'hsl', label: 'HSL' }]} onChange={setMode} />
-            {mode === 'hex' && <TextField value={c} onChange={(v) => { const h = normHex(v); if (h) onChange(h) }} />}
+            <Sel
+              value={mode}
+              options={[
+                { value: 'hex', label: 'HEX' },
+                { value: 'rgb', label: 'RGB' },
+                { value: 'hsl', label: 'HSL' },
+              ]}
+              onChange={setMode}
+            />
+            {mode === 'hex' && (
+              <TextField
+                value={c}
+                onChange={(v) => {
+                  const h = normHex(v)
+                  if (h) onChange(h)
+                }}
+              />
+            )}
             {mode === 'rgb' && (
               <div className="grid grid-cols-3 gap-1">
                 {['R', 'G', 'B'].map((l, i) => (
-                  <NumberField key={l} label={l} value={rgb[i]} min={0} max={255} onChange={(v) => { const n = [...rgb]; n[i] = v; onChange(fromRgb(n[0], n[1], n[2])) }} />
+                  <NumberField
+                    key={l}
+                    label={l}
+                    value={rgb[i]}
+                    min={0}
+                    max={255}
+                    onChange={(v) => {
+                      const n = [...rgb]
+                      n[i] = v
+                      onChange(fromRgb(n[0], n[1], n[2]))
+                    }}
+                  />
                 ))}
               </div>
             )}
             {mode === 'hsl' && (
               <div className="grid grid-cols-3 gap-1">
                 {['H', 'S', 'L'].map((l, i) => (
-                  <NumberField key={l} label={l} value={hsl[i]} min={0} max={i ? 100 : 360} onChange={(v) => { const n = [...hsl]; n[i] = v; onChange(fromHsl(n[0], n[1], n[2])) }} />
+                  <NumberField
+                    key={l}
+                    label={l}
+                    value={hsl[i]}
+                    min={0}
+                    max={i ? 100 : 360}
+                    onChange={(v) => {
+                      const n = [...hsl]
+                      n[i] = v
+                      onChange(fromHsl(n[0], n[1], n[2]))
+                    }}
+                  />
                 ))}
               </div>
             )}
             {onOpacity && opacity !== undefined && (
-              <NumberField label="A" value={opacity === MIXED ? MIXED : Math.round(opacity * 100)} min={0} max={100} suffix="%" onChange={(v) => onOpacity(v / 100)} />
+              <NumberField
+                label="A"
+                value={opacity === MIXED ? MIXED : Math.round(opacity * 100)}
+                min={0}
+                max={100}
+                suffix="%"
+                onChange={(v) => onOpacity(v / 100)}
+              />
             )}
           </div>
         </PopoverContent>
       </Popover>
-      <TextField className="flex-1 font-mono uppercase" value={color === MIXED ? '' : c.replace('#', '')} placeholder="Mixed" onChange={(v) => { const h = normHex(v); if (h) onChange(h) }} />
+      <TextField
+        className="flex-1 font-mono uppercase"
+        value={color === MIXED ? '' : c.replace('#', '')}
+        placeholder="Mixed"
+        onChange={(v) => {
+          const h = normHex(v)
+          if (h) onChange(h)
+        }}
+      />
       {onOpacity && opacity !== undefined && (
-        <NumberField className="w-14 shrink-0" label="" value={opacity === MIXED ? MIXED : Math.round(opacity * 100)} min={0} max={100} suffix="%" onChange={(v) => onOpacity(v / 100)} />
+        <NumberField
+          className="w-14 shrink-0"
+          label=""
+          value={opacity === MIXED ? MIXED : Math.round(opacity * 100)}
+          min={0}
+          max={100}
+          suffix="%"
+          onChange={(v) => onOpacity(v / 100)}
+        />
       )}
     </div>
   )
@@ -284,12 +423,4 @@ export function Check({ label, checked, onChange }: { label: string; checked: Ma
       {label}
     </label>
   )
-}
-
-/** Moves an item within an array; returns a new array. */
-export function moveItem<T>(arr: T[], from: number, to: number) {
-  const next = [...arr]
-  const [x] = next.splice(from, 1)
-  next.splice(Math.max(0, Math.min(to, next.length)), 0, x)
-  return next
 }

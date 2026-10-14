@@ -1,4 +1,5 @@
 import { Table2Icon } from 'lucide-react'
+
 import { type BlockDefinition, database } from '../../insert'
 
 /** Table view block for the "/" and "+" menus. */

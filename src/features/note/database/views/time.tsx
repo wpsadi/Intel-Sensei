@@ -1,14 +1,19 @@
-import { ScrollArea } from '@/components/ui/scroll-area'
 import { ChevronLeftIcon, ChevronRightIcon } from 'lucide-react'
-import type { DateValue, Page } from '../../db/types'
-import { PageIcon, pageTitle } from '../../editor/nodes/pages'
-import { dateStart, readValue } from '../properties'
 import { useMemo, useState } from 'react'
-import type { ViewProps } from './types'
+
+import { ScrollArea } from '@/components/ui/scroll-area'
 import { cn } from '@/lib/utils'
 
+import type { DateValue, Page } from '../../db/types'
+import { pageTitle } from '../../editor/nodes/page-utils'
+import { PageIcon } from '../../editor/nodes/PageIcon'
+import { useNow } from '../../lib/use-now'
+import { dateStart, readValue } from '../property-values'
+import type { ViewProps } from './types'
+
 const DAY = 864e5
-const iso = (date: Date) => `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`
+const iso = (date: Date) =>
+  `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`
 const startOfDay = (value: string) => new Date(`${value.slice(0, 10)}T00:00`)
 
 function useDateProp({ database, view }: Pick<ViewProps, 'database' | 'view'>) {
@@ -24,6 +29,7 @@ function NoDateProperty() {
 export function CalendarView(props: ViewProps) {
   const { rows, openRow, addRow } = props
   const dateProp = useDateProp(props)
+  const nowMs = useNow()
   const [month, setMonth] = useState(() => {
     const now = new Date()
     return new Date(now.getFullYear(), now.getMonth(), 1)
@@ -46,20 +52,32 @@ export function CalendarView(props: ViewProps) {
       byDay.set(iso(d), [...(byDay.get(iso(d)) ?? []), row])
     }
   })
-  const today = iso(new Date())
+  const today = iso(new Date(nowMs))
 
   return (
     <div>
       <div className="mb-2 flex items-center gap-2">
         <span className="text-base font-semibold">{month.toLocaleString(undefined, { month: 'long', year: 'numeric' })}</span>
         <div className="ml-auto flex items-center gap-1">
-          <button type="button" onClick={() => setMonth(new Date(month.getFullYear(), month.getMonth() - 1, 1))} className="rounded p-1 hover:bg-muted">
+          <button
+            type="button"
+            onClick={() => setMonth(new Date(month.getFullYear(), month.getMonth() - 1, 1))}
+            className="rounded p-1 hover:bg-muted"
+          >
             <ChevronLeftIcon className="size-4" />
           </button>
-          <button type="button" onClick={() => setMonth(new Date(new Date().getFullYear(), new Date().getMonth(), 1))} className="rounded px-2 py-0.5 text-sm hover:bg-muted">
+          <button
+            type="button"
+            onClick={() => setMonth(new Date(new Date().getFullYear(), new Date().getMonth(), 1))}
+            className="rounded px-2 py-0.5 text-sm hover:bg-muted"
+          >
             Today
           </button>
-          <button type="button" onClick={() => setMonth(new Date(month.getFullYear(), month.getMonth() + 1, 1))} className="rounded p-1 hover:bg-muted">
+          <button
+            type="button"
+            onClick={() => setMonth(new Date(month.getFullYear(), month.getMonth() + 1, 1))}
+            className="rounded p-1 hover:bg-muted"
+          >
             <ChevronRightIcon className="size-4" />
           </button>
         </div>
@@ -76,13 +94,24 @@ export function CalendarView(props: ViewProps) {
             <div
               key={key}
               onDoubleClick={() => addRow({ [dateProp.id]: { start: key } })}
-              className={cn('group/day min-h-24 border-r border-b p-1', day.getMonth() !== month.getMonth() && 'bg-muted/30 text-muted-foreground')}
+              className={cn(
+                'group/day min-h-24 border-r border-b p-1',
+                day.getMonth() !== month.getMonth() && 'bg-muted/30 text-muted-foreground',
+              )}
             >
               <div className="flex items-center justify-between">
-                <button type="button" onClick={() => addRow({ [dateProp.id]: { start: key } })} className="rounded px-1 text-xs text-muted-foreground opacity-0 group-hover/day:opacity-100 hover:bg-muted">
+                <button
+                  type="button"
+                  onClick={() => addRow({ [dateProp.id]: { start: key } })}
+                  className="rounded px-1 text-xs text-muted-foreground opacity-0 group-hover/day:opacity-100 hover:bg-muted"
+                >
                   +
                 </button>
-                <span className={cn('flex size-6 items-center justify-center rounded-full text-xs', key === today && 'bg-red-500 text-white')}>{day.getDate()}</span>
+                <span
+                  className={cn('flex size-6 items-center justify-center rounded-full text-xs', key === today && 'bg-red-500 text-white')}
+                >
+                  {day.getDate()}
+                </span>
               </div>
               {byDay.get(key)?.map((row) => (
                 <button
@@ -109,6 +138,7 @@ const DAY_WIDTH = 36
 export function TimelineView(props: ViewProps) {
   const { rows, openRow, addRow } = props
   const dateProp = useDateProp(props)
+  const nowMs = useNow()
   if (!dateProp) return <NoDateProperty />
 
   const dated = rows
@@ -116,7 +146,7 @@ export function TimelineView(props: ViewProps) {
     .filter((item): item is { row: Page; value: DateValue } => Boolean(item.value?.start))
   const undated = rows.filter((row) => !dateStart(readValue(row, dateProp)))
 
-  const today = startOfDay(iso(new Date()))
+  const today = startOfDay(iso(new Date(nowMs)))
   const starts = dated.map(({ value }) => startOfDay(value.start).getTime())
   const ends = dated.map(({ value }) => startOfDay(value.end ?? value.start).getTime())
   const origin = new Date(Math.min(today.getTime(), ...starts) - 3 * DAY)
@@ -130,20 +160,31 @@ export function TimelineView(props: ViewProps) {
           {Array.from({ length: span }, (_, i) => {
             const day = new Date(origin.getTime() + i * DAY)
             return (
-              <div key={i} style={{ width: DAY_WIDTH }} className={cn('shrink-0 py-1 text-center text-muted-foreground', day.getDate() === 1 && 'font-semibold text-foreground')}>
+              <div
+                key={i}
+                style={{ width: DAY_WIDTH }}
+                className={cn('shrink-0 py-1 text-center text-muted-foreground', day.getDate() === 1 && 'font-semibold text-foreground')}
+              >
                 {day.getDate() === 1 || i === 0 ? day.toLocaleString(undefined, { month: 'short' }) : ''}
                 <div>{day.getDate()}</div>
               </div>
             )
           })}
         </div>
-        <div className="pointer-events-none absolute top-0 bottom-0 w-px bg-red-400" style={{ left: 200 + offset(today.getTime()) + DAY_WIDTH / 2 }} />
+        <div
+          className="pointer-events-none absolute top-0 bottom-0 w-px bg-red-400"
+          style={{ left: 200 + offset(today.getTime()) + DAY_WIDTH / 2 }}
+        />
         {dated.map(({ row, value }) => {
           const start = startOfDay(value.start).getTime()
           const end = startOfDay(value.end ?? value.start).getTime()
           return (
             <div key={row.id} className="flex h-9 items-center border-b">
-              <button type="button" onClick={() => openRow(row.id)} className="w-[200px] shrink-0 truncate px-2 text-left text-sm hover:underline">
+              <button
+                type="button"
+                onClick={() => openRow(row.id)}
+                className="w-[200px] shrink-0 truncate px-2 text-left text-sm hover:underline"
+              >
                 {pageTitle(row.title)}
               </button>
               <div className="relative h-full flex-1">

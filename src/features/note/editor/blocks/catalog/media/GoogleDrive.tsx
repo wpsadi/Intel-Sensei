@@ -1,4 +1,5 @@
 import { FaGoogleDrive } from 'react-icons/fa6'
+
 import { type BlockDefinition, block } from '../../insert'
 
 /** Google Drive block for the "/" and "+" menus. */

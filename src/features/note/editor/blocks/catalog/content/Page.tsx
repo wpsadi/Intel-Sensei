@@ -1,6 +1,7 @@
 import { FileTextIcon } from 'lucide-react'
-import { type BlockDefinition, chain, hostPageId } from '../../insert'
+
 import { useNoteStore } from '../../../../note.store'
+import { type BlockDefinition, chain, hostPageId } from '../../insert'
 
 /** Page block for the "/" and "+" menus. */
 export const PageBlock: BlockDefinition = {

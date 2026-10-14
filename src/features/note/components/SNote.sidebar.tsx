@@ -10,10 +10,11 @@ import {
   StarOffIcon,
   Trash2Icon,
 } from 'lucide-react'
+import { useState } from 'react'
+import { Link, useNavigate, useParams } from 'react-router-dom'
+
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { ScrollArea } from '@/components/ui/scroll-area'
-import { Link, useNavigate, useParams } from 'react-router-dom'
-import { PageIcon, pageTitle } from '../editor/nodes/pages'
 import {
   Sidebar,
   SidebarContent,
@@ -28,12 +29,14 @@ import {
   SidebarMenuItem,
   SidebarRail,
 } from '@/components/ui/sidebar'
-import { useNoteStore } from '../note.store'
+import { cn } from '@/lib/utils'
+
 import { useAllPages, useChildPages } from '../db/hooks'
 import type { Page } from '../db/types'
+import { pageTitle } from '../editor/nodes/page-utils'
+import { PageIcon } from '../editor/nodes/PageIcon'
+import { useNoteStore } from '../note.store'
 import { SNoteBrand } from './SNote.brand'
-import { cn } from '@/lib/utils'
-import { useState } from 'react'
 
 /** Children of a page in the tree: sub pages, or rows for a full-page database. */
 const childKey = (page: Page) => (page.kind === 'database' ? (page.databaseId ?? page.id) : page.id)
@@ -49,10 +52,7 @@ function PageRow({ page, depth }: { page: Page; depth: number }) {
   const setPageTrashed = useNoteStore((s) => s.setPageTrashed)
 
   const addChild = async () => {
-    const child =
-      page.kind === 'database'
-        ? await addRow(page.databaseId!)
-        : await createPage({ parentId: page.id, parentType: 'page' })
+    const child = page.kind === 'database' ? await addRow(page.databaseId!) : await createPage({ parentId: page.id, parentType: 'page' })
     setOpen(true)
     navigate(`/s-note/${child.id}`)
   }
@@ -70,14 +70,28 @@ function PageRow({ page, depth }: { page: Page; depth: number }) {
           <ChevronRightIcon className={cn('size-3.5 transition', open && 'rotate-90')} />
         </button>
         <Link to={`/s-note/${page.id}`} className="flex min-w-0 flex-1 items-center gap-1.5">
-          {page.kind === 'database' && !page.icon ? <DatabaseIcon className="size-4 text-muted-foreground" /> : <PageIcon icon={page.icon} content={page.content} />}
+          {page.kind === 'database' && !page.icon ? (
+            <DatabaseIcon className="size-4 text-muted-foreground" />
+          ) : (
+            <PageIcon icon={page.icon} content={page.content} />
+          )}
           <span className="truncate">{pageTitle(page.title)}</span>
         </Link>
         <span className="hidden items-center gap-0.5 group-hover/row:flex">
-          <button type="button" title={page.favorite ? 'Remove from favorites' : 'Add to favorites'} onClick={() => updatePage(page.id, { favorite: !page.favorite })} className="rounded p-0.5 text-muted-foreground hover:bg-muted">
+          <button
+            type="button"
+            title={page.favorite ? 'Remove from favorites' : 'Add to favorites'}
+            onClick={() => updatePage(page.id, { favorite: !page.favorite })}
+            className="rounded p-0.5 text-muted-foreground hover:bg-muted"
+          >
             {page.favorite ? <StarOffIcon className="size-3.5" /> : <StarIcon className="size-3.5" />}
           </button>
-          <button type="button" title="Move to trash" onClick={() => setPageTrashed(page.id, true)} className="rounded p-0.5 text-muted-foreground hover:bg-muted">
+          <button
+            type="button"
+            title="Move to trash"
+            onClick={() => setPageTrashed(page.id, true)}
+            className="rounded p-0.5 text-muted-foreground hover:bg-muted"
+          >
             <Trash2Icon className="size-3.5" />
           </button>
           <button type="button" title="Add a page inside" onClick={addChild} className="rounded p-0.5 text-muted-foreground hover:bg-muted">
@@ -87,7 +101,9 @@ function PageRow({ page, depth }: { page: Page; depth: number }) {
       </div>
       {open && (
         <ul>
-          {children?.map((child) => <PageRow key={child.id} page={child} depth={depth + 1} />)}
+          {children?.map((child) => (
+            <PageRow key={child.id} page={child} depth={depth + 1} />
+          ))}
           {children?.length === 0 && (
             <li className="py-1 text-xs text-muted-foreground" style={{ paddingLeft: (depth + 1) * 12 + 24 }}>
               No pages inside
@@ -114,7 +130,13 @@ function SearchDialog({ open, onOpenChange }: { open: boolean; onOpenChange: (op
         <DialogHeader>
           <DialogTitle>Search</DialogTitle>
         </DialogHeader>
-        <input autoFocus value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search pages…" className="h-9 rounded-md border bg-background px-3 text-sm outline-none" />
+        <input
+          autoFocus
+          value={query}
+          onChange={(event) => setQuery(event.target.value)}
+          placeholder="Search pages…"
+          className="h-9 rounded-md border bg-background px-3 text-sm outline-none"
+        />
         <ScrollArea className="h-80">
           {results.map((page) => (
             <button
@@ -144,7 +166,8 @@ function SNoteSidebar(props: React.ComponentProps<typeof Sidebar>) {
   const [dialog, setDialog] = useState<'search' | null>(null)
   const setOpen = (name: typeof dialog) => (open: boolean) => setDialog(open ? name : null)
 
-  const newPage = async () => navigate(`/s-note/${(await useNoteStore.getState().createPage({ parentId: null, parentType: 'workspace' })).id}`)
+  const newPage = async () =>
+    navigate(`/s-note/${(await useNoteStore.getState().createPage({ parentId: null, parentType: 'workspace' })).id}`)
   const newDatabase = async () => navigate(`/s-note/${(await useNoteStore.getState().createFullPageDatabase(null, 'workspace')).page.id}`)
 
   return (
@@ -176,7 +199,11 @@ function SNoteSidebar(props: React.ComponentProps<typeof Sidebar>) {
           <SidebarGroup>
             <SidebarGroupLabel>Favorites</SidebarGroupLabel>
             <SidebarGroupContent>
-              <ul>{favorites.map((page) => <PageRow key={page.id} page={page} depth={0} />)}</ul>
+              <ul>
+                {favorites.map((page) => (
+                  <PageRow key={page.id} page={page} depth={0} />
+                ))}
+              </ul>
             </SidebarGroupContent>
           </SidebarGroup>
         )}
@@ -186,8 +213,16 @@ function SNoteSidebar(props: React.ComponentProps<typeof Sidebar>) {
             <PlusIcon />
           </SidebarGroupAction>
           <SidebarGroupContent>
-            <ul>{roots?.map((page) => <PageRow key={page.id} page={page} depth={0} />)}</ul>
-            <button type="button" onClick={newDatabase} className="mt-1 flex h-7 w-full items-center gap-2 rounded-md px-2 text-sm text-muted-foreground hover:bg-sidebar-accent">
+            <ul>
+              {roots?.map((page) => (
+                <PageRow key={page.id} page={page} depth={0} />
+              ))}
+            </ul>
+            <button
+              type="button"
+              onClick={newDatabase}
+              className="mt-1 flex h-7 w-full items-center gap-2 rounded-md px-2 text-sm text-muted-foreground hover:bg-sidebar-accent"
+            >
               <DatabaseIcon className="size-4" /> New database
             </button>
           </SidebarGroupContent>

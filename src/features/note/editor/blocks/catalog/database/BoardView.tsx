@@ -1,4 +1,5 @@
 import { KanbanIcon } from 'lucide-react'
+
 import { type BlockDefinition, database } from '../../insert'
 
 /** Board view block for the "/" and "+" menus. */

@@ -1,5 +1,6 @@
 import { Models } from '@opencode-ai/models'
 import type { ProviderMap } from '@opencode-ai/models'
+
 import type { UsageLog } from './db'
 
 const CACHE_KEY = 'sensei.models_dev_prices'
@@ -24,7 +25,14 @@ function slim(providers: ProviderMap): PriceTable {
     table[id] = {}
     for (const [name, model] of Object.entries(models)) {
       const cost = model.cost
-      if (cost) table[id][name] = { input: cost.input, output: cost.output, reasoning: cost.reasoning, cacheRead: cost.cache_read, cacheWrite: cost.cache_write }
+      if (cost)
+        table[id][name] = {
+          input: cost.input,
+          output: cost.output,
+          reasoning: cost.reasoning,
+          cacheRead: cost.cache_read,
+          cacheWrite: cost.cache_write,
+        }
     }
   }
   return table

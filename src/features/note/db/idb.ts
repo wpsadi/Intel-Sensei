@@ -1,5 +1,6 @@
-import type { Chat, ChatMessage, WidgetChat, Database, Page, Person, Setting, SyncedBlock, View } from './types'
 import { type DBSchema, type IDBPDatabase, openDB } from 'idb'
+
+import type { Chat, ChatMessage, Database, Page, Person, Setting, SyncedBlock, View, WidgetChat } from './types'
 
 interface SNoteSchema extends DBSchema {
   pages: { key: string; value: Page; indexes: { byParent: string } }

@@ -1,4 +1,5 @@
 import { ChartPieIcon } from 'lucide-react'
+
 import { type BlockDefinition, database } from '../../insert'
 
 /** Donut chart block for the "/" and "+" menus. */

@@ -1,4 +1,5 @@
 import { Rows3Icon } from 'lucide-react'
+
 import { type BlockDefinition, database } from '../../insert'
 
 /** List view block for the "/" and "+" menus. */

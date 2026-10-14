@@ -1,7 +1,7 @@
-import { useRef } from 'react'
-import { useTheme } from 'next-themes'
-import { Canvas, useFrame } from '@react-three/fiber'
 import { OrbitControls } from '@react-three/drei'
+import { Canvas, useFrame } from '@react-three/fiber'
+import { useTheme } from 'next-themes'
+import { useRef } from 'react'
 import type { Mesh } from 'three'
 
 // Slowly spinning placeholder cube; replace with the real S3D scene.
@@ -36,9 +36,7 @@ export function S3DCanvas() {
 
   if (!hasWebGL()) {
     return (
-      <div className="flex h-full items-center justify-center text-sm text-muted-foreground">
-        WebGL is not available in this browser.
-      </div>
+      <div className="flex h-full items-center justify-center text-sm text-muted-foreground">WebGL is not available in this browser.</div>
     )
   }
   return (

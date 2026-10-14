@@ -1,6 +1,18 @@
+import {
+  BandageIcon,
+  BoxSelectIcon,
+  BrushIcon,
+  CropIcon,
+  EraserIcon,
+  LassoIcon,
+  PipetteIcon,
+  StampIcon,
+  WandIcon,
+  WandSparklesIcon,
+} from 'lucide-react'
 import type { ReactElement } from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
-import { BandageIcon, BoxSelectIcon, BrushIcon, CropIcon, EraserIcon, LassoIcon, PipetteIcon, StampIcon, WandIcon, WandSparklesIcon } from 'lucide-react'
+
 import type { Tool } from '@/features/s-3d/types'
 
 /** The Lucide icon of each pixel tool, with the hotspot (the point that clicks) in icon coordinates. */
@@ -18,7 +30,10 @@ const CURSORS: Partial<Record<Tool, { icon: ReactElement; hot: string }>> = {
 }
 
 /** Inner SVG of a Lucide icon, without its outer element, so the strokes can be styled per layer. */
-const inner = (el: ReactElement) => renderToStaticMarkup(el).replace(/^<svg[^>]*>/, '').replace(/<\/svg>$/, '')
+const inner = (el: ReactElement) =>
+  renderToStaticMarkup(el)
+    .replace(/^<svg[^>]*>/, '')
+    .replace(/<\/svg>$/, '')
 
 const cache = new Map<Tool, string>()
 
@@ -29,9 +44,10 @@ export function toolCursor(tool: Tool): string {
   const known = cache.get(tool)
   if (known) return known
   const body = inner(entry.icon)
-  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24">`
-    + `<g fill="none" stroke="#ffffff" stroke-width="4" stroke-linecap="round" stroke-linejoin="round">${body}</g>`
-    + `<g fill="none" stroke="#111111" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">${body}</g></svg>`
+  const svg =
+    `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24">` +
+    `<g fill="none" stroke="#ffffff" stroke-width="4" stroke-linecap="round" stroke-linejoin="round">${body}</g>` +
+    `<g fill="none" stroke="#111111" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">${body}</g></svg>`
   const css = `url("data:image/svg+xml,${encodeURIComponent(svg)}") ${entry.hot}, crosshair`
   cache.set(tool, css)
   return css

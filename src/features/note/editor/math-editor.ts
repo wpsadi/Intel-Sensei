@@ -28,8 +28,7 @@ export function openMathEditor(editor: Editor, pos: number, inline: boolean) {
   const done = document.createElement('button')
   done.type = 'button'
   done.textContent = 'Done ↵'
-  done.className =
-    'shrink-0 rounded-md bg-primary px-2.5 py-1 text-xs font-medium text-primary-foreground hover:bg-primary/90'
+  done.className = 'shrink-0 rounded-md bg-primary px-2.5 py-1 text-xs font-medium text-primary-foreground hover:bg-primary/90'
   panel.append(input, done)
   document.body.append(panel)
 
@@ -57,7 +56,12 @@ export function openMathEditor(editor: Editor, pos: number, inline: boolean) {
     window.removeEventListener('resize', place)
     document.removeEventListener('mousedown', outside, true)
     const after = editor.state.doc.nodeAt(pos)
-    if (after) editor.chain().setTextSelection(pos + after.nodeSize).focus().run()
+    if (after)
+      editor
+        .chain()
+        .setTextSelection(pos + after.nodeSize)
+        .focus()
+        .run()
   }
   const finish = () => close(true)
   const outside = (event: MouseEvent) => {

@@ -1,4 +1,5 @@
 import { ChartBarBigIcon } from 'lucide-react'
+
 import { type BlockDefinition, database } from '../../insert'
 
 /** Horizontal bar chart block for the "/" and "+" menus. */

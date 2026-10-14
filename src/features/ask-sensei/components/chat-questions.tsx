@@ -1,6 +1,3 @@
-import type { ChatAnswers, ChatMessage, ChatQuestion } from '@/features/note/db/types'
-import { ScrollArea } from '@/components/ui/scroll-area'
-import { useAskSenseiStore } from '@/features/ask-sensei/ask-sensei.store'
 import {
   Questionnaire,
   QuestionnaireActions,
@@ -18,6 +15,9 @@ import {
   QuestionnaireSubmit,
   QuestionnaireTitle,
 } from '@/components/ui/questionnaire'
+import { ScrollArea } from '@/components/ui/scroll-area'
+import { useAskSenseiStore } from '@/features/ask-sensei/ask-sensei.store'
+import type { ChatAnswers, ChatMessage, ChatQuestion } from '@/features/note/db/types'
 
 /** A multiple-choice question; one without choices falls back to a typed answer. */
 const isChoice = (question: ChatQuestion) => (question.kind === 'single' || question.kind === 'multiple') && !!question.choices?.length
@@ -57,36 +57,43 @@ export function ChatQuestionsCard({ message, isStreaming }: { message: ChatMessa
 
   return (
     <ScrollArea className="mb-3 rounded-lg border bg-background [&>[data-slot=scroll-area-viewport]]:max-h-[35vh]">
-    <div className="px-3 py-3">
-      <Questionnaire onSubmit={submit} shortcuts="letters" className="gap-3 [&_[data-slot=questionnaire-item]]:gap-2 [&_[data-slot=questionnaire-choices]]:gap-1.5 [&_[data-slot=questionnaire-choice]]:min-h-0 [&_[data-slot=questionnaire-choice]]:py-2 [&_[data-slot=questionnaire-choice]]:px-3 [&_[data-slot=questionnaire-title]]:mb-1 [&_[data-slot=questionnaire-actions]]:min-h-0">
-        {questions.length > 1 && <QuestionnaireProgress />}
-        {questions.map((question) => (
-          <QuestionnaireItem key={question.id} name={question.id} multiple={question.kind === 'multiple'} required={question.required}>
-            <QuestionnaireTitle>{question.title}</QuestionnaireTitle>
-            {question.description && <QuestionnaireDescription>{question.description}</QuestionnaireDescription>}
-            {isChoice(question) ? (
-              <QuestionnaireChoices>
-                {question.choices!.map((choice) => (
-                  <QuestionnaireChoice key={choice.label} value={choice.label}>
-                    {choice.label}
-                    {choice.description && <QuestionnaireChoiceDescription>{choice.description}</QuestionnaireChoiceDescription>}
-                  </QuestionnaireChoice>
-                ))}
-              </QuestionnaireChoices>
-            ) : (
-              <QuestionnaireInput type={question.kind === 'single' || question.kind === 'multiple' ? 'text' : question.kind} placeholder={question.placeholder ?? 'Type your answer'} />
-            )}
-            <QuestionnaireError />
-          </QuestionnaireItem>
-        ))}
-        <QuestionnaireActions>
-          <QuestionnairePrevious size="sm" />
-          <QuestionnaireSkip size="sm" />
-          <QuestionnaireNext size="sm" />
-          <QuestionnaireSubmit size="sm" />
-        </QuestionnaireActions>
-      </Questionnaire>
-    </div>
+      <div className="px-3 py-3">
+        <Questionnaire
+          onSubmit={submit}
+          shortcuts="letters"
+          className="gap-3 [&_[data-slot=questionnaire-item]]:gap-2 [&_[data-slot=questionnaire-choices]]:gap-1.5 [&_[data-slot=questionnaire-choice]]:min-h-0 [&_[data-slot=questionnaire-choice]]:py-2 [&_[data-slot=questionnaire-choice]]:px-3 [&_[data-slot=questionnaire-title]]:mb-1 [&_[data-slot=questionnaire-actions]]:min-h-0"
+        >
+          {questions.length > 1 && <QuestionnaireProgress />}
+          {questions.map((question) => (
+            <QuestionnaireItem key={question.id} name={question.id} multiple={question.kind === 'multiple'} required={question.required}>
+              <QuestionnaireTitle>{question.title}</QuestionnaireTitle>
+              {question.description && <QuestionnaireDescription>{question.description}</QuestionnaireDescription>}
+              {isChoice(question) ? (
+                <QuestionnaireChoices>
+                  {question.choices!.map((choice) => (
+                    <QuestionnaireChoice key={choice.label} value={choice.label}>
+                      {choice.label}
+                      {choice.description && <QuestionnaireChoiceDescription>{choice.description}</QuestionnaireChoiceDescription>}
+                    </QuestionnaireChoice>
+                  ))}
+                </QuestionnaireChoices>
+              ) : (
+                <QuestionnaireInput
+                  type={question.kind === 'single' || question.kind === 'multiple' ? 'text' : question.kind}
+                  placeholder={question.placeholder ?? 'Type your answer'}
+                />
+              )}
+              <QuestionnaireError />
+            </QuestionnaireItem>
+          ))}
+          <QuestionnaireActions>
+            <QuestionnairePrevious size="sm" />
+            <QuestionnaireSkip size="sm" />
+            <QuestionnaireNext size="sm" />
+            <QuestionnaireSubmit size="sm" />
+          </QuestionnaireActions>
+        </Questionnaire>
+      </div>
     </ScrollArea>
   )
 }

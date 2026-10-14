@@ -1,4 +1,5 @@
 import type { JSONContent } from '@tiptap/react'
+
 import { EMPTY_DOC } from '../db/repo'
 
 const parseDoc = (content: string): JSONContent => {

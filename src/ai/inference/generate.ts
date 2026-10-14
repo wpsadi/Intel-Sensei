@@ -1,8 +1,9 @@
-import { generateText as generateWithModel } from 'ai'
 import { createGoogle } from '@ai-sdk/google'
+import { generateText as generateWithModel } from 'ai'
+
+import { recordSdkUsage } from '@/ai/usage'
 import { GEMINI_KEY } from '@/ai/utils/gemini-key'
 import { GEMINI_MODEL } from '@/constants/ai'
-import { recordSdkUsage } from '@/ai/usage'
 
 /** Generates text for the notes page with the AI SDK. Uses the user's own key from Settings → AI features. */
 export async function generateText(prompt: string, context = '') {

@@ -1,4 +1,5 @@
 import { ListIcon } from 'lucide-react'
+
 import { type BlockDefinition, chain } from '../../insert'
 
 /** Bulleted list block for the "/" and "+" menus. */

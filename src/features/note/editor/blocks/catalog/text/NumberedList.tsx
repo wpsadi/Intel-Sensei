@@ -1,4 +1,5 @@
 import { ListOrderedIcon } from 'lucide-react'
+
 import { type BlockDefinition, chain } from '../../insert'
 
 /** Numbered list block for the "/" and "+" menus. */

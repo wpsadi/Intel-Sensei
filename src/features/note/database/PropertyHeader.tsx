@@ -1,10 +1,27 @@
-import { CalendarIcon, CheckSquareIcon, CircleIcon, ClockIcon, HashIcon, LinkIcon, ListIcon, LoaderIcon, MapPinIcon, PlusIcon, TextIcon, Trash2Icon, UsersIcon, type LucideIcon } from 'lucide-react'
-import type { Database, PropertyDef, PropertyType } from '../db/types'
+import {
+  CalendarIcon,
+  CheckSquareIcon,
+  CircleIcon,
+  ClockIcon,
+  HashIcon,
+  LinkIcon,
+  ListIcon,
+  LoaderIcon,
+  type LucideIcon,
+  MapPinIcon,
+  PlusIcon,
+  TextIcon,
+  Trash2Icon,
+  UsersIcon,
+} from 'lucide-react'
 import { type ReactNode, type RefObject, useLayoutEffect, useRef, useState } from 'react'
-import { OPTION_COLORS, PROPERTY_TYPES } from './properties'
 import { createPortal } from 'react-dom'
+
 import { cn } from '@/lib/utils'
+
+import type { Database, PropertyDef, PropertyType } from '../db/types'
 import { useNoteStore } from '../note.store'
+import { OPTION_COLORS, PROPERTY_TYPES } from './property-values'
 
 const NEEDS_OPTIONS: PropertyType[] = ['select', 'multi_select', 'status']
 
@@ -33,7 +50,10 @@ function TypeGrid({ current, onPick }: { current?: PropertyType; onPick: (type: 
             key={type}
             type="button"
             onClick={() => onPick(type)}
-            className={cn('flex items-center gap-2 rounded px-2 py-1.5 text-left text-sm hover:bg-muted', current === type && 'bg-muted font-medium')}
+            className={cn(
+              'flex items-center gap-2 rounded px-2 py-1.5 text-left text-sm hover:bg-muted',
+              current === type && 'bg-muted font-medium',
+            )}
           >
             <Icon className="size-4 text-muted-foreground" />
             <span className="truncate">{label}</span>
@@ -68,7 +88,10 @@ function HeaderPopup({ anchor, children }: { anchor: RefObject<HTMLElement | nul
 
   if (!box) return null
   return createPortal(
-    <div style={box} className="fixed z-50 flex w-64 flex-col gap-2 rounded-md border bg-popover p-2 text-sm text-popover-foreground shadow-lg">
+    <div
+      style={box}
+      className="fixed z-50 flex w-64 flex-col gap-2 rounded-md border bg-popover p-2 text-sm text-popover-foreground shadow-lg"
+    >
       {children}
     </div>,
     document.body,
@@ -106,7 +129,12 @@ export function PropertyHeader({ database, prop }: { database: Database; prop?: 
   if (!prop) {
     return (
       <div ref={anchor} className="relative">
-        <button type="button" onClick={() => setOpen(!open)} className="flex w-full items-center justify-center p-1.5 text-muted-foreground hover:bg-muted" title="Add property">
+        <button
+          type="button"
+          onClick={() => setOpen(!open)}
+          className="flex w-full items-center justify-center p-1.5 text-muted-foreground hover:bg-muted"
+          title="Add property"
+        >
           <PlusIcon className="size-4" />
         </button>
         {open && (

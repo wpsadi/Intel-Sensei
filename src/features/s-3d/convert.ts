@@ -1,10 +1,10 @@
 import * as THREE from 'three'
+import { GLTFExporter } from 'three/examples/jsm/exporters/GLTFExporter.js'
 import { FBXLoader } from 'three/examples/jsm/loaders/FBXLoader.js'
 import { MTLLoader } from 'three/examples/jsm/loaders/MTLLoader.js'
 import { OBJLoader } from 'three/examples/jsm/loaders/OBJLoader.js'
 import { PLYLoader } from 'three/examples/jsm/loaders/PLYLoader.js'
 import { STLLoader } from 'three/examples/jsm/loaders/STLLoader.js'
-import { GLTFExporter } from 'three/examples/jsm/exporters/GLTFExporter.js'
 
 /** Model formats that are converted to GLB on import, so the rest of S3D only ever loads GLB/GLTF. */
 export const CONVERTIBLE = ['obj', 'fbx', 'stl', 'ply'] as const
@@ -38,10 +38,21 @@ function memoryManager(neighbours: Neighbours, dir: string) {
   // Resolves once every texture the loaders asked for has arrived (or failed); immediately if none were asked for.
   let pending = 0
   let done: () => void = () => {}
-  const settled = new Promise<void>((r) => { done = r })
-  manager.itemStart = ((orig) => (url: string) => { pending++; orig(url) })(manager.itemStart.bind(manager))
-  manager.itemEnd = ((orig) => (url: string) => { orig(url); if (--pending <= 0) done() })(manager.itemEnd.bind(manager))
-  manager.itemError = ((orig) => (url: string) => { orig(url); console.warn('[S3D] missing texture:', url) })(manager.itemError.bind(manager))
+  const settled = new Promise<void>((r) => {
+    done = r
+  })
+  manager.itemStart = ((orig) => (url: string) => {
+    pending++
+    orig(url)
+  })(manager.itemStart.bind(manager))
+  manager.itemEnd = ((orig) => (url: string) => {
+    orig(url)
+    if (--pending <= 0) done()
+  })(manager.itemEnd.bind(manager))
+  manager.itemError = ((orig) => (url: string) => {
+    orig(url)
+    console.warn('[S3D] missing texture:', url)
+  })(manager.itemError.bind(manager))
   const idle = () => (pending <= 0 ? Promise.resolve() : settled)
   const dispose = () => urls.forEach((u) => URL.revokeObjectURL(u))
   return { manager, idle, dispose }
@@ -56,8 +67,9 @@ async function parse(name: string, bytes: ArrayBuffer, neighbours: Neighbours, m
       const loader = new OBJLoader(manager)
       // The .mtl named by the file (or any .mtl beside it) carries its colours and textures.
       const mtlName = /^mtllib\s+(.+)$/m.exec(text)?.[1]?.trim()
-      const mtlPath = Object.keys(neighbours).find((p) => mtlName && p.toLowerCase().endsWith(mtlName.toLowerCase()))
-        ?? Object.keys(neighbours).find((p) => extOf(p) === 'mtl')
+      const mtlPath =
+        Object.keys(neighbours).find((p) => mtlName && p.toLowerCase().endsWith(mtlName.toLowerCase())) ??
+        Object.keys(neighbours).find((p) => extOf(p) === 'mtl')
       if (mtlPath) {
         const materials = new MTLLoader(manager).parse(new TextDecoder().decode(neighbours[mtlPath]), '')
         materials.preload()
@@ -80,7 +92,10 @@ async function parse(name: string, bytes: ArrayBuffer, neighbours: Neighbours, m
       const colored = !!geometry.getAttribute('color')
       // A PLY without faces is a point cloud (common for scans).
       if (!geometry.index && geometry.getAttribute('position').count % 3 !== 0) {
-        return new THREE.Points(geometry, new THREE.PointsMaterial({ size: 0.005, vertexColors: colored, color: colored ? undefined : '#b0b4bc' }))
+        return new THREE.Points(
+          geometry,
+          new THREE.PointsMaterial({ size: 0.005, vertexColors: colored, color: colored ? undefined : '#b0b4bc' }),
+        )
       }
       return new THREE.Mesh(geometry, colored ? new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.6 }) : DEFAULT_SURFACE())
     }

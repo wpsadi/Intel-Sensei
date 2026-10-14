@@ -1,4 +1,7 @@
-"use client"
+'use client'
+
+import { FolderIcon, MoreHorizontalIcon, ShareIcon, Trash2Icon } from 'lucide-react'
+import { Link } from 'react-router-dom'
 
 import {
   DropdownMenu,
@@ -6,7 +9,7 @@ import {
   DropdownMenuItem,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu"
+} from '@/components/ui/dropdown-menu'
 import {
   SidebarGroup,
   SidebarGroupLabel,
@@ -14,10 +17,8 @@ import {
   SidebarMenuAction,
   SidebarMenuButton,
   SidebarMenuItem,
-  useSidebar,
-} from "@/components/ui/sidebar"
-import { MoreHorizontalIcon, FolderIcon, ShareIcon, Trash2Icon } from "lucide-react"
-import { Link } from "react-router-dom"
+} from '@/components/ui/sidebar'
+import { useSidebar } from '@/hooks/use-sidebar'
 
 export function NavProjects({
   projects,
@@ -40,23 +41,11 @@ export function NavProjects({
               <span>{item.name}</span>
             </SidebarMenuButton>
             <DropdownMenu>
-              <DropdownMenuTrigger
-                render={
-                  <SidebarMenuAction
-                    showOnHover
-                    className="aria-expanded:bg-muted"
-                  />
-                }
-              >
-                <MoreHorizontalIcon
-                />
+              <DropdownMenuTrigger render={<SidebarMenuAction showOnHover className="aria-expanded:bg-muted" />}>
+                <MoreHorizontalIcon />
                 <span className="sr-only">More</span>
               </DropdownMenuTrigger>
-              <DropdownMenuContent
-                className="w-48"
-                side={isMobile ? "bottom" : "right"}
-                align={isMobile ? "end" : "start"}
-              >
+              <DropdownMenuContent className="w-48" side={isMobile ? 'bottom' : 'right'} align={isMobile ? 'end' : 'start'}>
                 <DropdownMenuItem>
                   <FolderIcon className="text-muted-foreground" />
                   <span>View Project</span>
@@ -76,8 +65,7 @@ export function NavProjects({
         ))}
         <SidebarMenuItem>
           <SidebarMenuButton>
-            <MoreHorizontalIcon
-            />
+            <MoreHorizontalIcon />
             <span>More</span>
           </SidebarMenuButton>
         </SidebarMenuItem>

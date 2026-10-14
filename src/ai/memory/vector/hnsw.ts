@@ -164,7 +164,7 @@ export class HnswIndex {
   private greedy(query: Float32Array, start: number, layer: number) {
     let best = start
     let bestDistance = this.distance(query, this.vectors[start])
-    for (let moved = true; moved; ) {
+    for (let moved = true; moved;) {
       moved = false
       for (const next of this.links[best][layer] ?? []) {
         const d = this.distance(query, this.vectors[next])

@@ -1,4 +1,5 @@
 import { AppWindowIcon } from 'lucide-react'
+
 import { type BlockDefinition, block } from '../../insert'
 
 /** Embed block for the "/" and "+" menus. */

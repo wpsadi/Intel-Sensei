@@ -1,4 +1,5 @@
 import { LinkIcon } from 'lucide-react'
+
 import { type BlockDefinition, block } from '../../insert'
 
 /** Linked view of data source block for the "/" and "+" menus. */

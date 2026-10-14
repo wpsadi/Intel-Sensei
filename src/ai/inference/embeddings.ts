@@ -1,8 +1,9 @@
+import { type GoogleEmbeddingModelOptions, createGoogle } from '@ai-sdk/google'
 import { embed } from 'ai'
-import { createGoogle, type GoogleEmbeddingModelOptions } from '@ai-sdk/google'
+
+import { recordUsage } from '@/ai/usage'
 import { GEMINI_KEY } from '@/ai/utils/gemini-key'
 import { EMBEDDING_DIMENSIONS } from '@/constants/ai'
-import { recordUsage } from '@/ai/usage'
 
 /** What the vector is for. Documents and queries are embedded differently so a query lands near its answers. */
 export type EmbeddingTask = 'RETRIEVAL_DOCUMENT' | 'RETRIEVAL_QUERY' | 'SEMANTIC_SIMILARITY'

@@ -1,4 +1,5 @@
 import { MousePointerClickIcon } from 'lucide-react'
+
 import { type BlockDefinition, block } from '../../insert'
 
 /** Button block for the "/" and "+" menus. */

@@ -1,4 +1,5 @@
 import { ChartLineIcon } from 'lucide-react'
+
 import { type BlockDefinition, database } from '../../insert'
 
 /** Line chart block for the "/" and "+" menus. */

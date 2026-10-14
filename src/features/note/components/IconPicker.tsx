@@ -1,9 +1,11 @@
-import { useMemo, useState } from 'react'
 import { gitHubEmojis } from '@tiptap/extension-emoji'
-import { pickFile, putMedia } from '../db/media'
-import { PAGE_ICONS, lucideRef } from '../lib/page-icons'
+import { useMemo, useState } from 'react'
+
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { cn } from '@/lib/utils'
+
+import { pickFile, putMedia } from '../db/media'
+import { PAGE_ICONS, lucideRef } from '../lib/page-icons'
 
 const EMOJIS = gitHubEmojis.filter((e) => e.emoji)
 const ICON_NAMES = Object.keys(PAGE_ICONS)
@@ -67,7 +69,13 @@ export function IconPicker({ onPick, onRemove }: { onPick: (icon: string) => voi
         <ScrollArea className="h-64 pr-2">
           <div className="grid grid-cols-8">
             {emojis.map((e) => (
-              <button key={e.name} type="button" title={e.shortcodes[0]} onClick={() => onPick(e.emoji!)} className="rounded p-1 text-xl hover:bg-muted">
+              <button
+                key={e.name}
+                type="button"
+                title={e.shortcodes[0]}
+                onClick={() => onPick(e.emoji!)}
+                className="rounded p-1 text-xl hover:bg-muted"
+              >
                 {e.emoji}
               </button>
             ))}
@@ -81,7 +89,13 @@ export function IconPicker({ onPick, onRemove }: { onPick: (icon: string) => voi
             {icons.map((name) => {
               const Icon = PAGE_ICONS[name]
               return (
-                <button key={name} type="button" title={name} onClick={() => onPick(lucideRef(name))} className="flex items-center justify-center rounded p-2 hover:bg-muted">
+                <button
+                  key={name}
+                  type="button"
+                  title={name}
+                  onClick={() => onPick(lucideRef(name))}
+                  className="flex items-center justify-center rounded p-2 hover:bg-muted"
+                >
                   <Icon className="size-5" />
                 </button>
               )

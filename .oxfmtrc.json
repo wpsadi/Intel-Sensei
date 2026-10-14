@@ -1,0 +1,8 @@
+{
+  "$schema": "./node_modules/oxfmt/configuration_schema.json",
+  "semi": false,
+  "singleQuote": true,
+  "printWidth": 140,
+  "sortImports": {},
+  "ignorePatterns": ["dist", "node_modules", "*.pdf"]
+}

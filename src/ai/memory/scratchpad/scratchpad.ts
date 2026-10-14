@@ -35,7 +35,10 @@ export function createScratchpad(chatId: string, messageId: string): Scratchpad 
     remove: (key) => void notes.delete(key),
     clear: () => notes.clear(),
     entries: () => [...notes],
-    toPrompt: () => (notes.size ? `Scratchpad (your working notes for this reply only):\n${[...notes].map(([key, value]) => `- ${key}: ${value}`).join('\n')}` : ''),
+    toPrompt: () =>
+      notes.size
+        ? `Scratchpad (your working notes for this reply only):\n${[...notes].map(([key, value]) => `- ${key}: ${value}`).join('\n')}`
+        : '',
   }
   pads.set(id, pad)
   return pad
@@ -51,7 +54,9 @@ export function disposeScratchpad(pad: Scratchpad) {
 export const SCRATCHPAD_INSTRUCTIONS = `Use the scratchpad tool for working notes inside one reply: partial results, what you tried, what is left. It is forgotten when the reply ends, so put anything worth keeping in memory instead.`
 
 const scratchpadInput = z.object({
-  command: z.enum(['write', 'read', 'remove', 'clear']).describe('write saves a note under a key, read returns one note or all of them, remove deletes a note, clear empties the pad.'),
+  command: z
+    .enum(['write', 'read', 'remove', 'clear'])
+    .describe('write saves a note under a key, read returns one note or all of them, remove deletes a note, clear empties the pad.'),
   key: z.string().optional().describe('Short name of the note, for write, remove and read.'),
   value: z.string().optional().describe('The note, for write.'),
 })
@@ -59,7 +64,8 @@ const scratchpadInput = z.object({
 /** The scratchpad tool over one pad. */
 export function createScratchpadTool(pad: Scratchpad) {
   return tool({
-    description: 'Working notes for this reply only. Write down partial results and next steps so you can come back to them while you work. Everything is forgotten when the reply ends.',
+    description:
+      'Working notes for this reply only. Write down partial results and next steps so you can come back to them while you work. Everything is forgotten when the reply ends.',
     inputSchema: scratchpadInput,
     execute: ({ command, key, value }) => {
       switch (command) {

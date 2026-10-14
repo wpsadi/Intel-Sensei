@@ -1,7 +1,8 @@
+import { type GoogleLanguageModelOptions, createGoogle } from '@ai-sdk/google'
 import { generateText } from 'ai'
-import { createGoogle, type GoogleLanguageModelOptions } from '@ai-sdk/google'
-import { TEST_MODEL } from '@/constants/ai'
+
 import { recordSdkUsage } from '@/ai/usage'
+import { TEST_MODEL } from '@/constants/ai'
 
 /** A short chat title from the start of a conversation, written by Gemini with minimal thinking so it comes back fast. */
 export async function generateChatTitle(apiKey: string, transcript: string) {
@@ -12,5 +13,8 @@ export async function generateChatTitle(apiKey: string, transcript: string) {
     maxOutputTokens: 32,
   })
   void recordSdkUsage({ provider: 'google', model: TEST_MODEL }, usage)
-  return text.trim().replace(/^["'“”*]+|["'“”*.]+$/g, '').slice(0, 80)
+  return text
+    .trim()
+    .replace(/^["'“”*]+|["'“”*.]+$/g, '')
+    .slice(0, 80)
 }

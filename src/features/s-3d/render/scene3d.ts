@@ -1,12 +1,13 @@
+import { BufferTarget, CanvasSource, Mp4OutputFormat, Output, type VideoCodec, getFirstEncodableVideoCodec } from 'mediabunny'
 import * as THREE from 'three'
-import { BufferTarget, CanvasSource, Mp4OutputFormat, Output, getFirstEncodableVideoCodec, type VideoCodec } from 'mediabunny'
-import { RoundedBoxGeometry } from 'three/examples/jsm/geometries/RoundedBoxGeometry.js'
 import { RoomEnvironment } from 'three/examples/jsm/environments/RoomEnvironment.js'
+import { RoundedBoxGeometry } from 'three/examples/jsm/geometries/RoundedBoxGeometry.js'
 import { DRACOLoader } from 'three/examples/jsm/loaders/DRACOLoader.js'
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js'
+
 import { resolveFile } from '../files'
-import { applyTextures, disposeTextures } from './textures'
 import type { CameraKey3D, Geometry3D, Keyframe3D, Material3D, MeshData3D, Obj3D, SNode, Scene3D, Vec3 } from '../types'
+import { applyTextures, disposeTextures } from './textures'
 
 /** Dimension keys and defaults per geometry, in scene units. Also documents the params the agent may set. */
 export const GEOMETRY_PARAMS: Record<Geometry3D, Record<string, number>> = {
@@ -35,13 +36,37 @@ export const GEOMETRY_PARAMS: Record<Geometry3D, Record<string, number>> = {
 
 /** Point lists the path-based geometries fall back to when none is set; the inspector starts editing from these. */
 export const DEFAULT_POINTS: Partial<Record<Geometry3D, number[][]>> = {
-  tube: [[-0.5, 0, 0], [-0.2, 0.3, 0.2], [0.2, -0.3, -0.2], [0.5, 0, 0]],
-  lathe: [[0, 0], [0.5, 0], [0.5, 0.2], [0.2, 0.6], [0.3, 1]],
-  extrude: [[0, 0], [1, 0], [0.5, 1]],
+  tube: [
+    [-0.5, 0, 0],
+    [-0.2, 0.3, 0.2],
+    [0.2, -0.3, -0.2],
+    [0.5, 0, 0],
+  ],
+  lathe: [
+    [0, 0],
+    [0.5, 0],
+    [0.5, 0.2],
+    [0.2, 0.6],
+    [0.3, 1],
+  ],
+  extrude: [
+    [0, 0],
+    [1, 0],
+    [0.5, 1],
+  ],
 }
 
 export const DEFAULT_MATERIAL: Material3D = {
-  color: '#9ca3af', metalness: 0, roughness: 0.5, emissive: '#000000', emissiveIntensity: 1, opacity: 1, transmission: 0, clearcoat: 0, wireframe: false, flatShading: false,
+  color: '#9ca3af',
+  metalness: 0,
+  roughness: 0.5,
+  emissive: '#000000',
+  emissiveIntensity: 1,
+  opacity: 1,
+  transmission: 0,
+  clearcoat: 0,
+  wireframe: false,
+  flatShading: false,
 }
 
 /** Starting points for common surfaces; any explicit material field overrides the preset. */
@@ -74,10 +99,26 @@ export function emptyScene(): Scene3D {
 /** A node's scene; a plain 3D shape becomes a scene holding that shape, so it can be edited like any other. */
 export function sceneOf(n: SNode): Scene3D {
   if (!n.scene && n.type === 'model3d') return modelScene(n.src, n.name)
-  return n.scene ?? {
-    ...emptyScene(),
-    objects: [{ id: 'shape', name: n.shape3d, kind: 'mesh', parent: null, position: [0, 0.75, 0], rotation: [0, 0, 0], scale: [1, 1, 1], visible: true, geometry: n.shape3d === 'cube' ? 'box' : n.shape3d, params: {}, material: { ...DEFAULT_MATERIAL, color: n.modelColor } }],
-  }
+  return (
+    n.scene ?? {
+      ...emptyScene(),
+      objects: [
+        {
+          id: 'shape',
+          name: n.shape3d,
+          kind: 'mesh',
+          parent: null,
+          position: [0, 0.75, 0],
+          rotation: [0, 0, 0],
+          scale: [1, 1, 1],
+          visible: true,
+          geometry: n.shape3d === 'cube' ? 'box' : n.shape3d,
+          params: {},
+          material: { ...DEFAULT_MATERIAL, color: n.modelColor },
+        },
+      ],
+    }
+  )
 }
 
 /** A scene showing one imported GLB/GLTF, about 1.5 units tall on the ground. */
@@ -86,8 +127,28 @@ export function modelScene(src: string, name: string): Scene3D {
     ...emptyScene(),
     camera: { position: [2.2, 1.6, 2.8], target: [0, 0.75, 0], fov: 40 },
     objects: [
-      { id: 'model', name, kind: 'model', parent: null, src, position: [0, 0, 0], rotation: [0, 0, 0], scale: [1.5, 1.5, 1.5], visible: true },
-      { id: 'key-light', name: 'Key light', kind: 'light', parent: null, position: [4, 7, 5], rotation: [0, 0, 0], scale: [1, 1, 1], visible: true, light: { type: 'directional', color: '#ffffff', intensity: 2.2, castShadow: true } },
+      {
+        id: 'model',
+        name,
+        kind: 'model',
+        parent: null,
+        src,
+        position: [0, 0, 0],
+        rotation: [0, 0, 0],
+        scale: [1.5, 1.5, 1.5],
+        visible: true,
+      },
+      {
+        id: 'key-light',
+        name: 'Key light',
+        kind: 'light',
+        parent: null,
+        position: [4, 7, 5],
+        rotation: [0, 0, 0],
+        scale: [1, 1, 1],
+        visible: true,
+        light: { type: 'directional', color: '#ffffff', intensity: 2.2, castShadow: true },
+      },
     ],
   }
 }
@@ -103,34 +164,66 @@ export function makeGeometry(geo: Geometry3D, p: Obj3D['params'], lite = false):
   const n = (k: string) => num(p, k, geo)
   const seg = (full: number, low: number) => (lite ? low : full)
   switch (geo) {
-    case 'box': return new THREE.BoxGeometry(n('width'), n('height'), n('depth'))
-    case 'roundedBox': return new RoundedBoxGeometry(n('width'), n('height'), n('depth'), seg(4, 1), Math.min(n('radius'), n('width') / 2, n('height') / 2, n('depth') / 2))
-    case 'sphere': return new THREE.SphereGeometry(n('radius'), seg(48, 12), seg(32, 8))
-    case 'cylinder': return new THREE.CylinderGeometry(n('radiusTop'), n('radiusBottom'), n('height'), seg(48, 12))
-    case 'cone': return new THREE.ConeGeometry(n('radius'), n('height'), seg(48, 12))
-    case 'capsule': return new THREE.CapsuleGeometry(n('radius'), n('length'), seg(8, 2), seg(24, 8))
-    case 'torus': return new THREE.TorusGeometry(n('radius'), n('tube'), seg(24, 8), seg(96, 24), THREE.MathUtils.degToRad(n('arc')))
-    case 'torusKnot': return new THREE.TorusKnotGeometry(n('radius'), n('tube'), seg(160, 48), seg(20, 6), n('p'), n('q'))
-    case 'plane': return new THREE.PlaneGeometry(n('width'), n('height'))
-    case 'circle': return new THREE.CircleGeometry(n('radius'), seg(48, 12))
-    case 'ring': return new THREE.RingGeometry(n('innerRadius'), n('outerRadius'), seg(48, 12))
-    case 'icosahedron': return new THREE.IcosahedronGeometry(n('radius'), n('detail'))
-    case 'dodecahedron': return new THREE.DodecahedronGeometry(n('radius'), n('detail'))
-    case 'octahedron': return new THREE.OctahedronGeometry(n('radius'), n('detail'))
-    case 'tetrahedron': return new THREE.TetrahedronGeometry(n('radius'), n('detail'))
+    case 'box':
+      return new THREE.BoxGeometry(n('width'), n('height'), n('depth'))
+    case 'roundedBox':
+      return new RoundedBoxGeometry(
+        n('width'),
+        n('height'),
+        n('depth'),
+        seg(4, 1),
+        Math.min(n('radius'), n('width') / 2, n('height') / 2, n('depth') / 2),
+      )
+    case 'sphere':
+      return new THREE.SphereGeometry(n('radius'), seg(48, 12), seg(32, 8))
+    case 'cylinder':
+      return new THREE.CylinderGeometry(n('radiusTop'), n('radiusBottom'), n('height'), seg(48, 12))
+    case 'cone':
+      return new THREE.ConeGeometry(n('radius'), n('height'), seg(48, 12))
+    case 'capsule':
+      return new THREE.CapsuleGeometry(n('radius'), n('length'), seg(8, 2), seg(24, 8))
+    case 'torus':
+      return new THREE.TorusGeometry(n('radius'), n('tube'), seg(24, 8), seg(96, 24), THREE.MathUtils.degToRad(n('arc')))
+    case 'torusKnot':
+      return new THREE.TorusKnotGeometry(n('radius'), n('tube'), seg(160, 48), seg(20, 6), n('p'), n('q'))
+    case 'plane':
+      return new THREE.PlaneGeometry(n('width'), n('height'))
+    case 'circle':
+      return new THREE.CircleGeometry(n('radius'), seg(48, 12))
+    case 'ring':
+      return new THREE.RingGeometry(n('innerRadius'), n('outerRadius'), seg(48, 12))
+    case 'icosahedron':
+      return new THREE.IcosahedronGeometry(n('radius'), n('detail'))
+    case 'dodecahedron':
+      return new THREE.DodecahedronGeometry(n('radius'), n('detail'))
+    case 'octahedron':
+      return new THREE.OctahedronGeometry(n('radius'), n('detail'))
+    case 'tetrahedron':
+      return new THREE.TetrahedronGeometry(n('radius'), n('detail'))
     case 'lathe': {
       const profile = pts(p, 'points').map(([x, y]) => new THREE.Vector2(x, y))
-      return new THREE.LatheGeometry(profile.length > 1 ? profile : DEFAULT_POINTS.lathe!.map(([x, y]) => new THREE.Vector2(x, y)), lite ? Math.min(12, n('segments')) : n('segments'))
+      return new THREE.LatheGeometry(
+        profile.length > 1 ? profile : DEFAULT_POINTS.lathe!.map(([x, y]) => new THREE.Vector2(x, y)),
+        lite ? Math.min(12, n('segments')) : n('segments'),
+      )
     }
     case 'tube': {
       // A smooth Catmull-Rom curve through [x, y, z] points, swept with a round pipe.
       const raw = pts(p, 'points').filter((q) => q.length >= 3)
       const path = (raw.length > 1 ? raw : DEFAULT_POINTS.tube!).map(([x, y, z]) => new THREE.Vector3(x, y, z))
       const closed = n('closed') > 0
-      return new THREE.TubeGeometry(new THREE.CatmullRomCurve3(path, closed), seg(Math.max(24, path.length * 16), 12), n('radius'), seg(16, 6), closed)
+      return new THREE.TubeGeometry(
+        new THREE.CatmullRomCurve3(path, closed),
+        seg(Math.max(24, path.length * 16), 12),
+        n('radius'),
+        seg(16, 6),
+        closed,
+      )
     }
     case 'helix': {
-      const turns = n('turns'), r = n('radius'), h = n('height')
+      const turns = n('turns'),
+        r = n('radius'),
+        h = n('height')
       const count = Math.max(8, Math.ceil(turns * 24)) + 1
       const path = Array.from({ length: count }, (_, i) => {
         const t = i / (count - 1)
@@ -140,19 +233,31 @@ export function makeGeometry(geo: Geometry3D, p: Obj3D['params'], lite = false):
     }
     case 'wave': {
       // A plane rippled along its width; lies flat like a plane when rotated -90° on x.
-      const w = n('width'), h = n('height'), amp = n('amplitude'), freq = n('frequency')
+      const w = n('width'),
+        h = n('height'),
+        amp = n('amplitude'),
+        freq = n('frequency')
       const g = new THREE.PlaneGeometry(w, h, seg(96, 16), seg(96, 16))
       const pos = g.attributes.position
-      for (let i = 0; i < pos.count; i++) pos.setZ(i, amp * Math.sin((pos.getX(i) / w) * freq * Math.PI * 2) * Math.cos((pos.getY(i) / h) * freq * Math.PI))
+      for (let i = 0; i < pos.count; i++)
+        pos.setZ(i, amp * Math.sin((pos.getX(i) / w) * freq * Math.PI * 2) * Math.cos((pos.getY(i) / h) * freq * Math.PI))
       g.computeVertexNormals()
       return g
     }
-    case 'mesh': return new THREE.BufferGeometry()
+    case 'mesh':
+      return new THREE.BufferGeometry()
     case 'extrude': {
       const outline = pts(p, 'points')
       const shape = new THREE.Shape((outline.length > 2 ? outline : DEFAULT_POINTS.extrude!).map(([x, y]) => new THREE.Vector2(x, y)))
       const bevel = n('bevel')
-      const g = new THREE.ExtrudeGeometry(shape, { depth: n('depth'), bevelEnabled: bevel > 0, curveSegments: seg(12, 4), bevelSize: bevel, bevelThickness: bevel, bevelSegments: 3 })
+      const g = new THREE.ExtrudeGeometry(shape, {
+        depth: n('depth'),
+        bevelEnabled: bevel > 0,
+        curveSegments: seg(12, 4),
+        bevelSize: bevel,
+        bevelThickness: bevel,
+        bevelSegments: 3,
+      })
       g.center()
       return g
     }
@@ -161,13 +266,23 @@ export function makeGeometry(geo: Geometry3D, p: Obj3D['params'], lite = false):
 
 /** Box-projected UVs: each vertex takes the two axes across the face it mostly points along. Fine for noise, fur and tiling patterns. */
 function boxUVs(g: THREE.BufferGeometry) {
-  const p = g.getAttribute('position'), n = g.getAttribute('normal')
+  const p = g.getAttribute('position'),
+    n = g.getAttribute('normal')
   const uv = new Float32Array(p.count * 2)
   for (let i = 0; i < p.count; i++) {
-    const ax = Math.abs(n.getX(i)), ay = Math.abs(n.getY(i)), az = Math.abs(n.getZ(i))
-    if (ay >= ax && ay >= az) { uv[i * 2] = p.getX(i); uv[i * 2 + 1] = p.getZ(i) }
-    else if (ax >= az) { uv[i * 2] = p.getZ(i); uv[i * 2 + 1] = p.getY(i) }
-    else { uv[i * 2] = p.getX(i); uv[i * 2 + 1] = p.getY(i) }
+    const ax = Math.abs(n.getX(i)),
+      ay = Math.abs(n.getY(i)),
+      az = Math.abs(n.getZ(i))
+    if (ay >= ax && ay >= az) {
+      uv[i * 2] = p.getX(i)
+      uv[i * 2 + 1] = p.getZ(i)
+    } else if (ax >= az) {
+      uv[i * 2] = p.getZ(i)
+      uv[i * 2 + 1] = p.getY(i)
+    } else {
+      uv[i * 2] = p.getX(i)
+      uv[i * 2 + 1] = p.getY(i)
+    }
   }
   g.setAttribute('uv', new THREE.BufferAttribute(uv, 2))
 }
@@ -205,14 +320,25 @@ function addFur(mesh: THREE.Mesh, o: Obj3D) {
   for (let i = 1; i <= layers; i++) {
     const t = i / layers
     const g = src.clone()
-    const p = g.getAttribute('position'), n = g.getAttribute('normal')
-    for (let v = 0; v < p.count; v++) p.setXYZ(v, p.getX(v) + n.getX(v) * fur.length * t, p.getY(v) + n.getY(v) * fur.length * t, p.getZ(v) + n.getZ(v) * fur.length * t)
+    const p = g.getAttribute('position'),
+      n = g.getAttribute('normal')
+    for (let v = 0; v < p.count; v++)
+      p.setXYZ(v, p.getX(v) + n.getX(v) * fur.length * t, p.getY(v) + n.getY(v) * fur.length * t, p.getZ(v) + n.getZ(v) * fur.length * t)
     const noise = strandNoise().clone()
     noise.repeat.set(fur.density, fur.density)
     noise.needsUpdate = true
-    const shell = new THREE.Mesh(g, new THREE.MeshStandardMaterial({
-      color: base.clone().lerp(tip, t), vertexColors: useVertexColors, roughness: o.material?.roughness ?? 0.9, alphaMap: noise, alphaTest: 0.15 + 0.7 * t, transparent: false, side: THREE.DoubleSide,
-    }))
+    const shell = new THREE.Mesh(
+      g,
+      new THREE.MeshStandardMaterial({
+        color: base.clone().lerp(tip, t),
+        vertexColors: useVertexColors,
+        roughness: o.material?.roughness ?? 0.9,
+        alphaMap: noise,
+        alphaTest: 0.15 + 0.7 * t,
+        transparent: false,
+        side: THREE.DoubleSide,
+      }),
+    )
     shell.castShadow = false
     shell.receiveShadow = true
     shell.userData = { fur: true }
@@ -234,9 +360,24 @@ function meshGeometry(m: MeshData3D) {
 function makeMaterial(m: Partial<Material3D> | undefined) {
   const v = { ...DEFAULT_MATERIAL, ...m }
   const mat = new THREE.MeshPhysicalMaterial({
-    color: v.color, metalness: v.metalness, roughness: v.roughness, emissive: v.emissive, emissiveIntensity: v.emissiveIntensity,
-    opacity: v.opacity, transparent: v.opacity < 1 || v.transmission > 0, transmission: v.transmission, thickness: v.transmission ? 0.5 : 0,
-    clearcoat: v.clearcoat, vertexColors: !!v.vertexColors, sheen: v.sheen ?? 0, sheenColor: new THREE.Color(v.sheenColor ?? '#ffffff'), sheenRoughness: 0.5, specularIntensity: v.specularIntensity ?? 1, wireframe: v.wireframe, flatShading: v.flatShading, side: THREE.DoubleSide,
+    color: v.color,
+    metalness: v.metalness,
+    roughness: v.roughness,
+    emissive: v.emissive,
+    emissiveIntensity: v.emissiveIntensity,
+    opacity: v.opacity,
+    transparent: v.opacity < 1 || v.transmission > 0,
+    transmission: v.transmission,
+    thickness: v.transmission ? 0.5 : 0,
+    clearcoat: v.clearcoat,
+    vertexColors: !!v.vertexColors,
+    sheen: v.sheen ?? 0,
+    sheenColor: new THREE.Color(v.sheenColor ?? '#ffffff'),
+    sheenRoughness: 0.5,
+    specularIntensity: v.specularIntensity ?? 1,
+    wireframe: v.wireframe,
+    flatShading: v.flatShading,
+    side: THREE.DoubleSide,
   })
   applyTextures(mat, v)
   return mat
@@ -251,8 +392,10 @@ function softShadow(light: THREE.PointLight | THREE.SpotLight | THREE.Directiona
 function makeLight(o: Obj3D, shadows: boolean): THREE.Object3D {
   const l = o.light!
   switch (l.type) {
-    case 'ambient': return new THREE.AmbientLight(l.color, l.intensity)
-    case 'hemisphere': return new THREE.HemisphereLight(l.color, l.groundColor ?? '#444455', l.intensity)
+    case 'ambient':
+      return new THREE.AmbientLight(l.color, l.intensity)
+    case 'hemisphere':
+      return new THREE.HemisphereLight(l.color, l.groundColor ?? '#444455', l.intensity)
     case 'point': {
       const p = new THREE.PointLight(l.color, l.intensity, 0, 2)
       p.castShadow = shadows && l.castShadow
@@ -261,12 +404,16 @@ function makeLight(o: Obj3D, shadows: boolean): THREE.Object3D {
     }
     case 'spot':
     case 'directional': {
-      const d = l.type === 'spot' ? new THREE.SpotLight(l.color, l.intensity, 0, THREE.MathUtils.degToRad(l.angle ?? 30), 0.3, 2) : new THREE.DirectionalLight(l.color, l.intensity)
+      const d =
+        l.type === 'spot'
+          ? new THREE.SpotLight(l.color, l.intensity, 0, THREE.MathUtils.degToRad(l.angle ?? 30), 0.3, 2)
+          : new THREE.DirectionalLight(l.color, l.intensity)
       d.castShadow = shadows && l.castShadow
       d.shadow.mapSize.set(2048, 2048)
       d.shadow.bias = -0.0005
       softShadow(d, l.size)
-      if (d instanceof THREE.DirectionalLight) Object.assign(d.shadow.camera, { left: -10, right: 10, top: 10, bottom: -10, near: 0.1, far: 50 })
+      if (d instanceof THREE.DirectionalLight)
+        Object.assign(d.shadow.camera, { left: -10, right: 10, top: 10, bottom: -10, near: 0.1, far: 50 })
       // Lights shine at the scene origin.
       return d
     }
@@ -286,10 +433,18 @@ function loader() {
 const gltfCache = new Map<string, Promise<THREE.Group | null>>()
 function loadModel(src: string) {
   if (!gltfCache.has(src)) {
-    gltfCache.set(src, resolveFile(src).then((url) => loader().loadAsync(url)).then((g) => g.scene, (e) => {
-      console.warn('[S3D] model failed to load:', e)
-      return null
-    }))
+    gltfCache.set(
+      src,
+      resolveFile(src)
+        .then((url) => loader().loadAsync(url))
+        .then(
+          (g) => g.scene,
+          (e) => {
+            console.warn('[S3D] model failed to load:', e)
+            return null
+          },
+        ),
+    )
   }
   return gltfCache.get(src)!
 }
@@ -321,7 +476,10 @@ export async function buildScene(scene: Scene3D, { models = true, lite = false }
   for (const o of scene.objects) {
     let obj: THREE.Object3D
     if (o.kind === 'mesh') {
-      const mesh = new THREE.Mesh(o.geometry === 'mesh' && o.mesh ? meshGeometry(o.mesh) : makeGeometry(o.geometry ?? 'box', o.params, lite), liteMat ?? makeMaterial(o.material))
+      const mesh = new THREE.Mesh(
+        o.geometry === 'mesh' && o.mesh ? meshGeometry(o.mesh) : makeGeometry(o.geometry ?? 'box', o.params, lite),
+        liteMat ?? makeMaterial(o.material),
+      )
       mesh.castShadow = o.castShadow ?? true
       mesh.receiveShadow = true
       if (o.fur && !lite) addFur(mesh, o)
@@ -329,7 +487,9 @@ export async function buildScene(scene: Scene3D, { models = true, lite = false }
     } else if (o.kind === 'light') obj = lite ? new THREE.Object3D() : makeLight(o, scene.shadows)
     else if (o.kind === 'model') {
       const loaded = models && o.src ? await loadModel(o.src) : null
-      obj = loaded ? normalizeModel(loaded) : new THREE.Mesh(new THREE.BoxGeometry(1, 1, 1).translate(0, 0.5, 0), makeMaterial({ color: '#c4b5fd', wireframe: true }))
+      obj = loaded
+        ? normalizeModel(loaded)
+        : new THREE.Mesh(new THREE.BoxGeometry(1, 1, 1).translate(0, 0.5, 0), makeMaterial({ color: '#c4b5fd', wireframe: true }))
       // Model meshes share the cached geometry, so they are never disposed.
       obj.traverse((c) => {
         c.userData.shared = true
@@ -337,7 +497,13 @@ export async function buildScene(scene: Scene3D, { models = true, lite = false }
       })
     } else obj = new THREE.Group()
     obj.name = o.name
-    obj.userData = { id: o.id, kind: o.kind, animate: o.animate, keyframes: o.keyframes?.length ? o.keyframes : undefined, base: { position: o.position, rotation: o.rotation, scale: o.scale, visible: o.visible } }
+    obj.userData = {
+      id: o.id,
+      kind: o.kind,
+      animate: o.animate,
+      keyframes: o.keyframes?.length ? o.keyframes : undefined,
+      base: { position: o.position, rotation: o.rotation, scale: o.scale, visible: o.visible },
+    }
     obj.position.set(...o.position)
     obj.rotation.set(...rad(o.rotation))
     obj.scale.set(...o.scale)
@@ -346,7 +512,16 @@ export async function buildScene(scene: Scene3D, { models = true, lite = false }
   }
   for (const o of scene.objects) (made.get(o.parent ?? '') ?? root).add(made.get(o.id)!)
   if (scene.ground.visible && !lite) {
-    const ground = new THREE.Mesh(new THREE.CircleGeometry(groundRadius(root), 64).rotateX(-Math.PI / 2), new THREE.MeshStandardMaterial({ color: scene.ground.color, roughness: 0.95, alphaMap: groundFade(), transparent: true, depthWrite: false }))
+    const ground = new THREE.Mesh(
+      new THREE.CircleGeometry(groundRadius(root), 64).rotateX(-Math.PI / 2),
+      new THREE.MeshStandardMaterial({
+        color: scene.ground.color,
+        roughness: 0.95,
+        alphaMap: groundFade(),
+        transparent: true,
+        depthWrite: false,
+      }),
+    )
     ground.position.y = scene.ground.y
     ground.receiveShadow = true
     ground.userData = { ground: true }
@@ -450,7 +625,11 @@ function sampleVisible(keys: Keyframe3D[], t: number, base: boolean) {
 /** Timeline length: the scene's duration, else the last keyframe or camera key, else 5 s of looping motion. */
 export function sceneDuration(scene: Scene3D) {
   if (scene.duration) return scene.duration
-  const last = Math.max(0, ...scene.objects.flatMap((o) => o.keyframes?.map((k) => k.t) ?? []), ...(scene.cameraKeys?.map((k) => k.t) ?? []))
+  const last = Math.max(
+    0,
+    ...scene.objects.flatMap((o) => o.keyframes?.map((k) => k.t) ?? []),
+    ...(scene.cameraKeys?.map((k) => k.t) ?? []),
+  )
   return last > 0 ? last : 5
 }
 
@@ -461,7 +640,11 @@ export function cameraAt(scene: Scene3D, t: number): Scene3D['camera'] {
   const asKey = (k: CameraKey3D): Keyframe3D => ({ t: k.t, position: k.position, rotation: k.target })
   const kf = keys.map(asKey)
   const fovKeys = keys.map((k) => ({ t: k.t, scale: [k.fov ?? scene.camera.fov, 0, 0] as Vec3 }))
-  return { position: sampleChannel(kf, 'position', t, scene.camera.position), target: sampleChannel(kf, 'rotation', t, scene.camera.target), fov: sampleChannel(fovKeys, 'scale', t, [scene.camera.fov, 0, 0])[0] }
+  return {
+    position: sampleChannel(kf, 'position', t, scene.camera.position),
+    target: sampleChannel(kf, 'rotation', t, scene.camera.target),
+    fov: sampleChannel(fovKeys, 'scale', t, [scene.camera.fov, 0, 0])[0],
+  }
 }
 
 /** Poses every animated object for time `t` seconds. Absolute in t, so any frame can be rendered on its own. */
@@ -496,7 +679,12 @@ let roomEnv: { gen: THREE.PMREMGenerator; tex: THREE.Texture } | null = null
 export function applyLook(target: THREE.Scene, scene: Scene3D, gl: THREE.WebGLRenderer) {
   target.background = scene.background ? new THREE.Color(scene.background) : null
   // The renderer is shared, so every look sets its tone mapping and exposure explicitly.
-  gl.toneMapping = { aces: THREE.ACESFilmicToneMapping, neutral: THREE.NeutralToneMapping, linear: THREE.LinearToneMapping, none: THREE.NoToneMapping }[scene.toneMapping ?? 'aces']
+  gl.toneMapping = {
+    aces: THREE.ACESFilmicToneMapping,
+    neutral: THREE.NeutralToneMapping,
+    linear: THREE.LinearToneMapping,
+    none: THREE.NoToneMapping,
+  }[scene.toneMapping ?? 'aces']
   gl.toneMappingExposure = scene.exposure ?? 1
   target.environmentRotation.set(0, THREE.MathUtils.degToRad(scene.envRotation ?? 0), 0)
   if (scene.environment === 'studio') {
@@ -566,7 +754,13 @@ function offscreenRenderer() {
 
 export type SceneView = 'camera' | 'front' | 'back' | 'side' | 'left' | 'top' | 'iso' | 'iso-back'
 export const VIEW_DIRS: Record<Exclude<SceneView, 'camera'>, Vec3> = {
-  front: [0, 0.15, 1], back: [0, 0.15, -1], side: [1, 0.15, 0], left: [-1, 0.15, 0], top: [0.001, 1, 0.001], iso: [1, 0.75, 1.3], 'iso-back': [-1, 0.75, -1.3],
+  front: [0, 0.15, 1],
+  back: [0, 0.15, -1],
+  side: [1, 0.15, 0],
+  left: [-1, 0.15, 0],
+  top: [0.001, 1, 0.001],
+  iso: [1, 0.75, 1.3],
+  'iso-back': [-1, 0.75, -1.3],
 }
 /** The angles a model must hold up from, front to back and above. */
 export const ALL_ANGLES: SceneView[] = ['front', 'side', 'back', 'left', 'top', 'iso', 'iso-back']
@@ -574,7 +768,7 @@ export const ALL_ANGLES: SceneView[] = ['front', 'side', 'back', 'left', 'top', 
 /** Output size for a node of w×h, longest side capped at `max`. */
 export function fitSize(w: number, h: number, max: number) {
   const k = Math.min(1, max / Math.max(w, h))
-  const even = (v: number) => Math.max(64, Math.round(v * k / 2) * 2)
+  const even = (v: number) => Math.max(64, Math.round((v * k) / 2) * 2)
   return { width: even(w), height: even(h) }
 }
 
@@ -599,7 +793,8 @@ function isolate(root: THREE.Object3D, scene: Scene3D, only: string[]) {
   const byId = new Map(scene.objects.map((o) => [o.id, o]))
   for (const id of only) {
     for (let o = byId.get(id); o; o = o.parent ? byId.get(o.parent) : undefined) keep.add(o.id)
-    for (const o of scene.objects) for (let a: Obj3D | undefined = o; a; a = a.parent ? byId.get(a.parent) : undefined) if (a.id === id) keep.add(o.id)
+    for (const o of scene.objects)
+      for (let a: Obj3D | undefined = o; a; a = a.parent ? byId.get(a.parent) : undefined) if (a.id === id) keep.add(o.id)
   }
   root.traverse((o) => {
     const id = o.userData.id as string | undefined
@@ -617,19 +812,27 @@ function makeOrtho(cam: Scene3D['camera'], aspect: number) {
   return c
 }
 
-export async function sceneRenderer(scene: Scene3D, width: number, height: number, view: SceneView | Scene3D['camera'] = 'camera', opts: RenderOpts = {}) {
+export async function sceneRenderer(
+  scene: Scene3D,
+  width: number,
+  height: number,
+  view: SceneView | Scene3D['camera'] = 'camera',
+  opts: RenderOpts = {},
+) {
   const gl = offscreenRenderer()
   gl.setSize(width, height, false)
   const target = new THREE.Scene()
   const root = await buildScene(scene)
   if (opts.only?.length) isolate(root, scene, opts.only)
-  if (opts.wireframe) root.traverse((o) => {
-    const m = o as THREE.Mesh
-    if (m.isMesh && !o.userData.ground) for (const mat of [m.material].flat()) (mat as THREE.MeshBasicMaterial).wireframe = true
-  })
+  if (opts.wireframe)
+    root.traverse((o) => {
+      const m = o as THREE.Mesh
+      if (m.isMesh && !o.userData.ground) for (const mat of [m.material].flat()) (mat as THREE.MeshBasicMaterial).wireframe = true
+    })
   target.add(root)
   applyLook(target, { ...scene, background: scene.background ?? '#ffffff' }, gl)
-  const fixed = typeof view === 'object' ? view : view === 'camera' ? null : fitCamera(root, width / height, scene.camera.fov, VIEW_DIRS[view])
+  const fixed =
+    typeof view === 'object' ? view : view === 'camera' ? null : fitCamera(root, width / height, scene.camera.fov, VIEW_DIRS[view])
   return {
     canvas: gl.domElement,
     frame(t: number) {
@@ -650,7 +853,8 @@ function finishImage(canvas: HTMLCanvasElement, width: number, height: number, p
   const g = out.getContext('2d', { willReadFrequently: true })!
   g.imageSmoothingEnabled = true
   g.imageSmoothingQuality = 'high'
-  const contrast = post?.contrast ?? 1, saturation = post?.saturation ?? 1
+  const contrast = post?.contrast ?? 1,
+    saturation = post?.saturation ?? 1
   if (contrast !== 1 || saturation !== 1) g.filter = `contrast(${contrast}) saturate(${saturation})`
   g.drawImage(canvas, 0, 0, width, height)
   g.filter = 'none'
@@ -659,22 +863,33 @@ function finishImage(canvas: HTMLCanvasElement, width: number, height: number, p
     const src = g.getImageData(0, 0, width, height)
     const dst = g.createImageData(width, height)
     const d = src.data
-    for (let y = 0; y < height; y++) for (let x = 0; x < width; x++) {
-      const i = (y * width + x) * 4
-      for (let c = 0; c < 3; c++) {
-        const up = d[(Math.max(0, y - 1) * width + x) * 4 + c], dn = d[(Math.min(height - 1, y + 1) * width + x) * 4 + c]
-        const lf = d[(y * width + Math.max(0, x - 1)) * 4 + c], rt = d[(y * width + Math.min(width - 1, x + 1)) * 4 + c]
-        dst.data[i + c] = Math.max(0, Math.min(255, d[i + c] * (1 + 4 * k) - k * (up + dn + lf + rt)))
+    for (let y = 0; y < height; y++)
+      for (let x = 0; x < width; x++) {
+        const i = (y * width + x) * 4
+        for (let c = 0; c < 3; c++) {
+          const up = d[(Math.max(0, y - 1) * width + x) * 4 + c],
+            dn = d[(Math.min(height - 1, y + 1) * width + x) * 4 + c]
+          const lf = d[(y * width + Math.max(0, x - 1)) * 4 + c],
+            rt = d[(y * width + Math.min(width - 1, x + 1)) * 4 + c]
+          dst.data[i + c] = Math.max(0, Math.min(255, d[i + c] * (1 + 4 * k) - k * (up + dn + lf + rt)))
+        }
+        dst.data[i + 3] = d[i + 3]
       }
-      dst.data[i + 3] = d[i + 3]
-    }
     g.putImageData(dst, 0, 0)
   }
   return out
 }
 
 /** Renders a scene to a PNG (base64, no data: prefix) at time t, optionally from a preset view instead of the scene camera. */
-export async function renderScene(scene: Scene3D, w: number, h: number, view: SceneView | Scene3D['camera'] = 'camera', t = 0, max = 768, opts: RenderOpts = {}) {
+export async function renderScene(
+  scene: Scene3D,
+  w: number,
+  h: number,
+  view: SceneView | Scene3D['camera'] = 'camera',
+  t = 0,
+  max = 768,
+  opts: RenderOpts = {},
+) {
   const { width, height } = fitSize(w, h, max)
   const ss = Math.max(1, Math.min(3, Math.round(opts.supersample ?? 1)))
   // Supersampling stays within what a canvas can hold.
@@ -688,7 +903,14 @@ export async function renderScene(scene: Scene3D, w: number, h: number, view: Sc
 }
 
 /** One contact sheet of the scene from several angles at time t, each labelled, so a single look checks every side. */
-export async function renderViews(scene: Scene3D, w: number, h: number, views: (SceneView | { label: string; camera: Scene3D['camera'] })[], t = 0, opts: RenderOpts = {}) {
+export async function renderViews(
+  scene: Scene3D,
+  w: number,
+  h: number,
+  views: (SceneView | { label: string; camera: Scene3D['camera'] })[],
+  t = 0,
+  opts: RenderOpts = {},
+) {
   const cols = Math.min(views.length, 3)
   const rows = Math.ceil(views.length / cols)
   const cell = fitSize(w, h, 420)
@@ -702,7 +924,8 @@ export async function renderViews(scene: Scene3D, w: number, h: number, views: (
     const name = typeof entry === 'string' ? entry : entry.label
     const r = await sceneRenderer(scene, cell.width, cell.height, view, opts)
     r.frame(t)
-    const x = (i % cols) * cell.width, y = Math.floor(i / cols) * cell.height
+    const x = (i % cols) * cell.width,
+      y = Math.floor(i / cols) * cell.height
     g.drawImage(r.canvas, x, y)
     g.strokeStyle = '#0003'
     g.strokeRect(x, y, cell.width, cell.height)
@@ -729,7 +952,8 @@ export async function renderTimeline(scene: Scene3D, w: number, h: number, times
   g.font = '600 16px system-ui, sans-serif'
   times.forEach((t, i) => {
     r.frame(t)
-    const x = (i % cols) * cell.width, y = Math.floor(i / cols) * cell.height
+    const x = (i % cols) * cell.width,
+      y = Math.floor(i / cols) * cell.height
     g.drawImage(r.canvas, x, y)
     g.fillStyle = '#000a'
     g.fillRect(x + 6, y + 6, 70, 24)
@@ -742,7 +966,15 @@ export async function renderTimeline(scene: Scene3D, w: number, h: number, times
 }
 
 /** WebCodecs path: renders each frame, copies it to a 2D canvas and encodes it straight into an mp4, no real-time waiting. */
-async function encodeScene(scene: Scene3D, width: number, height: number, duration: number, fps: number, codec: VideoCodec, opts: RecordOpts) {
+async function encodeScene(
+  scene: Scene3D,
+  width: number,
+  height: number,
+  duration: number,
+  fps: number,
+  codec: VideoCodec,
+  opts: RecordOpts,
+) {
   const r = await sceneRenderer(scene, width, height, opts.view)
   // Encoding reads from a 2D canvas copy, so the shared WebGL canvas can be resized by other renders meanwhile.
   const out = document.createElement('canvas')

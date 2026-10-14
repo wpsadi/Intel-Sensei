@@ -1,5 +1,6 @@
-import { useEffect, useState } from 'react'
 import { PipetteIcon } from 'lucide-react'
+import { useState } from 'react'
+
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
@@ -10,17 +11,41 @@ import { cn } from '@/lib/utils'
 const HEX = /^#[0-9a-f]{6}$/i
 
 /** A colour swatch that opens a picker: colour area, hex field, swatches and the eyedropper. */
-export function ColorPicker({ label, value, onChange, className }: { label: string; value: string; onChange: (hex: string) => void; className?: string }) {
+export function ColorPicker({
+  label,
+  value,
+  onChange,
+  className,
+}: {
+  label: string
+  value: string
+  onChange: (hex: string) => void
+  className?: string
+}) {
   const [open, setOpen] = useState(false)
   const [draft, setDraft] = useState(value)
-  useEffect(() => setDraft(value), [value])
+  const [prevValue, setPrevValue] = useState(value)
+  if (value !== prevValue) {
+    setPrevValue(value)
+    setDraft(value)
+  }
   const commit = (hex: string) => {
     if (HEX.test(hex)) onChange(hex.toLowerCase())
     else setDraft(value)
   }
   return (
     <Popover open={open} onOpenChange={setOpen}>
-      <PopoverTrigger render={<button type="button" aria-label={label} title={label} className={cn('size-6 rounded-sm border border-border shadow-sm', className)} style={{ backgroundColor: value }} />} />
+      <PopoverTrigger
+        render={
+          <button
+            type="button"
+            aria-label={label}
+            title={label}
+            className={cn('size-6 rounded-sm border border-border shadow-sm', className)}
+            style={{ backgroundColor: value }}
+          />
+        }
+      />
       <PopoverContent side="top" className="w-60 gap-3 p-3">
         <div className="flex items-center justify-between">
           <span className="text-xs font-medium">{label}</span>

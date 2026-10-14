@@ -1,4 +1,5 @@
 import { FaXTwitter } from 'react-icons/fa6'
+
 import { type BlockDefinition, block } from '../../insert'
 
 /** Tweet block for the "/" and "+" menus. */

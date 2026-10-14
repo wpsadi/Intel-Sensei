@@ -1,6 +1,15 @@
-import { type KeyboardEvent, type ReactNode, useEffect, useRef, useState } from 'react'
 import { X } from 'lucide-react'
-import { Composer, ComposerActions, ComposerBar, ComposerSend, ComposerToolbar, ComposerVoice, ComposerVoiceButton } from '@/components/assistant-ui/elements/composer'
+import { type KeyboardEvent, type ReactNode, useEffect, useRef, useState } from 'react'
+
+import {
+  Composer,
+  ComposerActions,
+  ComposerBar,
+  ComposerSend,
+  ComposerToolbar,
+  ComposerVoice,
+  ComposerVoiceButton,
+} from '@/components/assistant-ui/elements/composer'
 import { mono } from '@/components/assistant-ui/elements/surfaces'
 import { Button } from '@/components/ui/button'
 import { ScrollArea } from '@/components/ui/scroll-area'
@@ -111,7 +120,15 @@ export function WidgetComposer({
         return
       }
     }
-    if (history?.length && !open && !event.nativeEvent.isComposing && !event.shiftKey && !event.altKey && !event.metaKey && !event.ctrlKey) {
+    if (
+      history?.length &&
+      !open &&
+      !event.nativeEvent.isComposing &&
+      !event.shiftKey &&
+      !event.altKey &&
+      !event.metaKey &&
+      !event.ctrlKey
+    ) {
       const el = event.currentTarget
       const atStart = el.selectionStart === 0 && el.selectionEnd === 0
       const atEnd = el.selectionStart === draft.length
@@ -177,7 +194,10 @@ export function WidgetComposer({
   return (
     <div className="relative">
       {open && (
-        <div className="absolute inset-x-0 bottom-full z-30 mb-1.5 overflow-hidden rounded-lg border bg-popover text-popover-foreground shadow-lg" role="listbox">
+        <div
+          className="absolute inset-x-0 bottom-full z-30 mb-1.5 overflow-hidden rounded-lg border bg-popover text-popover-foreground shadow-lg"
+          role="listbox"
+        >
           <div className="px-3 pt-2 pb-1 text-[11px] text-muted-foreground">{list!.title}</div>
           <ScrollArea className="[&>[data-slot=scroll-area-viewport]]:max-h-56">
             <div className="flex flex-col gap-0.5 p-1">
@@ -191,7 +211,10 @@ export function WidgetComposer({
                   onMouseDown={(e) => e.preventDefault()}
                   onMouseEnter={() => setActive(i)}
                   onClick={() => pick(item)}
-                  className={cn('flex items-center gap-2 rounded-md px-2.5 py-1.5 text-left text-sm', i === active && 'bg-accent text-accent-foreground')}
+                  className={cn(
+                    'flex items-center gap-2 rounded-md px-2.5 py-1.5 text-left text-sm',
+                    i === active && 'bg-accent text-accent-foreground',
+                  )}
                 >
                   {item.icon}
                   <span className="truncate font-medium">{item.label}</span>
@@ -202,37 +225,42 @@ export function WidgetComposer({
           </ScrollArea>
         </div>
       )}
-    <Composer className="max-w-none">
-      <ComposerBar>
-        <textarea
-          ref={inputRef}
-          rows={1}
-          value={draft}
-          onChange={(event) => {
-            setDraft(event.target.value)
-            setCaret(event.target.selectionStart)
-            setActive(0)
-            setDismissed(false)
-            setRecall(null)
-          }}
-          onSelect={(event) => setCaret(event.currentTarget.selectionStart)}
-          onKeyDown={onKeyDown}
-          placeholder={placeholder}
-          disabled={disabled}
-          aria-label="Message Sensei"
-          // An empty box passes Ctrl+Z to the note, so agent edits can be undone without leaving the chat.
-          data-undo-passthrough
-          className="field-sizing-content max-h-36 min-h-11 w-full resize-none bg-transparent px-3 pt-2.5 text-sm outline-none placeholder:text-muted-foreground"
-        />
-        <ComposerToolbar className="h-9 justify-end">
-          {toolbarStart}
-          <ComposerActions>
-            <ComposerVoiceButton active={false} aria-label="Start voice input" onClick={() => void startVoice()} />
-            <ComposerSend streaming={streaming} idle={!hasText && !streaming} onClick={streaming ? onStop : send} disabled={(!hasText || !!disabled) && !streaming} />
-          </ComposerActions>
-        </ComposerToolbar>
-      </ComposerBar>
-    </Composer>
+      <Composer className="max-w-none">
+        <ComposerBar>
+          <textarea
+            ref={inputRef}
+            rows={1}
+            value={draft}
+            onChange={(event) => {
+              setDraft(event.target.value)
+              setCaret(event.target.selectionStart)
+              setActive(0)
+              setDismissed(false)
+              setRecall(null)
+            }}
+            onSelect={(event) => setCaret(event.currentTarget.selectionStart)}
+            onKeyDown={onKeyDown}
+            placeholder={placeholder}
+            disabled={disabled}
+            aria-label="Message Sensei"
+            // An empty box passes Ctrl+Z to the note, so agent edits can be undone without leaving the chat.
+            data-undo-passthrough
+            className="field-sizing-content max-h-36 min-h-11 w-full resize-none bg-transparent px-3 pt-2.5 text-sm outline-none placeholder:text-muted-foreground"
+          />
+          <ComposerToolbar className="h-9 justify-end">
+            {toolbarStart}
+            <ComposerActions>
+              <ComposerVoiceButton active={false} aria-label="Start voice input" onClick={() => void startVoice()} />
+              <ComposerSend
+                streaming={streaming}
+                idle={!hasText && !streaming}
+                onClick={streaming ? onStop : send}
+                disabled={(!hasText || !!disabled) && !streaming}
+              />
+            </ComposerActions>
+          </ComposerToolbar>
+        </ComposerBar>
+      </Composer>
     </div>
   )
 }

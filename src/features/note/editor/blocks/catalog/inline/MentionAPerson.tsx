@@ -1,4 +1,5 @@
 import { AtSignIcon } from 'lucide-react'
+
 import { type BlockDefinition, chain } from '../../insert'
 
 /** Mention a person block for the "/" and "+" menus. */

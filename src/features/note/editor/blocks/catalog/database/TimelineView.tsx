@@ -1,4 +1,5 @@
 import { ChartGanttIcon } from 'lucide-react'
+
 import { type BlockDefinition, database } from '../../insert'
 
 /** Timeline view block for the "/" and "+" menus. */

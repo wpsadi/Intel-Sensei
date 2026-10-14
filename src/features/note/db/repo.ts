@@ -1,5 +1,18 @@
-import type { Chat, ChatMessage, Database, Page, ParentType, Person, PropertyDef, PropertyValue, SyncedBlock, View, ViewType, WidgetChat } from './types'
 import { getDb, notify, uid } from './idb'
+import type {
+  Chat,
+  ChatMessage,
+  Database,
+  Page,
+  ParentType,
+  Person,
+  PropertyDef,
+  PropertyValue,
+  SyncedBlock,
+  View,
+  ViewType,
+  WidgetChat,
+} from './types'
 
 export const EMPTY_DOC = JSON.stringify({ type: 'doc', content: [{ type: 'paragraph' }] })
 

@@ -1,5 +1,6 @@
 import { tool } from 'ai'
 import { z } from 'zod'
+
 import type { ChatAnswers, ChatQuestion } from '@/features/note/db/types'
 
 /** Added to the agent's instructions so it asks the user only when it cannot answer well without them. */
@@ -8,7 +9,8 @@ export const ASK_INSTRUCTIONS = `Call askUser when you need the user's choice or
 /** The tool that shows the user a questionnaire and waits for their answers. `ask` shows it and resolves once they submit. */
 export function createAskTools(ask?: (questions: ChatQuestion[]) => Promise<ChatAnswers>) {
   const askUser = tool({
-    description: 'Ask the user one or more questions in a form and wait for their answers. Use single or multiple with choices for multiple-choice questions and quizzes, and a typed kind for free answers.',
+    description:
+      'Ask the user one or more questions in a form and wait for their answers. Use single or multiple with choices for multiple-choice questions and quizzes, and a typed kind for free answers.',
     inputSchema: z.object({
       questions: z
         .array(
@@ -18,7 +20,9 @@ export function createAskTools(ask?: (questions: ChatQuestion[]) => Promise<Chat
             description: z.string().optional().describe('A short hint under the question'),
             kind: z
               .enum(['single', 'multiple', 'text', 'number', 'date', 'time', 'email', 'url'])
-              .describe('single: multiple-choice, pick one. multiple: pick any number. text: a typed answer. number, date, time, email, url: a typed answer of that kind'),
+              .describe(
+                'single: multiple-choice, pick one. multiple: pick any number. text: a typed answer. number, date, time, email, url: a typed answer of that kind',
+              ),
             choices: z
               .array(z.object({ label: z.string(), description: z.string().optional().describe('A short note under the option') }))
               .optional()

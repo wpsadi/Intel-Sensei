@@ -1,11 +1,24 @@
-import { create } from 'zustand'
 import { produce } from 'immer'
+import { create } from 'zustand'
+
 import { docsRepo, settingsRepo, uid, versionsRepo } from './db'
 import {
-  absPos, absRect, applyAutoLayout, applyConstraints, childrenOf, cloneSubtrees, createDoc, createNode, createPage, descendants,
-  isContainer, pageOf, setChildren, unionRect,
+  absPos,
+  absRect,
+  applyAutoLayout,
+  applyConstraints,
+  childrenOf,
+  cloneSubtrees,
+  createDoc,
+  createNode,
+  createPage,
+  descendants,
+  isContainer,
+  pageOf,
+  setChildren,
+  unionRect,
 } from './model'
-import type { BooleanOp, Doc, Service, NodeType, Page, SNode, Shape3D, Tool } from './types'
+import type { BooleanOp, Doc, NodeType, Page, SNode, Service, Shape3D, Tool } from './types'
 
 export const CLIENT_ID = uid()
 const CLIENT_NAME = `Guest ${CLIENT_ID.slice(0, 4)}`
@@ -26,6 +39,11 @@ export interface Peer {
   pageId: string
   selection: string[]
   seen: number
+}
+
+/** Peers that have reported within the last 15 seconds. */
+export function livePeers(peers: Record<string, Peer>, now = Date.now()) {
+  return Object.values(peers).filter((p) => now - p.seen < 15000)
 }
 
 interface S3DState {
@@ -269,7 +287,12 @@ export const useS3D = create<S3DState>()((set, get) => {
       channel?.addEventListener('message', (e: MessageEvent<CollabMessage>) => {
         const msg = e.data
         if (msg.kind === 'presence') set((s) => ({ peers: { ...s.peers, [msg.from]: msg.peer } }))
-        else if (msg.kind === 'leave') set((s) => { const peers = { ...s.peers }; delete peers[msg.from]; return { peers } })
+        else if (msg.kind === 'leave')
+          set((s) => {
+            const peers = { ...s.peers }
+            delete peers[msg.from]
+            return { peers }
+          })
         else if (msg.kind === 'doc' && msg.doc.id === get().doc.id) set({ doc: mergeDocs(get().doc, msg.doc, msg.deleted) })
       })
       window.addEventListener('beforeunload', () => channel?.postMessage({ kind: 'leave', from: CLIENT_ID }))
@@ -288,13 +311,25 @@ export const useS3D = create<S3DState>()((set, get) => {
     endGesture() {
       const base = gestureBase
       gestureBase = null
-      if (base && base !== get().doc) set((s) => ({ past: [...s.past, base].slice(-HISTORY_LIMIT), future: [], historyLabels: [...s.historyLabels, s.nextLabel ?? 'Edit'].slice(-HISTORY_LIMIT), redoLabels: [] }))
+      if (base && base !== get().doc)
+        set((s) => ({
+          past: [...s.past, base].slice(-HISTORY_LIMIT),
+          future: [],
+          historyLabels: [...s.historyLabels, s.nextLabel ?? 'Edit'].slice(-HISTORY_LIMIT),
+          redoLabels: [],
+        }))
     },
     undo() {
       const { past, doc } = get()
       const prev = past.at(-1)
       if (!prev) return
-      set((s) => ({ doc: prev, past: s.past.slice(0, -1), future: [doc, ...s.future], historyLabels: s.historyLabels.slice(0, -1), redoLabels: [s.historyLabels.at(-1) ?? 'Edit', ...s.redoLabels] }))
+      set((s) => ({
+        doc: prev,
+        past: s.past.slice(0, -1),
+        future: [doc, ...s.future],
+        historyLabels: s.historyLabels.slice(0, -1),
+        redoLabels: [s.historyLabels.at(-1) ?? 'Edit', ...s.redoLabels],
+      }))
       if (!prev.pages.some((p) => p.id === get().pageId)) set({ pageId: prev.pages[0].id })
       set((s) => ({ selection: s.selection.filter((id) => prev.nodes[id]) }))
       channel?.postMessage({ kind: 'doc', from: CLIENT_ID, doc: prev, deleted: Object.keys(doc.nodes).filter((id) => !prev.nodes[id]) })
@@ -304,7 +339,13 @@ export const useS3D = create<S3DState>()((set, get) => {
       const { future, doc } = get()
       const next = future[0]
       if (!next) return
-      set((s) => ({ doc: next, future: s.future.slice(1), past: [...s.past, doc], historyLabels: [...s.historyLabels, s.redoLabels[0] ?? 'Edit'], redoLabels: s.redoLabels.slice(1) }))
+      set((s) => ({
+        doc: next,
+        future: s.future.slice(1),
+        past: [...s.past, doc],
+        historyLabels: [...s.historyLabels, s.redoLabels[0] ?? 'Edit'],
+        redoLabels: s.redoLabels.slice(1),
+      }))
       if (!next.pages.some((p) => p.id === get().pageId)) set({ pageId: next.pages[0].id })
       channel?.postMessage({ kind: 'doc', from: CLIENT_ID, doc: next, deleted: Object.keys(doc.nodes).filter((id) => !next.nodes[id]) })
       scheduleSave()
@@ -320,7 +361,17 @@ export const useS3D = create<S3DState>()((set, get) => {
     },
     async loadDoc(doc) {
       if (get().saving !== 'saved' && get().ready) await get().saveNow()
-      set({ doc, pageId: doc.pages[0].id, selection: [], past: [], future: [], historyLabels: [], redoLabels: [], camera: { x: 0, y: 0, zoom: 1 }, editingTextId: null })
+      set({
+        doc,
+        pageId: doc.pages[0].id,
+        selection: [],
+        past: [],
+        future: [],
+        historyLabels: [],
+        redoLabels: [],
+        camera: { x: 0, y: 0, zoom: 1 },
+        editingTextId: null,
+      })
       await settingsRepo.set(lastDocKey(get().service), doc.id)
       set({ docs: (await serviceDocs(get().service)).map(({ id, name, updatedAt }) => ({ id, name, updatedAt })) })
       requestAnimationFrame(() => get().zoomToFit())
@@ -442,7 +493,11 @@ export const useS3D = create<S3DState>()((set, get) => {
         for (const id of ids) {
           const n = d.nodes[id]
           if (!n) continue
-          setChildren(d, n.parentId, childrenOf(d, n.parentId).filter((c) => c !== id))
+          setChildren(
+            d,
+            n.parentId,
+            childrenOf(d, n.parentId).filter((c) => c !== id),
+          )
           for (const nid of [id, ...descendants(d, id)]) delete d.nodes[nid]
         }
       })
@@ -475,7 +530,11 @@ export const useS3D = create<S3DState>()((set, get) => {
       get().mutate((d) => {
         const n = d.nodes[id]
         const abs = absPos(d, id)
-        setChildren(d, n.parentId, childrenOf(d, n.parentId).filter((c) => c !== id))
+        setChildren(
+          d,
+          n.parentId,
+          childrenOf(d, n.parentId).filter((c) => c !== id),
+        )
         const kids = [...childrenOf(d, parentId)]
         kids.splice(Math.max(0, Math.min(index, kids.length)), 0, id)
         setChildren(d, parentId, kids)
@@ -496,7 +555,15 @@ export const useS3D = create<S3DState>()((set, get) => {
       if (!ordered.length) return
       const box = unionRect(ordered.map((id) => absRect(doc, id)))!
       const pAbs = doc.nodes[parent] ? absPos(doc, parent) : { x: 0, y: 0 }
-      const g = createNode(type, parent, { x: box.x - pAbs.x, y: box.y - pAbs.y, w: box.w, h: box.h, children: ordered, booleanOp: op, ...(type === 'frame' ? { fills: [] } : {}) })
+      const g = createNode(type, parent, {
+        x: box.x - pAbs.x,
+        y: box.y - pAbs.y,
+        w: box.w,
+        h: box.h,
+        children: ordered,
+        booleanOp: op,
+        ...(type === 'frame' ? { fills: [] } : {}),
+      })
       if (type === 'boolean') g.name = op[0].toUpperCase() + op.slice(1)
       get().mutate((d) => {
         d.nodes[g.id] = g
@@ -544,7 +611,8 @@ export const useS3D = create<S3DState>()((set, get) => {
           const kids = [...childrenOf(d, n.parentId)]
           const i = kids.indexOf(id)
           kids.splice(i, 1)
-          const to = dir === 'front' ? kids.length : dir === 'back' ? 0 : dir === 'forward' ? Math.min(kids.length, i + 1) : Math.max(0, i - 1)
+          const to =
+            dir === 'front' ? kids.length : dir === 'back' ? 0 : dir === 'forward' ? Math.min(kids.length, i + 1) : Math.max(0, i - 1)
           kids.splice(to, 0, id)
           setChildren(d, n.parentId, kids)
         }
@@ -589,7 +657,9 @@ export const useS3D = create<S3DState>()((set, get) => {
     flip(axis) {
       get().updateNodes(get().selection, (n) => {
         if (n.type === 'vector') {
-          n.path = n.path.replace(/(-?\d*\.?\d+),(-?\d*\.?\d+)/g, (_, x, y) => (axis === 'h' ? `${(n.w - Number(x)).toFixed(2)},${y}` : `${x},${(n.h - Number(y)).toFixed(2)}`))
+          n.path = n.path.replace(/(-?\d*\.?\d+),(-?\d*\.?\d+)/g, (_, x, y) =>
+            axis === 'h' ? `${(n.w - Number(x)).toFixed(2)},${y}` : `${x},${(n.h - Number(y)).toFixed(2)}`,
+          )
         } else n.rotation = axis === 'h' ? -n.rotation : 180 - n.rotation
       })
     },
@@ -661,7 +731,11 @@ export const useS3D = create<S3DState>()((set, get) => {
 
 export function broadcastPresence(x: number, y: number) {
   const { pageId, selection } = useS3D.getState()
-  channel?.postMessage({ kind: 'presence', from: CLIENT_ID, peer: { id: CLIENT_ID, name: CLIENT_NAME, color: myColor, x, y, pageId, selection, seen: Date.now() } } satisfies CollabMessage)
+  channel?.postMessage({
+    kind: 'presence',
+    from: CLIENT_ID,
+    peer: { id: CLIENT_ID, name: CLIENT_NAME, color: myColor, x, y, pageId, selection, seen: Date.now() },
+  } satisfies CollabMessage)
 }
 
 export const currentPage = (s: Pick<S3DState, 'doc' | 'pageId'>) => s.doc.pages.find((p) => p.id === s.pageId) ?? s.doc.pages[0]

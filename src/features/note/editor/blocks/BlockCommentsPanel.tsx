@@ -1,8 +1,10 @@
-import { SendIcon, Trash2Icon } from 'lucide-react'
 import type { Editor } from '@tiptap/react'
+import { SendIcon, Trash2Icon } from 'lucide-react'
 import { useRef, useState } from 'react'
+
 import { ScrollArea } from '@/components/ui/scroll-area'
-import { useCloseOnOutsidePress } from '../nodes/helpers'
+
+import { useCloseOnOutsidePress } from '../nodes/block-utils'
 import { type BlockComment, commentsOf } from './comments'
 
 interface BlockCommentsPanelProps {

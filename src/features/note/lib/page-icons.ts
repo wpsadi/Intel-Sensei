@@ -23,6 +23,7 @@ import {
   HomeIcon,
   LeafIcon,
   LightbulbIcon,
+  type LucideIcon,
   MailIcon,
   MapIcon,
   MoonIcon,
@@ -40,7 +41,6 @@ import {
   WalletIcon,
   WrenchIcon,
   ZapIcon,
-  type LucideIcon,
 } from 'lucide-react'
 
 /** Icons a page can use besides emoji. Keys are stored in the page, so renaming one breaks existing pages. */

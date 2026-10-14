@@ -1,4 +1,5 @@
 import { AlertCircle, Globe, Search } from 'lucide-react'
+
 import {
   ChainOfThought,
   ChainOfThoughtContent,
@@ -18,7 +19,15 @@ const hostOf = (url: string) => {
 }
 
 /** The web searches behind a reply, shown as steps with the sites each one found. Open while a search runs. `className` and `defaultOpen` let a compact host (the S-Note widget) drop the margin and keep it closed. */
-export function ChatSearches({ searches, className = 'mb-3', defaultOpen }: { searches: ChatSearch[]; className?: string; defaultOpen?: boolean }) {
+export function ChatSearches({
+  searches,
+  className = 'mb-3',
+  defaultOpen,
+}: {
+  searches: ChatSearch[]
+  className?: string
+  defaultOpen?: boolean
+}) {
   const running = searches.some((search) => search.status === 'running')
   return (
     <ChainOfThought defaultOpen={defaultOpen ?? running} className={className}>
@@ -31,7 +40,9 @@ export function ChatSearches({ searches, className = 'mb-3', defaultOpen }: { se
             key={index}
             icon={search.status === 'failed' ? AlertCircle : Search}
             label={search.query}
-            description={search.status === 'running' ? 'Searching…' : search.status === 'failed' ? (search.error ?? 'Search failed') : undefined}
+            description={
+              search.status === 'running' ? 'Searching…' : search.status === 'failed' ? (search.error ?? 'Search failed') : undefined
+            }
             status={search.status === 'running' ? 'active' : 'complete'}
           >
             {!!search.sources?.length && (

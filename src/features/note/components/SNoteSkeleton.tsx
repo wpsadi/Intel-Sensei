@@ -2,8 +2,14 @@ import { Skeleton } from '@/components/ui/skeleton'
 
 /** Indent and width of each row in the page list, so it reads like a tree of pages. */
 const ROWS = [
-  { depth: 0, width: 'w-28' }, { depth: 1, width: 'w-36' }, { depth: 1, width: 'w-24' }, { depth: 2, width: 'w-32' },
-  { depth: 0, width: 'w-40' }, { depth: 0, width: 'w-20' }, { depth: 1, width: 'w-28' }, { depth: 0, width: 'w-32' },
+  { depth: 0, width: 'w-28' },
+  { depth: 1, width: 'w-36' },
+  { depth: 1, width: 'w-24' },
+  { depth: 2, width: 'w-32' },
+  { depth: 0, width: 'w-40' },
+  { depth: 0, width: 'w-20' },
+  { depth: 1, width: 'w-28' },
+  { depth: 0, width: 'w-32' },
 ]
 
 /** Placeholder with the S-Note layout (page list, header and an editor page) while the notes load. */

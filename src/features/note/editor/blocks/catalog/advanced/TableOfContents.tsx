@@ -1,4 +1,5 @@
 import { TableOfContentsIcon } from 'lucide-react'
+
 import { type BlockDefinition, block } from '../../insert'
 
 /** Table of contents block for the "/" and "+" menus. */

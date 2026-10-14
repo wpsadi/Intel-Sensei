@@ -1,8 +1,10 @@
 import type { Editor } from '@tiptap/react'
 import { useMemo, useRef, useState } from 'react'
-import { useCloseOnOutsidePress } from '../nodes/helpers'
+
+import { type MenuItem, rankMatches, useMenuKeys } from '../menu-items'
+import { MenuList } from '../MenuList'
+import { useCloseOnOutsidePress } from '../nodes/block-utils'
 import { COMMANDS } from '../slash-commands'
-import { type MenuItem, MenuList, rankMatches, useMenuKeys } from '../suggestion-menu'
 
 interface BlockInsertMenuProps {
   editor: Editor

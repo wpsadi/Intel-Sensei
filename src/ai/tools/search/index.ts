@@ -1,5 +1,6 @@
 import { tool } from 'ai'
 import { z } from 'zod'
+
 import { FIRECRAWL_KEY } from '@/ai/utils/firecrawl-key'
 import type { ChatSearch } from '@/features/note/db/types'
 
@@ -41,7 +42,9 @@ export async function searchWeb(query: string, abortSignal?: AbortSignal): Promi
 
 /** Replaces the search with the same id, or adds it at the end. */
 export function upsertSearch(searches: ChatSearch[], search: ChatSearch) {
-  return searches.some((item) => item.id === search.id) ? searches.map((item) => (item.id === search.id ? search : item)) : [...searches, search]
+  return searches.some((item) => item.id === search.id)
+    ? searches.map((item) => (item.id === search.id ? search : item))
+    : [...searches, search]
 }
 
 /**

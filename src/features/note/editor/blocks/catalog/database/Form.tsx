@@ -1,4 +1,5 @@
 import { ClipboardListIcon } from 'lucide-react'
+
 import { type BlockDefinition, database } from '../../insert'
 
 /** Form block for the "/" and "+" menus. */

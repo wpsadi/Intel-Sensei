@@ -1,8 +1,9 @@
-import { openNewMath } from '../math-editor'
 import { type Editor, type Range } from '@tiptap/core'
-import type { MenuItem } from '../suggestion-menu'
+
 import type { ViewType } from '../../db/types'
 import { useNoteStore } from '../../note.store'
+import { openNewMath } from '../math-editor'
+import type { MenuItem } from '../menu-items'
 
 /** Host page id is stored on the editor so commands can create children of it. */
 export const hostPageId = (editor: Editor) => (editor.storage as unknown as { snote: { pageId: string } }).snote.pageId

@@ -1,7 +1,7 @@
-"use client"
+'use client'
 
-import { Link } from "react-router-dom"
-import React from "react"
+import React from 'react'
+import { Link } from 'react-router-dom'
 
 import {
   SidebarGroup,
@@ -10,7 +10,7 @@ import {
   SidebarMenuBadge,
   SidebarMenuButton,
   SidebarMenuItem,
-} from "@/components/ui/sidebar"
+} from '@/components/ui/sidebar'
 
 export function NavSecondary({
   items,

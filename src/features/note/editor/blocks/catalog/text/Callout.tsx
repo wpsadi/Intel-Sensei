@@ -1,4 +1,5 @@
 import { LightbulbIcon } from 'lucide-react'
+
 import { type BlockDefinition, chain } from '../../insert'
 
 /** Callout block for the "/" and "+" menus. */

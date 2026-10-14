@@ -1,5 +1,6 @@
-import { pagesRepo, settingsRepo } from '../db/repo'
 import { toast } from 'sonner'
+
+import { pagesRepo, settingsRepo } from '../db/repo'
 import { useNoteStore } from '../note.store'
 
 const SEEDED = 'seeded'
@@ -29,7 +30,11 @@ async function seedWorkspace() {
     content: JSON.stringify({
       type: 'doc',
       content: [
-        { type: 'callout', attrs: { icon: '💡', color: 'blue' }, content: [paragraph('Everything here is stored in your browser. Text lives in IndexedDB, media in the Cache Storage bucket.')] },
+        {
+          type: 'callout',
+          attrs: { icon: '💡', color: 'blue' },
+          content: [paragraph('Everything here is stored in your browser. Text lives in IndexedDB, media in the Cache Storage bucket.')],
+        },
         { type: 'heading', attrs: { level: 2 }, content: [text('Try it out')] },
         {
           type: 'taskList',

@@ -2,7 +2,10 @@ import { Skeleton } from '@/components/ui/skeleton'
 import { cn } from '@/lib/utils'
 
 /** Dots behind the S-Design canvas, the same grid the editor draws while the document loads. */
-const GRID = { backgroundImage: 'radial-gradient(color-mix(in oklab, var(--foreground) 12%, transparent) 1px, transparent 1px)', backgroundSize: '16px 16px' }
+const GRID = {
+  backgroundImage: 'radial-gradient(color-mix(in oklab, var(--foreground) 12%, transparent) 1px, transparent 1px)',
+  backgroundSize: '16px 16px',
+}
 
 /**
  * Placeholder for the centre of S-Design or S3D while the document loads. It matches the editor it stands in for: a
@@ -11,7 +14,12 @@ const GRID = { backgroundImage: 'radial-gradient(color-mix(in oklab, var(--foreg
  */
 export function CanvasSkeleton({ variant }: { variant: 'design' | '3d' }) {
   return (
-    <div role="status" aria-label={variant === '3d' ? 'Loading S3D' : 'Loading S-Design'} className="relative flex min-h-0 flex-1 overflow-hidden bg-muted/30" style={GRID}>
+    <div
+      role="status"
+      aria-label={variant === '3d' ? 'Loading S3D' : 'Loading S-Design'}
+      className="relative flex min-h-0 flex-1 overflow-hidden bg-muted/30"
+      style={GRID}
+    >
       {variant === 'design' ? (
         <div className="absolute left-1/2 top-1/2 flex h-[62%] w-[min(70%,44rem)] -translate-x-1/2 -translate-y-1/2 flex-col gap-4 rounded-md border bg-card p-6 shadow-sm">
           <Skeleton className="h-8 w-1/3" />
@@ -33,7 +41,12 @@ export function CanvasSkeleton({ variant }: { variant: 'design' | '3d' }) {
         </div>
       )}
       <div className="pointer-events-none absolute inset-x-0 bottom-4 flex justify-center">
-        <div className={cn('flex items-center gap-1 rounded-xl border bg-background/80 p-1 shadow-sm backdrop-blur', variant === '3d' ? 'w-[min(92%,30rem)]' : 'w-[min(92%,34rem)]')}>
+        <div
+          className={cn(
+            'flex items-center gap-1 rounded-xl border bg-background/80 p-1 shadow-sm backdrop-blur',
+            variant === '3d' ? 'w-[min(92%,30rem)]' : 'w-[min(92%,34rem)]',
+          )}
+        >
           {Array.from({ length: variant === '3d' ? 9 : 13 }, (_, i) => (
             <Skeleton key={i} className="size-7 shrink-0 rounded-md" />
           ))}

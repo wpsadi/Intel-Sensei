@@ -46,4 +46,5 @@ export function inlineMarkdown(text: string): InlineNode[] {
   return out
 }
 
-const decode = (s: string) => s.replace(/&(amp|lt|gt|quot|#39);/g, (_, e: string) => ({ amp: '&', lt: '<', gt: '>', quot: '"', '#39': "'" })[e]!)
+const decode = (s: string) =>
+  s.replace(/&(amp|lt|gt|quot|#39);/g, (_, e: string) => ({ amp: '&', lt: '<', gt: '>', quot: '"', '#39': "'" })[e]!)

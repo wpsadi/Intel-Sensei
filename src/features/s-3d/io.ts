@@ -1,13 +1,14 @@
 import { toast } from 'sonner'
+
+import { convertModel, isConvertible } from './convert'
 import { uid } from './db'
 import { downloadBlob, fileDataUrl, isFileRef, kindOf, pickFiles, readFile, resolveFile, storeFile } from './files'
-import { containerAt, useS3D } from './store'
 import { absPos } from './model'
 import { modelScene, sceneOf } from './render/scene3d'
 import { openSceneEditor } from './scene-editor/edit'
+import { containerAt, useS3D } from './store'
 import type { Doc } from './types'
 import { modelsFromZip } from './zip'
-import { convertModel, isConvertible } from './convert'
 
 const s = () => useS3D.getState()
 
@@ -79,7 +80,18 @@ export async function addFilesToCanvas(input: File[], at?: { x: number; y: numbe
         h = 600
       }
       const type = kind === 'model' ? 'shape3d' : kind === 'video' ? 'video' : 'image'
-      const node = s().addNode(type, { name, ...(kind === 'model' ? { scene: modelScene(ref, name) } : { src: ref }), x: point.x - pAbs.x - w / 2 + offset, y: point.y - pAbs.y - h / 2 + offset, w, h }, parent)
+      const node = s().addNode(
+        type,
+        {
+          name,
+          ...(kind === 'model' ? { scene: modelScene(ref, name) } : { src: ref }),
+          x: point.x - pAbs.x - w / 2 + offset,
+          y: point.y - pAbs.y - h / 2 + offset,
+          w,
+          h,
+        },
+        parent,
+      )
       created.push(node.id)
       offset += 24
     } catch (error) {
@@ -109,7 +121,10 @@ export async function exportProject(doc: Doc = s().doc) {
   scan(doc)
   const files: Record<string, string> = {}
   for (const ref of refs) files[ref] = await fileDataUrl(ref)
-  downloadBlob(new Blob([JSON.stringify({ format: 's3d', version: 1, doc, files })], { type: 'application/json' }), `${doc.name || 'Untitled'}.s3d`)
+  downloadBlob(
+    new Blob([JSON.stringify({ format: 's3d', version: 1, doc, files })], { type: 'application/json' }),
+    `${doc.name || 'Untitled'}.s3d`,
+  )
 }
 
 export async function openProjectFile(file: File) {
@@ -176,7 +191,17 @@ export async function importRemoteModel(url: string, title: string, sceneId?: st
       if (!n.scene) n.scene = sceneOf(n)
       n.type = 'shape3d'
       const xs = n.scene.objects.filter((o) => !o.parent && o.kind !== 'light').length
-      n.scene.objects.push({ id, name, kind: 'model', parent: null, src: ref, position: [xs * 1.8, 0, 0], rotation: [0, 0, 0], scale: [1.5, 1.5, 1.5], visible: true })
+      n.scene.objects.push({
+        id,
+        name,
+        kind: 'model',
+        parent: null,
+        src: ref,
+        position: [xs * 1.8, 0, 0],
+        rotation: [0, 0, 0],
+        scale: [1.5, 1.5, 1.5],
+        visible: true,
+      })
     })
     toast.success(`Added ${name}`)
     return { sceneId: target.id, objectId: id }

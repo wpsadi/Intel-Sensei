@@ -1,12 +1,13 @@
+import { Center, OrbitControls, useGLTF } from '@react-three/drei'
+import { Canvas, useFrame, useThree } from '@react-three/fiber'
 import { Component, Suspense, useEffect, useRef, useState } from 'react'
 import type { ReactNode } from 'react'
-import { Canvas, useFrame, useThree } from '@react-three/fiber'
-import { Center, OrbitControls, useGLTF } from '@react-three/drei'
 import * as THREE from 'three'
 import type { Group } from 'three'
+
 import type { Scene3D, Shape3D } from '../types'
-import { useFileUrl } from './use-file-url'
 import { animate, applyLook, buildScene, cameraAt, disposeTree, sceneDuration } from './scene3d'
+import { useFileUrl } from './use-file-url'
 
 function Primitive({ kind, color }: { kind: Shape3D; color: string }) {
   return (
@@ -61,6 +62,7 @@ function SceneContent({ scene, play, interactive }: { scene: Scene3D; play: bool
     applyLook(target, scene, gl)
     const cam = camera as THREE.PerspectiveCamera
     cam.position.set(...scene.camera.position)
+    // oxlint-disable-next-line react/immutability -- the Three.js camera from useThree is meant to be mutated imperatively
     cam.fov = scene.camera.fov
     cam.lookAt(...scene.camera.target)
     cam.updateProjectionMatrix()
@@ -75,6 +77,7 @@ function SceneContent({ scene, play, interactive }: { scene: Scene3D; play: bool
       const c = cameraAt(scene, t.current)
       const cam = camera as THREE.PerspectiveCamera
       cam.position.set(...c.position)
+      // oxlint-disable-next-line react/immutability -- per-frame camera animation in useFrame mutates the Three.js camera by design
       cam.fov = c.fov
       cam.lookAt(...c.target)
       cam.updateProjectionMatrix()
@@ -91,8 +94,23 @@ function SceneContent({ scene, play, interactive }: { scene: Scene3D; play: bool
 /** Shown when WebGL is unavailable or the browser ran out of contexts, so one 3D node never takes the editor down. */
 function Fallback({ kind, color, label }: { kind: string; color: string; label: string }) {
   return (
-    <div style={{ position: 'absolute', inset: 0, display: 'grid', placeItems: 'center', background: `radial-gradient(circle at 35% 30%, #fff8, transparent 40%), ${color}22`, borderRadius: 12, color: '#666', fontSize: 11, textAlign: 'center' }}>
-      <div><div style={{ fontSize: 28, lineHeight: 1 }}>{kind === 'sphere' ? '●' : kind === 'torus' || kind === 'torusKnot' ? '◎' : '■'}</div>{label}</div>
+    <div
+      style={{
+        position: 'absolute',
+        inset: 0,
+        display: 'grid',
+        placeItems: 'center',
+        background: `radial-gradient(circle at 35% 30%, #fff8, transparent 40%), ${color}22`,
+        borderRadius: 12,
+        color: '#666',
+        fontSize: 11,
+        textAlign: 'center',
+      }}
+    >
+      <div>
+        <div style={{ fontSize: 28, lineHeight: 1 }}>{kind === 'sphere' ? '●' : kind === 'torus' || kind === 'torusKnot' ? '◎' : '■'}</div>
+        {label}
+      </div>
     </div>
   )
 }
@@ -129,9 +147,27 @@ function hasWebGL() {
  * One 3D object inside a canvas node. Orbiting is only enabled when `interactive` so dragging the node on the
  * design canvas still moves it.
  */
-export default function ThreeView({ kind, color, src, interactive, spin, rotation, scene }: { kind: Shape3D; color: string; src?: string; interactive: boolean; spin: boolean; rotation: number; scene?: Scene3D }) {
+export default function ThreeView({
+  kind,
+  color,
+  src,
+  interactive,
+  spin,
+  rotation,
+  scene,
+}: {
+  kind: Shape3D
+  color: string
+  src?: string
+  interactive: boolean
+  spin: boolean
+  rotation: number
+  scene?: Scene3D
+}) {
   const url = useFileUrl(src ?? '')
-  const fallback = <Fallback kind={scene ? 'scene' : src ? 'model' : kind} color={color} label={scene ? '3D scene' : src ? '3D model' : kind} />
+  const fallback = (
+    <Fallback kind={scene ? 'scene' : src ? 'model' : kind} color={color} label={scene ? '3D scene' : src ? '3D model' : kind} />
+  )
   if (!hasWebGL()) return fallback
   if (scene)
     return (
@@ -151,9 +187,15 @@ export default function ThreeView({ kind, color, src, interactive, spin, rotatio
     )
   return (
     <GLBoundary fallback={fallback}>
-      <Canvas resize={{ offsetSize: true }} camera={{ position: [2.6, 2, 2.6], fov: 45 }} gl={{ preserveDrawingBuffer: true, alpha: true }} style={{ pointerEvents: interactive ? 'auto' : 'none' }} dpr={[1, 2]}>
+      <Canvas
+        resize={{ offsetSize: true }}
+        camera={{ position: [2.6, 2, 2.6], fov: 45 }}
+        gl={{ preserveDrawingBuffer: true, alpha: true }}
+        style={{ pointerEvents: interactive ? 'auto' : 'none' }}
+        dpr={[1, 2]}
+      >
         <ambientLight intensity={0.7} />
-        <hemisphereLight args={["#ffffff", "#444455", 0.8]} />
+        <hemisphereLight args={['#ffffff', '#444455', 0.8]} />
         <directionalLight position={[4, 6, 4]} intensity={1.4} />
         <Suspense fallback={null}>
           <group rotation={[0, (rotation * Math.PI) / 180, 0]}>

@@ -2,21 +2,42 @@
 import { render } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+
 import type { Page } from '../db/types'
 import { useNoteStore } from '../note.store'
-import { NoteTools } from './NoteTools'
 import { NOTE_TOOLS } from './note-tools'
+import { NoteTools } from './NoteTools'
 
 // The editor extensions pull in Mermaid and KaTeX; these tests only touch plain text.
 vi.mock('./content', () => ({ docToText: (content: string) => (content.startsWith('{') ? 'Discussed the launch plan' : content) }))
 vi.mock('./markdown', () => ({ writeContent: () => JSON.stringify({ type: 'doc' }) }))
 
 const page = (id: string, title: string, extra: Partial<Page> = {}): Page => ({
-  id, parentId: null, parentType: 'workspace', kind: 'page', title, icon: '', cover: '', content: '', properties: {},
-  favorite: false, trashed: false, font: 'default', smallText: false, fullWidth: false, locked: false, order: 0, createdAt: 0, updatedAt: 0, ...extra,
+  id,
+  parentId: null,
+  parentType: 'workspace',
+  kind: 'page',
+  title,
+  icon: '',
+  cover: '',
+  content: '',
+  properties: {},
+  favorite: false,
+  trashed: false,
+  font: 'default',
+  smallText: false,
+  fullWidth: false,
+  locked: false,
+  order: 0,
+  createdAt: 0,
+  updatedAt: 0,
+  ...extra,
 })
 
-type Tool = { name: string; execute: (args: unknown, options: { signal: AbortSignal }) => Promise<{ content: { text: string }[]; isError?: boolean }> }
+type Tool = {
+  name: string
+  execute: (args: unknown, options: { signal: AbortSignal }) => Promise<{ content: { text: string }[]; isError?: boolean }>
+}
 const registerTool = () => (document as unknown as { modelContext: { registerTool: ReturnType<typeof vi.fn> } }).modelContext.registerTool
 const tools = () => new Map(registerTool().mock.calls.map(([tool]) => [(tool as Tool).name, tool as Tool]))
 const call = (name: string, args: unknown) => tools().get(name)!.execute(args, { signal: new AbortController().signal })
@@ -47,7 +68,11 @@ describe('S-Note WebMCP tools', () => {
   })
 
   it('registers every tool within the WebMCP budgets', () => {
-    render(<MemoryRouter><Harness /></MemoryRouter>)
+    render(
+      <MemoryRouter>
+        <Harness />
+      </MemoryRouter>,
+    )
     expect([...tools().keys()].sort()).toEqual(NOTE_TOOLS.map((t) => t.name).sort())
     for (const tool of NOTE_TOOLS) {
       expect(tool.name.length).toBeLessThanOrEqual(30)
@@ -56,7 +81,11 @@ describe('S-Note WebMCP tools', () => {
   })
 
   it('finds notes by their text and returns pagination fields', async () => {
-    render(<MemoryRouter><Harness /></MemoryRouter>)
+    render(
+      <MemoryRouter>
+        <Harness />
+      </MemoryRouter>,
+    )
     const result = await call('search_notes', { query: 'launch' })
     const body = JSON.parse(result.content[0].text)
     expect(body).toMatchObject({ total_count: 1, page: 1, page_size: 10 })
@@ -64,7 +93,11 @@ describe('S-Note WebMCP tools', () => {
   })
 
   it('requires a read before writing the body of a closed note', async () => {
-    render(<MemoryRouter><Harness /></MemoryRouter>)
+    render(
+      <MemoryRouter>
+        <Harness />
+      </MemoryRouter>,
+    )
     const unread = await call('edit_note', { note: 'Meeting notes', content: '- follow up' })
     expect(unread.content[0].text).toMatch(/Read "Meeting notes" first/)
 
@@ -75,14 +108,22 @@ describe('S-Note WebMCP tools', () => {
   })
 
   it('refuses to edit a locked note', async () => {
-    render(<MemoryRouter><Harness /></MemoryRouter>)
+    render(
+      <MemoryRouter>
+        <Harness />
+      </MemoryRouter>,
+    )
     const result = await call('edit_note', { note: 'Locked plan', content: 'x' })
     expect(result.isError).toBe(true)
     expect(result.content[0].text).toMatch(/locked/)
   })
 
   it('only erases notes that are already in the trash', async () => {
-    render(<MemoryRouter><Harness /></MemoryRouter>)
+    render(
+      <MemoryRouter>
+        <Harness />
+      </MemoryRouter>,
+    )
     const live = await call('delete_notes_forever', { notes: ['Meeting notes'] })
     expect(live.isError).toBe(true)
     expect(live.content[0].text).toMatch(/search_notes with in_trash/)
@@ -92,7 +133,11 @@ describe('S-Note WebMCP tools', () => {
   })
 
   it('cannot rewrite a whole note without the explicit flag', async () => {
-    render(<MemoryRouter><Harness /></MemoryRouter>)
+    render(
+      <MemoryRouter>
+        <Harness />
+      </MemoryRouter>,
+    )
     await call('read_note', { note: 'Meeting notes' })
     const result = await call('edit_note', { note: 'Meeting notes', content: 'x', mode: 'replace' })
     expect(result.isError).toBe(true)
@@ -100,7 +145,11 @@ describe('S-Note WebMCP tools', () => {
   })
 
   it('reports invalid input as an actionable error', async () => {
-    render(<MemoryRouter><Harness /></MemoryRouter>)
+    render(
+      <MemoryRouter>
+        <Harness />
+      </MemoryRouter>,
+    )
     const result = await call('trash_notes', { notes: [] })
     expect(result.isError).toBe(true)
     expect(result.content[0].text).toMatch(/^Invalid input: notes/)
@@ -114,15 +163,35 @@ describe('S-Note WebMCP tools', () => {
     }
 
     it('lists a new sub-note in its parent as a page block, like the editor does', async () => {
-      render(<MemoryRouter><Harness /></MemoryRouter>)
+      render(
+        <MemoryRouter>
+          <Harness />
+        </MemoryRouter>,
+      )
       await create('Meeting notes')
       const update = useNoteStore.getState().updatePage as ReturnType<typeof vi.fn>
-      expect(update).toHaveBeenCalledWith('a', { content: JSON.stringify({ type: 'doc', content: [{ type: 'pageBlock', attrs: { pageId: 'new' } }] }) })
+      expect(update).toHaveBeenCalledWith('a', {
+        content: JSON.stringify({ type: 'doc', content: [{ type: 'pageBlock', attrs: { pageId: 'new' } }] }),
+      })
     })
 
     it('keeps a trailing empty paragraph last', async () => {
-      useNoteStore.setState({ pages: { ...useNoteStore.getState().pages, a: page('a', 'Meeting notes', { content: JSON.stringify({ type: 'doc', content: [{ type: 'paragraph', content: [{ type: 'text', text: 'Hi' }] }, { type: 'paragraph' }] }) }) } })
-      render(<MemoryRouter><Harness /></MemoryRouter>)
+      useNoteStore.setState({
+        pages: {
+          ...useNoteStore.getState().pages,
+          a: page('a', 'Meeting notes', {
+            content: JSON.stringify({
+              type: 'doc',
+              content: [{ type: 'paragraph', content: [{ type: 'text', text: 'Hi' }] }, { type: 'paragraph' }],
+            }),
+          }),
+        },
+      })
+      render(
+        <MemoryRouter>
+          <Harness />
+        </MemoryRouter>,
+      )
       await create('Meeting notes')
       const update = useNoteStore.getState().updatePage as ReturnType<typeof vi.fn>
       const doc = JSON.parse(update.mock.calls[0][1].content)
@@ -130,14 +199,22 @@ describe('S-Note WebMCP tools', () => {
     })
 
     it('leaves a locked parent alone and says so', async () => {
-      render(<MemoryRouter><Harness /></MemoryRouter>)
+      render(
+        <MemoryRouter>
+          <Harness />
+        </MemoryRouter>,
+      )
       const result = await create('Locked plan')
       expect(useNoteStore.getState().updatePage).not.toHaveBeenCalled()
       expect(result.content[0].text).toContain('is locked')
     })
 
     it('adds nothing for a top-level note', async () => {
-      render(<MemoryRouter><Harness /></MemoryRouter>)
+      render(
+        <MemoryRouter>
+          <Harness />
+        </MemoryRouter>,
+      )
       const createPage = vi.fn().mockResolvedValue(page('top', 'Top'))
       useNoteStore.setState({ createPage })
       await call('create_note', { title: 'Top', open: false })

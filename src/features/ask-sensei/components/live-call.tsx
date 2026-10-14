@@ -1,29 +1,31 @@
 import { useEffect, useRef, useState } from 'react'
 import { toast } from 'sonner'
-import { useAskSenseiStore } from '@/features/ask-sensei/ask-sensei.store'
-import { uid } from '@/features/note/db/idb'
+
 import { type CallToolEvent, LiveCall } from '@/ai/inference/call'
 import {
+  MEMORY_INSTRUCTIONS,
+  SCRATCHPAD_INSTRUCTIONS,
+  type Scratchpad,
   createMemoryTool,
   createScratchpad,
   createScratchpadTool,
   disposeScratchpad,
   episodicMemory,
-  MEMORY_INSTRUCTIONS,
   memoryPrompt,
-  type Scratchpad,
-  SCRATCHPAD_INSTRUCTIONS,
 } from '@/ai/memory'
+import { DEEP_ANSWER_INSTRUCTIONS, createDeepAnswerTool } from '@/ai/tools/deep-answer'
+import { PLAN_INSTRUCTIONS, createPlanTools } from '@/ai/tools/plan'
 import { createSearchTool, upsertSearch } from '@/ai/tools/search'
-import { createDeepAnswerTool, DEEP_ANSWER_INSTRUCTIONS } from '@/ai/tools/deep-answer'
-import { createPlanTools, PLAN_INSTRUCTIONS } from '@/ai/tools/plan'
-import { createTodoTools, TODO_INSTRUCTIONS } from '@/ai/tools/todo'
+import { TODO_INSTRUCTIONS, createTodoTools } from '@/ai/tools/todo'
 import { currentTodos, messageText } from '@/ai/utils/messages'
 import { describeToolCall } from '@/ai/utils/tool-steps'
+import { useAskSenseiStore } from '@/features/ask-sensei/ask-sensei.store'
+import { uid } from '@/features/note/db/idb'
 import type { ChatPart, ChatTodoList } from '@/features/note/db/types'
 
 /** Replaces the item with the same id, or adds it at the end. */
-const upsertById = <T extends { id: string }>(items: T[], item: T) => (items.some((other) => other.id === item.id) ? items.map((other) => (other.id === item.id ? item : other)) : [...items, item])
+const upsertById = <T extends { id: string }>(items: T[], item: T) =>
+  items.some((other) => other.id === item.id) ? items.map((other) => (other.id === item.id ? item : other)) : [...items, item]
 
 /** idle: no call. connecting: mic and Gemini Live are being set up. live: talking with Sensei. */
 export type CallState = 'idle' | 'connecting' | 'live'
@@ -101,7 +103,8 @@ export function useLiveCall(chatId: string | null, onChatOpened: (id: string) =>
     const text = contentOf(turn)
     const thoughts = turn.thoughts.trim() || undefined
     const extras = turn.role === 'assistant' ? { parts: turn.parts, todos: turn.todos } : undefined
-    if (text || thoughts || turn.parts.length) void useAskSenseiStore.getState().saveCallMessage(chat, turn.id, turn.role, text, thoughts, extras)
+    if (text || thoughts || turn.parts.length)
+      void useAskSenseiStore.getState().saveCallMessage(chat, turn.id, turn.role, text, thoughts, extras)
   }
 
   /** The message being written by this speaker. It carries on until the other side speaks, so one reply is one message. */
@@ -156,9 +159,19 @@ export function useLiveCall(chatId: string | null, onChatOpened: (id: string) =>
       // Where the call fell in the thinking (as saved, trimmed), so the reasoning block shows thoughts and calls in order.
       const previous = turn.parts.flatMap((part) => (part.type === 'steps' ? part.steps : [])).find((s) => s.id === event.id)
       const at = previous?.at ?? turn.thoughts.trimStart().length
-      const step = { id: event.id, name: event.name, label, status: event.status, detail: event.status === 'failed' ? event.error : detail, at }
+      const step = {
+        id: event.id,
+        name: event.name,
+        label,
+        status: event.status,
+        detail: event.status === 'failed' ? event.error : detail,
+        at,
+      }
       const last = turn.parts.at(-1)
-      turn.parts = last?.type === 'steps' ? [...turn.parts.slice(0, -1), { type: 'steps', steps: upsertById(last.steps, step) }] : [...turn.parts, { type: 'steps', steps: [step] }]
+      turn.parts =
+        last?.type === 'steps'
+          ? [...turn.parts.slice(0, -1), { type: 'steps', steps: upsertById(last.steps, step) }]
+          : [...turn.parts, { type: 'steps', steps: [step] }]
     })
   }
 
@@ -199,7 +212,10 @@ export function useLiveCall(chatId: string | null, onChatOpened: (id: string) =>
         webSearch: createSearchTool((search) =>
           changeReply((turn) => {
             const last = turn.parts.at(-1)
-            turn.parts = last?.type === 'searches' ? [...turn.parts.slice(0, -1), { type: 'searches', searches: upsertSearch(last.searches, search) }] : [...turn.parts, { type: 'searches', searches: [search] }]
+            turn.parts =
+              last?.type === 'searches'
+                ? [...turn.parts.slice(0, -1), { type: 'searches', searches: upsertSearch(last.searches, search) }]
+                : [...turn.parts, { type: 'searches', searches: [search] }]
           }),
         ),
         memory: createMemoryTool({ chatId: chat }),
@@ -234,13 +250,23 @@ export function useLiveCall(chatId: string | null, onChatOpened: (id: string) =>
           onSearches: (searches) =>
             changeReply((turn) => {
               const last = turn.parts.at(-1)
-              turn.parts = last?.type === 'searches' ? [...turn.parts.slice(0, -1), { type: 'searches', searches }] : [...turn.parts, { type: 'searches', searches }]
+              turn.parts =
+                last?.type === 'searches'
+                  ? [...turn.parts.slice(0, -1), { type: 'searches', searches }]
+                  : [...turn.parts, { type: 'searches', searches }]
             }),
         }),
       },
       // The deep answer runs in the background, so the voice keeps talking meanwhile.
       nonBlocking: ['deepAnswer'],
-      instructions: [await memoryPrompt({ chatId: chat }), MEMORY_INSTRUCTIONS, SCRATCHPAD_INSTRUCTIONS, PLAN_INSTRUCTIONS, TODO_INSTRUCTIONS, DEEP_ANSWER_INSTRUCTIONS]
+      instructions: [
+        await memoryPrompt({ chatId: chat }),
+        MEMORY_INSTRUCTIONS,
+        SCRATCHPAD_INSTRUCTIONS,
+        PLAN_INSTRUCTIONS,
+        TODO_INSTRUCTIONS,
+        DEEP_ANSWER_INSTRUCTIONS,
+      ]
         .filter(Boolean)
         .join('\n\n'),
       onTool: showTool,

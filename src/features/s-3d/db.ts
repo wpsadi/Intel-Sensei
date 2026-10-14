@@ -1,4 +1,5 @@
 import { type DBSchema, type IDBPDatabase, openDB } from 'idb'
+
 import type { AgentChat, Doc, FileMeta, Version } from './types'
 
 interface S3DSchema extends DBSchema {

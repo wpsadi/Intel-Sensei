@@ -1,4 +1,5 @@
 import { LayoutDashboardIcon } from 'lucide-react'
+
 import { type BlockDefinition, database } from '../../insert'
 
 /** Dashboard view block for the "/" and "+" menus. */

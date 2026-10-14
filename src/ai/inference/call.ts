@@ -1,9 +1,18 @@
+import {
+  Behavior,
+  FunctionResponseScheduling,
+  GoogleGenAI,
+  type LiveServerMessage,
+  Modality,
+  type Session,
+  ThinkingLevel,
+} from '@google/genai'
 import type { Tool } from 'ai'
 import { z } from 'zod'
-import { Behavior, FunctionResponseScheduling, GoogleGenAI, type LiveServerMessage, Modality, type Session, ThinkingLevel } from '@google/genai'
+
+import { currentTimePrompt } from '@/ai/utils/current-time'
 import { GEMINI_KEY } from '@/ai/utils/gemini-key'
 import { LIVE_MODEL } from '@/constants/ai'
-import { currentTimePrompt } from '@/ai/utils/current-time'
 
 /** Gemini Live takes 16 kHz mono PCM in and sends 24 kHz mono PCM back. */
 const INPUT_RATE = 16000
@@ -124,7 +133,9 @@ export class LiveCall {
           'You are Sensei, a patient study helper on a live voice call. Keep replies short and conversational, because they are spoken aloud. After a tool call, carry on from where you stopped: never say again what you already said. Do not use tools for a plain answer.\n\n' +
           currentTimePrompt() +
           (this.options.instructions ? `\n\n${this.options.instructions}` : '') +
-          ((this.options.history ?? '') ? `\n\nThis call continues the text chat below. Treat it as what you and the user already said.\n\n${(this.options.history ?? '')}` : ''),
+          ((this.options.history ?? '')
+            ? `\n\nThis call continues the text chat below. Treat it as what you and the user already said.\n\n${this.options.history ?? ''}`
+            : ''),
         // The same tools the text chat has, answered in handleToolCalls.
         tools: [
           {

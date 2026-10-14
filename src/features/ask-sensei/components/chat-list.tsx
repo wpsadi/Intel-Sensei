@@ -1,14 +1,19 @@
 import { ArrowLeftIcon, ChevronRightIcon, MoreHorizontalIcon, Pencil, Plus, RefreshCcwIcon, Trash2Icon } from 'lucide-react'
 import { useState } from 'react'
 import { Link } from 'react-router-dom'
+
 import senseiLogo from '@/assets/sensei.svg'
 import { Button } from '@/components/ui/button'
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu'
 import { Input } from '@/components/ui/input'
-import type { Chat } from '@/features/note/db/types'
 import { ScrollArea } from '@/components/ui/scroll-area'
-import { cn } from '@/lib/utils'
 import {
   Sidebar,
   SidebarContent,
@@ -23,6 +28,8 @@ import {
   SidebarMenuItem,
   SidebarRail,
 } from '@/components/ui/sidebar'
+import type { Chat } from '@/features/note/db/types'
+import { cn } from '@/lib/utils'
 
 /** Sensei's own sidebar of saved chats, newest first. Each row has a menu for regenerating the title, renaming, and deleting. */
 export function ChatList({
@@ -61,7 +68,10 @@ export function ChatList({
   return (
     <Sidebar>
       <SidebarHeader className="gap-1.5 p-2">
-        <Link to="/" className="flex h-7 items-center gap-1.5 rounded-md px-2 text-xs text-muted-foreground hover:bg-sidebar-accent hover:text-foreground">
+        <Link
+          to="/"
+          className="flex h-7 items-center gap-1.5 rounded-md px-2 text-xs text-muted-foreground hover:bg-sidebar-accent hover:text-foreground"
+        >
           <ArrowLeftIcon className="size-3.5" />
           Back to Home
         </Link>
@@ -87,37 +97,40 @@ export function ChatList({
             {chatsOpen && (
               <SidebarGroupContent>
                 <SidebarMenu className="gap-0.5 p-1.5">
-            {chats.map((chat) => (
-              <SidebarMenuItem key={chat.id}>
-                <SidebarMenuButton size="sm" isActive={chat.id === activeId} onClick={() => onSelect(chat.id)} className="truncate text-xs">
-                  {chat.title}
-                </SidebarMenuButton>
-                <DropdownMenu>
-                  <DropdownMenuTrigger
-                    render={<SidebarMenuAction showOnHover className="aria-expanded:bg-muted" />}
-                  >
-                    <MoreHorizontalIcon />
-                    <span className="sr-only">Chat options</span>
-                  </DropdownMenuTrigger>
-                  <DropdownMenuContent className="w-44" side="right" align="start">
-                    <DropdownMenuItem onClick={() => onRegenerateTitle(chat.id)}>
-                      <RefreshCcwIcon />
-                      <span>Regenerate title</span>
-                    </DropdownMenuItem>
-                    <DropdownMenuItem onClick={() => startRename(chat)}>
-                      <Pencil />
-                      <span>Rename</span>
-                    </DropdownMenuItem>
-                    <DropdownMenuSeparator />
-                    <DropdownMenuItem variant="destructive" onClick={() => setDeleting(chat)}>
-                      <Trash2Icon />
-                      <span>Delete</span>
-                    </DropdownMenuItem>
-                  </DropdownMenuContent>
-                </DropdownMenu>
-              </SidebarMenuItem>
-            ))}
-          </SidebarMenu>
+                  {chats.map((chat) => (
+                    <SidebarMenuItem key={chat.id}>
+                      <SidebarMenuButton
+                        size="sm"
+                        isActive={chat.id === activeId}
+                        onClick={() => onSelect(chat.id)}
+                        className="truncate text-xs"
+                      >
+                        {chat.title}
+                      </SidebarMenuButton>
+                      <DropdownMenu>
+                        <DropdownMenuTrigger render={<SidebarMenuAction showOnHover className="aria-expanded:bg-muted" />}>
+                          <MoreHorizontalIcon />
+                          <span className="sr-only">Chat options</span>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent className="w-44" side="right" align="start">
+                          <DropdownMenuItem onClick={() => onRegenerateTitle(chat.id)}>
+                            <RefreshCcwIcon />
+                            <span>Regenerate title</span>
+                          </DropdownMenuItem>
+                          <DropdownMenuItem onClick={() => startRename(chat)}>
+                            <Pencil />
+                            <span>Rename</span>
+                          </DropdownMenuItem>
+                          <DropdownMenuSeparator />
+                          <DropdownMenuItem variant="destructive" onClick={() => setDeleting(chat)}>
+                            <Trash2Icon />
+                            <span>Delete</span>
+                          </DropdownMenuItem>
+                        </DropdownMenuContent>
+                      </DropdownMenu>
+                    </SidebarMenuItem>
+                  ))}
+                </SidebarMenu>
               </SidebarGroupContent>
             )}
           </SidebarGroup>
@@ -138,9 +151,7 @@ export function ChatList({
         <DialogContent className="max-w-sm">
           <DialogHeader>
             <DialogTitle>Delete chat?</DialogTitle>
-            <DialogDescription>
-              “{deleting?.title}” and its messages will be removed. This can't be undone.
-            </DialogDescription>
+            <DialogDescription>“{deleting?.title}” and its messages will be removed. This can't be undone.</DialogDescription>
           </DialogHeader>
           <DialogFooter className="mt-4">
             <Button variant="outline" onClick={() => setDeleting(null)}>

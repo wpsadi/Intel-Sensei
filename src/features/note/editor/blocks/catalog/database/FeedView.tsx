@@ -1,4 +1,5 @@
 import { RssIcon } from 'lucide-react'
+
 import { type BlockDefinition, database } from '../../insert'
 
 /** Feed view block for the "/" and "+" menus. */

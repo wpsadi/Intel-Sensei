@@ -1,4 +1,5 @@
 import { recordUsage } from '@/ai/usage'
+
 import type { FromWorker, StreamPart, ToWorker } from './protocol'
 
 export type { StreamPart, ToolSpec } from './protocol'
@@ -26,7 +27,8 @@ function agentWorker() {
         passes.delete(msg.runId)
         pass?.done(msg)
       } else if (msg.type === 'tool-exec') {
-        const reply = (r: { result?: unknown; error?: string }) => worker?.postMessage({ type: 'tool-result', callId: msg.callId, ...r } satisfies ToWorker)
+        const reply = (r: { result?: unknown; error?: string }) =>
+          worker?.postMessage({ type: 'tool-result', callId: msg.callId, ...r } satisfies ToWorker)
         try {
           if (!pass) throw new Error('The run has ended')
           reply({ result: await pass.execTool(msg.name, msg.args) })
@@ -43,11 +45,23 @@ function agentWorker() {
  * Streams one agent pass (a tool loop) in the shared worker. Parts arrive in `onPart`; tool calls run here through
  * `execTool`. Resolves with the pass's response messages once it ends, is aborted or fails.
  */
-export function streamInWorker(start: Start, opts: { signal: AbortSignal; onPart: (p: StreamPart) => void; execTool: (name: string, args: unknown) => unknown }): Promise<Done> {
+export function streamInWorker(
+  start: Start,
+  opts: { signal: AbortSignal; onPart: (p: StreamPart) => void; execTool: (name: string, args: unknown) => unknown },
+): Promise<Done> {
   const runId = crypto.randomUUID()
   return new Promise((done) => {
     const onPart = (p: StreamPart) => {
-      if (p.type === 'spend') void recordUsage({ provider: start.provider, model: start.model, inputTokens: p.inputTokens, outputTokens: p.outputTokens, reasoningTokens: p.reasoningTokens, cachedTokens: p.cachedTokens, cacheWriteTokens: p.cacheWriteTokens })
+      if (p.type === 'spend')
+        void recordUsage({
+          provider: start.provider,
+          model: start.model,
+          inputTokens: p.inputTokens,
+          outputTokens: p.outputTokens,
+          reasoningTokens: p.reasoningTokens,
+          cachedTokens: p.cachedTokens,
+          cacheWriteTokens: p.cacheWriteTokens,
+        })
       opts.onPart(p)
     }
     passes.set(runId, { onPart, execTool: opts.execTool, done })

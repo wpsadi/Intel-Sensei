@@ -1,6 +1,7 @@
 import { GripVerticalIcon, MessageSquareIcon, PlusIcon } from 'lucide-react'
-import { useRef } from 'react'
+import { useLayoutEffect, useRef } from 'react'
 import { useDrag } from 'react-dnd'
+
 import { BLOCK_DRAG, type BlockHover, type DraggedBlock } from './block-dom'
 
 interface BlockHandleProps {
@@ -16,7 +17,9 @@ interface BlockHandleProps {
 export function BlockHandle({ hover, onAdd, onOpenActions, onDragEnd, commentCount, onOpenComments }: BlockHandleProps) {
   // The drag item is read when a drag starts, so it must see the latest hovered block.
   const hoverRef = useRef(hover)
-  hoverRef.current = hover
+  useLayoutEffect(() => {
+    hoverRef.current = hover
+  })
   const source = () => ({
     type: BLOCK_DRAG,
     item: (): DraggedBlock => ({

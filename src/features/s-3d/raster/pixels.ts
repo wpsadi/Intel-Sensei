@@ -124,7 +124,10 @@ export function cloneStroke(px: Pixels, source: Pixels, points: Point[], from: P
 
 /** Mean colour of the ring just outside radius r around (cx, cy), ignoring pixels outside the buffer. */
 function ringMean(px: Pixels, cx: number, cy: number, r: number): RGB | null {
-  let sr = 0, sg = 0, sb = 0, n = 0
+  let sr = 0,
+    sg = 0,
+    sb = 0,
+    n = 0
   const outer = r * 1.6
   for (let y = Math.floor(cy - outer); y <= Math.ceil(cy + outer); y++) {
     for (let x = Math.floor(cx - outer); x <= Math.ceil(cx + outer); x++) {
@@ -178,34 +181,51 @@ export function selectionMask(px: Pixels, sel: Selection): Mask {
   const data = new Float32Array(px.width * px.height)
   const mask: Mask = { width: px.width, height: px.height, data }
   if (sel.type === 'rect') {
-    for (let y = 0; y < px.height; y++) for (let x = 0; x < px.width; x++) {
-      if (x + 0.5 >= sel.x && x + 0.5 < sel.x + sel.w && y + 0.5 >= sel.y && y + 0.5 < sel.y + sel.h) data[y * px.width + x] = 1
-    }
+    for (let y = 0; y < px.height; y++)
+      for (let x = 0; x < px.width; x++) {
+        if (x + 0.5 >= sel.x && x + 0.5 < sel.x + sel.w && y + 0.5 >= sel.y && y + 0.5 < sel.y + sel.h) data[y * px.width + x] = 1
+      }
   } else if (sel.type === 'ellipse') {
-    const rx = sel.w / 2, ry = sel.h / 2, cx = sel.x + rx, cy = sel.y + ry
-    for (let y = 0; y < px.height; y++) for (let x = 0; x < px.width; x++) {
-      const dx = (x + 0.5 - cx) / rx, dy = (y + 0.5 - cy) / ry
-      if (dx * dx + dy * dy <= 1) data[y * px.width + x] = 1
-    }
+    const rx = sel.w / 2,
+      ry = sel.h / 2,
+      cx = sel.x + rx,
+      cy = sel.y + ry
+    for (let y = 0; y < px.height; y++)
+      for (let x = 0; x < px.width; x++) {
+        const dx = (x + 0.5 - cx) / rx,
+          dy = (y + 0.5 - cy) / ry
+        if (dx * dx + dy * dy <= 1) data[y * px.width + x] = 1
+      }
   } else if (sel.type === 'lasso') {
     const pts = sel.points
     if (pts.length < 3) return mask
-    for (let y = 0; y < px.height; y++) for (let x = 0; x < px.width; x++) if (insidePolygon(x + 0.5, y + 0.5, pts)) data[y * px.width + x] = 1
+    for (let y = 0; y < px.height; y++)
+      for (let x = 0; x < px.width; x++) if (insidePolygon(x + 0.5, y + 0.5, pts)) data[y * px.width + x] = 1
   } else {
-    const sx = Math.round(sel.x), sy = Math.round(sel.y)
+    const sx = Math.round(sel.x),
+      sy = Math.round(sel.y)
     if (sx < 0 || sy < 0 || sx >= px.width || sy >= px.height) throw new Error('Wand seed is outside the image')
     const seed = (sy * px.width + sx) * 4
-    const same = (i: number) => Math.max(
-      Math.abs(px.data[i] - px.data[seed]), Math.abs(px.data[i + 1] - px.data[seed + 1]),
-      Math.abs(px.data[i + 2] - px.data[seed + 2]), Math.abs(px.data[i + 3] - px.data[seed + 3]),
-    ) <= sel.tolerance
+    const same = (i: number) =>
+      Math.max(
+        Math.abs(px.data[i] - px.data[seed]),
+        Math.abs(px.data[i + 1] - px.data[seed + 1]),
+        Math.abs(px.data[i + 2] - px.data[seed + 2]),
+        Math.abs(px.data[i + 3] - px.data[seed + 3]),
+      ) <= sel.tolerance
     if (sel.contiguous) {
       const queue = [sy * px.width + sx]
       data[queue[0]] = 1
       while (queue.length) {
         const p = queue.pop()!
-        const x = p % px.width, y = (p - x) / px.width
-        for (const [nx, ny] of [[x + 1, y], [x - 1, y], [x, y + 1], [x, y - 1]]) {
+        const x = p % px.width,
+          y = (p - x) / px.width
+        for (const [nx, ny] of [
+          [x + 1, y],
+          [x - 1, y],
+          [x, y + 1],
+          [x, y - 1],
+        ]) {
           if (nx < 0 || ny < 0 || nx >= px.width || ny >= px.height) continue
           const q = ny * px.width + nx
           if (!data[q] && same(q * 4)) {
@@ -253,16 +273,26 @@ export function featherMask(mask: Mask, radius: number): Mask {
   for (let pass = 0; pass < 3; pass++) {
     const tmp = new Float32Array(src.length)
     const out = new Float32Array(src.length)
-    for (let y = 0; y < mask.height; y++) for (let x = 0; x < mask.width; x++) {
-      let sum = 0, n = 0
-      for (let k = Math.max(0, x - r); k <= Math.min(mask.width - 1, x + r); k++) { sum += src[y * mask.width + k]; n++ }
-      tmp[y * mask.width + x] = sum / n
-    }
-    for (let x = 0; x < mask.width; x++) for (let y = 0; y < mask.height; y++) {
-      let sum = 0, n = 0
-      for (let k = Math.max(0, y - r); k <= Math.min(mask.height - 1, y + r); k++) { sum += tmp[k * mask.width + x]; n++ }
-      out[y * mask.width + x] = sum / n
-    }
+    for (let y = 0; y < mask.height; y++)
+      for (let x = 0; x < mask.width; x++) {
+        let sum = 0,
+          n = 0
+        for (let k = Math.max(0, x - r); k <= Math.min(mask.width - 1, x + r); k++) {
+          sum += src[y * mask.width + k]
+          n++
+        }
+        tmp[y * mask.width + x] = sum / n
+      }
+    for (let x = 0; x < mask.width; x++)
+      for (let y = 0; y < mask.height; y++) {
+        let sum = 0,
+          n = 0
+        for (let k = Math.max(0, y - r); k <= Math.min(mask.height - 1, y + r); k++) {
+          sum += tmp[k * mask.width + x]
+          n++
+        }
+        out[y * mask.width + x] = sum / n
+      }
     src = out
   }
   mask.data.set(src)
@@ -275,16 +305,23 @@ export function growMask(mask: Mask, px: number): Mask {
   const grow = px > 0
   for (let s = 0; s < steps; s++) {
     const prev = mask.data.slice()
-    for (let y = 0; y < mask.height; y++) for (let x = 0; x < mask.width; x++) {
-      let v = prev[y * mask.width + x]
-      for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
-        const nx = x + dx, ny = y + dy
-        const outside = nx < 0 || ny < 0 || nx >= mask.width || ny >= mask.height
-        const n = outside ? 0 : prev[ny * mask.width + nx]
-        v = grow ? Math.max(v, n) : Math.min(v, n)
+    for (let y = 0; y < mask.height; y++)
+      for (let x = 0; x < mask.width; x++) {
+        let v = prev[y * mask.width + x]
+        for (const [dx, dy] of [
+          [1, 0],
+          [-1, 0],
+          [0, 1],
+          [0, -1],
+        ]) {
+          const nx = x + dx,
+            ny = y + dy
+          const outside = nx < 0 || ny < 0 || nx >= mask.width || ny >= mask.height
+          const n = outside ? 0 : prev[ny * mask.width + nx]
+          v = grow ? Math.max(v, n) : Math.min(v, n)
+        }
+        mask.data[y * mask.width + x] = v
       }
-      mask.data[y * mask.width + x] = v
-    }
   }
   return mask
 }
@@ -303,8 +340,12 @@ export function hueSaturation(px: Pixels, hue: number, saturation: number, light
 }
 
 function rgbToHsl(r: number, g: number, b: number): [number, number, number] {
-  r /= 255, g /= 255, b /= 255
-  const mx = Math.max(r, g, b), mn = Math.min(r, g, b), l = (mx + mn) / 2
+  r /= 255
+  g /= 255
+  b /= 255
+  const mx = Math.max(r, g, b),
+    mn = Math.min(r, g, b),
+    l = (mx + mn) / 2
   if (mx === mn) return [0, 0, l]
   const d = mx - mn
   const s = l > 0.5 ? d / (2 - mx - mn) : d / (mx + mn)
@@ -326,50 +367,68 @@ function hslToRgb(h: number, s: number, l: number): RGB {
 export function fillMask(px: Pixels, mask: Mask) {
   type Level = { w: number; h: number; rgb: Float32Array; known: Float32Array }
   const levels: Level[] = []
-  let level: Level = { w: px.width, h: px.height, rgb: new Float32Array(px.width * px.height * 3), known: new Float32Array(px.width * px.height) }
+  let level: Level = {
+    w: px.width,
+    h: px.height,
+    rgb: new Float32Array(px.width * px.height * 3),
+    known: new Float32Array(px.width * px.height),
+  }
   for (let p = 0; p < px.width * px.height; p++) {
     level.rgb.set([px.data[p * 4], px.data[p * 4 + 1], px.data[p * 4 + 2]], p * 3)
     level.known[p] = 1 - mask.data[p]
   }
   levels.push(level)
   while (level.w > 1 || level.h > 1) {
-    const w = Math.ceil(level.w / 2), h = Math.ceil(level.h / 2)
+    const w = Math.ceil(level.w / 2),
+      h = Math.ceil(level.h / 2)
     const next: Level = { w, h, rgb: new Float32Array(w * h * 3), known: new Float32Array(w * h) }
-    for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
-      let sum = 0, r = 0, g = 0, b = 0
-      for (let dy = 0; dy < 2; dy++) for (let dx = 0; dx < 2; dx++) {
-        const sx = Math.min(level.w - 1, x * 2 + dx), sy = Math.min(level.h - 1, y * 2 + dy)
-        const q = sy * level.w + sx
-        const k = level.known[q]
-        sum += k
-        r += level.rgb[q * 3] * k
-        g += level.rgb[q * 3 + 1] * k
-        b += level.rgb[q * 3 + 2] * k
+    for (let y = 0; y < h; y++)
+      for (let x = 0; x < w; x++) {
+        let sum = 0,
+          r = 0,
+          g = 0,
+          b = 0
+        for (let dy = 0; dy < 2; dy++)
+          for (let dx = 0; dx < 2; dx++) {
+            const sx = Math.min(level.w - 1, x * 2 + dx),
+              sy = Math.min(level.h - 1, y * 2 + dy)
+            const q = sy * level.w + sx
+            const k = level.known[q]
+            sum += k
+            r += level.rgb[q * 3] * k
+            g += level.rgb[q * 3 + 1] * k
+            b += level.rgb[q * 3 + 2] * k
+          }
+        const o = y * w + x
+        next.known[o] = sum / 4
+        if (sum > 0) next.rgb.set([r / sum, g / sum, b / sum], o * 3)
       }
-      const o = y * w + x
-      next.known[o] = sum / 4
-      if (sum > 0) next.rgb.set([r / sum, g / sum, b / sum], o * 3)
-    }
     levels.push(next)
     level = next
   }
   // Pull: holes take the value of the coarser level, sampled bilinearly, from coarse to fine.
   for (let l = levels.length - 2; l >= 0; l--) {
-    const fine = levels[l], coarse = levels[l + 1]
-    for (let y = 0; y < fine.h; y++) for (let x = 0; x < fine.w; x++) {
-      const o = y * fine.w + x
-      if (fine.known[o] > 0) continue
-      const fx = Math.max(0, Math.min(coarse.w - 1, (x + 0.5) / 2 - 0.5))
-      const fy = Math.max(0, Math.min(coarse.h - 1, (y + 0.5) / 2 - 0.5))
-      const x0 = Math.floor(fx), y0 = Math.floor(fy), x1 = Math.min(coarse.w - 1, x0 + 1), y1 = Math.min(coarse.h - 1, y0 + 1)
-      const tx = fx - x0, ty = fy - y0
-      for (let c = 0; c < 3; c++) {
-        const top = coarse.rgb[(y0 * coarse.w + x0) * 3 + c] * (1 - tx) + coarse.rgb[(y0 * coarse.w + x1) * 3 + c] * tx
-        const bottom = coarse.rgb[(y1 * coarse.w + x0) * 3 + c] * (1 - tx) + coarse.rgb[(y1 * coarse.w + x1) * 3 + c] * tx
-        fine.rgb[o * 3 + c] = top * (1 - ty) + bottom * ty
+    const fine = levels[l],
+      coarse = levels[l + 1]
+    for (let y = 0; y < fine.h; y++)
+      for (let x = 0; x < fine.w; x++) {
+        const o = y * fine.w + x
+        if (fine.known[o] > 0) continue
+        const fx = Math.max(0, Math.min(coarse.w - 1, (x + 0.5) / 2 - 0.5))
+        const fy = Math.max(0, Math.min(coarse.h - 1, (y + 0.5) / 2 - 0.5))
+        const x0 = Math.floor(fx),
+          y0 = Math.floor(fy),
+          x1 = Math.min(coarse.w - 1, x0 + 1),
+          y1 = Math.min(coarse.h - 1, y0 + 1)
+        const tx = fx - x0,
+          ty = fy - y0
+        for (let c = 0; c < 3; c++) {
+          const top = coarse.rgb[(y0 * coarse.w + x0) * 3 + c] * (1 - tx) + coarse.rgb[(y0 * coarse.w + x1) * 3 + c] * tx
+          const bottom = coarse.rgb[(y1 * coarse.w + x0) * 3 + c] * (1 - tx) + coarse.rgb[(y1 * coarse.w + x1) * 3 + c] * tx
+          fine.rgb[o * 3 + c] = top * (1 - ty) + bottom * ty
+        }
+        fine.known[o] = 1
       }
-      fine.known[o] = 1
-    }
   }
   const filled = levels[0].rgb
   for (let p = 0; p < px.width * px.height; p++) {
@@ -384,8 +443,11 @@ export function fillMask(px: Pixels, mask: Mask) {
 export function vibrance(px: Pixels, amount: number) {
   const k = amount / 100
   for (let i = 0; i < px.data.length; i += 4) {
-    const r = px.data[i], g = px.data[i + 1], b = px.data[i + 2]
-    const mx = Math.max(r, g, b), mn = Math.min(r, g, b)
+    const r = px.data[i],
+      g = px.data[i + 1],
+      b = px.data[i + 2]
+    const mx = Math.max(r, g, b),
+      mn = Math.min(r, g, b)
     const sat = mx === 0 ? 0 : (mx - mn) / mx
     const factor = k >= 0 ? 1 + k * (1 - sat) : 1 + k
     const avg = (r + g + b) / 3
@@ -413,10 +475,15 @@ export function hexRgb(hex: string): RGB {
 
 /** Pixel count and bounding box of a selection (coverage above one half counts as selected). */
 export function maskSummary(mask: Mask) {
-  let count = 0, minX = Infinity, minY = Infinity, maxX = -1, maxY = -1
+  let count = 0,
+    minX = Infinity,
+    minY = Infinity,
+    maxX = -1,
+    maxY = -1
   for (let p = 0; p < mask.data.length; p++) {
     if (mask.data[p] < 0.5) continue
-    const x = p % mask.width, y = (p - x) / mask.width
+    const x = p % mask.width,
+      y = (p - x) / mask.width
     count++
     minX = Math.min(minX, x)
     minY = Math.min(minY, y)

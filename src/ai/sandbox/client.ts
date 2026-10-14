@@ -1,4 +1,4 @@
-import { COMMAND_TIMEOUT_MS, FILE_MAX_BYTES, type ExecResult } from './engine'
+import { COMMAND_TIMEOUT_MS, type ExecResult, FILE_MAX_BYTES } from './engine'
 import type { SandboxRequest, SandboxResponse, SandboxResult } from './sandbox.worker'
 
 type Pending = { resolve: (result: SandboxResult) => void; reject: (error: Error) => void }
@@ -46,7 +46,13 @@ function getWorker() {
 }
 
 /** Sends one request to the sandbox worker and gives up after `limit`, restarting the worker since Python cannot be interrupted in place. */
-function send(request: Request, signal: AbortSignal | undefined, transfer: Transferable[], limit: number, timeoutMessage: string): Promise<SandboxResult> {
+function send(
+  request: Request,
+  signal: AbortSignal | undefined,
+  transfer: Transferable[],
+  limit: number,
+  timeoutMessage: string,
+): Promise<SandboxResult> {
   if (signal?.aborted) return Promise.reject(new DOMException('Stopped', 'AbortError'))
   return new Promise<SandboxResult>((resolve, reject) => {
     const id = nextId++
@@ -104,7 +110,11 @@ export async function mountFiles(files: SandboxFile[], signal?: AbortSignal) {
     loaded.push({ key: file.key, name: file.name, bytes: new Uint8Array(await blob.arrayBuffer()) })
   }
   if (!loaded.length) return
-  const { paths } = (await call({ op: 'mount', files: loaded.map(({ name, bytes }) => ({ name, bytes })) }, signal, loaded.map((file) => file.bytes.buffer))) as { paths: string[] }
+  const { paths } = (await call(
+    { op: 'mount', files: loaded.map(({ name, bytes }) => ({ name, bytes })) },
+    signal,
+    loaded.map((file) => file.bytes.buffer),
+  )) as { paths: string[] }
   loaded.forEach((file, index) => mounted.set(file.key, paths[index]))
 }
 

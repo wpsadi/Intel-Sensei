@@ -99,9 +99,7 @@
       {
         "functionName": "trash_notes",
         "arguments": {
-          "notes": [
-            "Old ideas"
-          ]
+          "notes": ["Old ideas"]
         }
       }
     ]

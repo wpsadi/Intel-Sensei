@@ -1,12 +1,9 @@
-"use client"
+'use client'
 
-import {
-  SidebarMenu,
-  SidebarMenuButton,
-  SidebarMenuItem,
-} from "@/components/ui/sidebar"
-import { Link } from "react-router-dom"
-import { NotebookPenIcon } from "lucide-react"
+import { NotebookPenIcon } from 'lucide-react'
+import { Link } from 'react-router-dom'
+
+import { SidebarMenu, SidebarMenuButton, SidebarMenuItem } from '@/components/ui/sidebar'
 
 export function SNoteBrand() {
   return (

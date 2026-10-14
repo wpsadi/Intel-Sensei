@@ -1,4 +1,5 @@
 import { SigmaIcon } from 'lucide-react'
+
 import { type BlockDefinition, math } from '../../insert'
 
 /** Block equation block for the "/" and "+" menus. */

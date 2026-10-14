@@ -1,7 +1,8 @@
-import { useEffect, useRef } from 'react'
+import { useEffect, useLayoutEffect, useRef } from 'react'
+
 import { COMMANDS, eventKey } from '@/features/s-3d/commands'
-import { useS3D } from '@/features/s-3d/store'
 import { useS3DDialog } from '@/features/s-3d/dialogs/dialog-store'
+import { useS3D } from '@/features/s-3d/store'
 
 /** Copy, cut and paste go through clipboard events in the canvas, so they are not bound here. */
 const CLIPBOARD = new Set(['mod+c', 'mod+x', 'mod+v'])
@@ -16,10 +17,13 @@ interface Options {
 
 export function useCanvasShortcuts(opts: Options) {
   const ref = useRef(opts)
-  ref.current = opts
+  useLayoutEffect(() => {
+    ref.current = opts
+  })
 
   useEffect(() => {
-    const editable = (t: EventTarget | null) => t instanceof HTMLElement && (t.isContentEditable || ['INPUT', 'TEXTAREA', 'SELECT'].includes(t.tagName))
+    const editable = (t: EventTarget | null) =>
+      t instanceof HTMLElement && (t.isContentEditable || ['INPUT', 'TEXTAREA', 'SELECT'].includes(t.tagName))
     const onKeyDown = (e: KeyboardEvent) => {
       const st = useS3D.getState()
       // The scene editor has its own keys.
@@ -63,10 +67,13 @@ export function useCanvasShortcuts(opts: Options) {
         const d = e.shiftKey ? 10 : 1
         const dx = e.key === 'ArrowLeft' ? -d : e.key === 'ArrowRight' ? d : 0
         const dy = e.key === 'ArrowUp' ? -d : e.key === 'ArrowDown' ? d : 0
-        st.updateNodes(st.selection.filter((id) => !st.doc.nodes[id]?.locked), (n) => {
-          n.x += dx
-          n.y += dy
-        })
+        st.updateNodes(
+          st.selection.filter((id) => !st.doc.nodes[id]?.locked),
+          (n) => {
+            n.x += dx
+            n.y += dy
+          },
+        )
         return
       }
       if (key === 'mod+/' || key === 'shift+?') {

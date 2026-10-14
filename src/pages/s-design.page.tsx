@@ -1,13 +1,14 @@
 import { useLayoutEffect } from 'react'
+
 import { CanvasSkeleton } from '@/components/s-3d/canvas-skeleton'
+import { Toaster } from '@/components/ui/sonner'
+import { S3DDialogs } from '@/features/s-3d/dialogs'
+import { SceneEditor } from '@/features/s-3d/scene-editor/scene-editor'
+import { useS3D } from '@/features/s-3d/store'
+import { S3DTools } from '@/features/s-3d/webmcp/s3d-tools'
 import { DesignCanvas } from '@/features/s-design/canvas/canvas'
 import { DesignDock } from '@/features/s-design/dock'
-import { S3DDialogs } from '@/features/s-3d/dialogs'
 import { PlayMode } from '@/features/s-design/play/play-mode'
-import { SceneEditor } from '@/features/s-3d/scene-editor/scene-editor'
-import { S3DTools } from '@/features/s-3d/webmcp/s3d-tools'
-import { Toaster } from '@/components/ui/sonner'
-import { useS3D } from '@/features/s-3d/store'
 
 /** S-Design: the 2D design canvas (frames, shapes, text, prototyping). 3D shape nodes open their scene in place. */
 function SDesignPage() {

@@ -1,4 +1,5 @@
 import { SmileIcon } from 'lucide-react'
+
 import { type BlockDefinition, chain } from '../../insert'
 
 /** Emoji block for the "/" and "+" menus. */

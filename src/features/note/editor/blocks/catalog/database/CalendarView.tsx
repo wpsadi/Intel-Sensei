@@ -1,4 +1,5 @@
 import { CalendarDaysIcon } from 'lucide-react'
+
 import { type BlockDefinition, database } from '../../insert'
 
 /** Calendar view block for the "/" and "+" menus. */

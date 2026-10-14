@@ -2,10 +2,11 @@ import { cjk } from '@streamdown/cjk'
 import { math } from '@streamdown/math'
 import { mermaid } from '@streamdown/mermaid'
 import type { BundledLanguage } from 'shiki'
-import { Streamdown, type Components } from 'streamdown'
+import { type Components, Streamdown } from 'streamdown'
+
 import { CodeBlock, CodeBlockActions, CodeBlockCopyButton, CodeBlockHeader, CodeBlockTitle } from '@/components/ai-elements/code-block'
+import { Snippet, SnippetAddon, SnippetCopyButton, SnippetInput } from '@/components/ai-elements/snippet'
 import { ScrollArea } from '@/components/ui/scroll-area'
-import { Snippet, SnippetCopyButton, SnippetInput, SnippetAddon } from '@/components/ai-elements/snippet'
 
 const plugins = { cjk, math, mermaid }
 
@@ -18,7 +19,9 @@ const SHELL_LANGUAGES = new Set(['', 'bash', 'sh', 'shell', 'zsh', 'console', 'p
  */
 const components: Components = {
   // Streamdown puts list markers inside the text box with no indent, so lists sit flush left; indent them like prose.
-  ul: ({ children }) => <ul className="my-2 list-outside list-disc space-y-1 pl-5 marker:text-muted-foreground [&_ul]:list-[circle]">{children}</ul>,
+  ul: ({ children }) => (
+    <ul className="my-2 list-outside list-disc space-y-1 pl-5 marker:text-muted-foreground [&_ul]:list-[circle]">{children}</ul>
+  ),
   ol: ({ children }) => <ol className="my-2 list-outside list-decimal space-y-1 pl-5 marker:text-muted-foreground">{children}</ol>,
   li: ({ children }) => <li className="pl-1 [&>p]:inline">{children}</li>,
   // Tables look like S-Note's database table view: no outer box, row lines, thin column dividers, muted headers.

@@ -17,7 +17,11 @@ export interface BlockNarration {
 /** The narration settings for every block type. Change a mode or a sentence count here to make the narration quieter or more verbose. */
 export const NARRATION_CONFIG: Record<BlockType, BlockNarration> = {
   text: { mode: 'speak' },
-  table: { mode: 'describe', sentences: 3, cover: 'what the table is about, its columns, how many rows it has, and the standout values or the trend' },
+  table: {
+    mode: 'describe',
+    sentences: 3,
+    cover: 'what the table is about, its columns, how many rows it has, and the standout values or the trend',
+  },
   code: { mode: 'describe', sentences: 3, cover: 'the language, what the code does, and the idea behind how it works' },
   diagram: { mode: 'describe', sentences: 3, cover: 'what the diagram shows and how the steps or parts connect' },
   math: { mode: 'describe', sentences: 2, cover: 'what the formula says in plain words and what its symbols stand for' },

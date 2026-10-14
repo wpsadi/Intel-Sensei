@@ -1,12 +1,13 @@
 import { useEffect, useLayoutEffect } from 'react'
+
 import { CanvasSkeleton } from '@/components/s-3d/canvas-skeleton'
+import { Toaster } from '@/components/ui/sonner'
 import { S3DDialogs } from '@/features/s-3d/dialogs'
 import { ScenePlay } from '@/features/s-3d/play/scene-play'
-import { SceneEditor } from '@/features/s-3d/scene-editor/scene-editor'
 import { openSceneEditor } from '@/features/s-3d/scene-editor/edit'
-import { S3DTools } from '@/features/s-3d/webmcp/s3d-tools'
-import { Toaster } from '@/components/ui/sonner'
+import { SceneEditor } from '@/features/s-3d/scene-editor/scene-editor'
 import { currentPage, useS3D } from '@/features/s-3d/store'
+import { S3DTools } from '@/features/s-3d/webmcp/s3d-tools'
 
 /** The node that holds a page's 3D scene (the newest, so a scene the agent added wins); created on first visit so every S3D page is a scene. */
 function ensureSceneNode() {

@@ -1,4 +1,5 @@
 import { ListChecksIcon } from 'lucide-react'
+
 import { type BlockDefinition, chain } from '../../insert'
 
 /** To-do list block for the "/" and "+" menus. */

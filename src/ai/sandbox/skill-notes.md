@@ -1,4 +1,3 @@
-
 ## Moving files between the sandbox and notes (note editor only)
 
 - **Into the sandbox:** a note's image or file block has a `src` such as `snote-media:abc123`. Run `import_media` with that src to copy it into the home folder, then work on it with the terminal.

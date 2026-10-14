@@ -1,16 +1,17 @@
-import { RouterProvider, createBrowserRouter } from 'react-router-dom'
-import HomePage from '@/pages/home.page'
-import AskSenseiPage from '@/pages/ask-sensei.page'
-import MainLayout from '@/layouts/main.layout'
-import NotFoundPage from '@/pages/not-found.page'
-import S3DLayout from '@/layouts/s-3d.layout'
-import S3DPage from '@/pages/s-3d.page'
-import AiUsagePage from '@/pages/ai-usage.page'
-import SDesignPage from '@/pages/s-design.page'
-import ErrorPage from '@/pages/error.page'
 import { ThemeProvider } from 'next-themes'
 import { Suspense, lazy } from 'react'
+import { RouterProvider, createBrowserRouter } from 'react-router-dom'
+
 import { SNoteSkeleton } from '@/features/note/components/SNoteSkeleton'
+import MainLayout from '@/layouts/main.layout'
+import S3DLayout from '@/layouts/s-3d.layout'
+import AiUsagePage from '@/pages/ai-usage.page'
+import AskSenseiPage from '@/pages/ask-sensei.page'
+import ErrorPage from '@/pages/error.page'
+import HomePage from '@/pages/home.page'
+import NotFoundPage from '@/pages/not-found.page'
+import S3DPage from '@/pages/s-3d.page'
+import SDesignPage from '@/pages/s-design.page'
 
 // The editor pulls in Tiptap, KaTeX, Mermaid and Leaflet; load it only on /s-note.
 const SNotePage = lazy(() => import('@/pages/s-note.page'))
@@ -29,8 +30,22 @@ const router = createBrowserRouter([
         children: [{ index: true }, { path: ':chatId' }],
       },
       { path: '/ai-usage', element: <AiUsagePage /> },
-      { path: '/s-note', element: <Suspense fallback={<SNoteSkeleton />}><SNotePage /></Suspense> },
-      { path: '/s-note/:pageId', element: <Suspense fallback={<SNoteSkeleton />}><SNotePage /></Suspense> },
+      {
+        path: '/s-note',
+        element: (
+          <Suspense fallback={<SNoteSkeleton />}>
+            <SNotePage />
+          </Suspense>
+        ),
+      },
+      {
+        path: '/s-note/:pageId',
+        element: (
+          <Suspense fallback={<SNoteSkeleton />}>
+            <SNotePage />
+          </Suspense>
+        ),
+      },
       {
         path: '/s-design',
         element: <S3DLayout service="design" key="design" />,
@@ -43,7 +58,14 @@ const router = createBrowserRouter([
       },
     ],
   },
-  { path: '/s-3d/embed', element: <Suspense><S3DEmbedPage /></Suspense> },
+  {
+    path: '/s-3d/embed',
+    element: (
+      <Suspense>
+        <S3DEmbedPage />
+      </Suspense>
+    ),
+  },
   { path: '*', element: <NotFoundPage /> },
 ])
 

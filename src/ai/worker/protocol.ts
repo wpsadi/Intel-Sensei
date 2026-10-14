@@ -39,7 +39,15 @@ export type StreamPart =
   /** How full the context was after a model step: its input plus its output. */
   | { type: 'usage'; contextTokens: number; inputTokens: number; outputTokens: number }
   /** Tokens one model call was billed for, for the usage log. `compaction` marks the summary call. */
-  | { type: 'spend'; compaction?: boolean; inputTokens: number; outputTokens: number; reasoningTokens?: number; cachedTokens?: number; cacheWriteTokens?: number }
+  | {
+      type: 'spend'
+      compaction?: boolean
+      inputTokens: number
+      outputTokens: number
+      reasoningTokens?: number
+      cachedTokens?: number
+      cacheWriteTokens?: number
+    }
   /** Older messages were summarized to make room. */
   | { type: 'compacted'; beforeTokens: number; afterTokens: number }
 

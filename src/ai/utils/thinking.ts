@@ -6,4 +6,8 @@ const THOUGHT_HEADING_LINE = /^[ \t]*\*\*[^*\n]+\*\*[ \t]*\n?/gm
  * drafts, which markdown would show as a code block, so the indentation is dropped too.
  */
 export const thinkingOnly = (thoughts: string) =>
-  thoughts.replace(THOUGHT_HEADING_LINE, '').replace(/^[ \t]+/gm, '').replace(/\n{3,}/g, '\n\n').trimStart()
+  thoughts
+    .replace(THOUGHT_HEADING_LINE, '')
+    .replace(/^[ \t]+/gm, '')
+    .replace(/\n{3,}/g, '\n\n')
+    .trimStart()

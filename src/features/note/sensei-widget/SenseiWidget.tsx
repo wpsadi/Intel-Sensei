@@ -1,24 +1,33 @@
 import { HistoryIcon, PlusIcon, Trash2Icon, XIcon } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
 import { matchPath, useLocation, useNavigate } from 'react-router-dom'
+
 import senseiLogo from '@/assets/sensei.svg'
-import { Button } from '@/components/ui/button'
-import { ScrollArea } from '@/components/ui/scroll-area'
-import { ChatSearches } from '@/features/ask-sensei/components/chat-searches'
-import { ChatReasoning } from '@/features/ask-sensei/components/chat-reasoning'
-import { Markdown } from '@/features/ask-sensei/components/markdown'
-import { TypingDots } from '@/components/typing-dots'
-import { DropdownMenu, DropdownMenuContent, DropdownMenuGroup, DropdownMenuItem, DropdownMenuLabel, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
-import { pageTitle } from '../editor/nodes/pages'
-import { useNoteStore } from '../note.store'
-import { widgetChatsRepo } from '../db/repo'
-import type { WidgetChat } from '../db/types'
-import { compactSenseiChat, sendSensei, setNoteContext, stopSensei, useSenseiRuns } from './agent'
-import { WidgetComposer } from './WidgetComposer'
 import { ContextRing } from '@/components/context-ring'
 import { CopyMessage, ReplyActions } from '@/components/reply-actions'
+import { TypingDots } from '@/components/typing-dots'
+import { Button } from '@/components/ui/button'
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuGroup,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu'
+import { ScrollArea } from '@/components/ui/scroll-area'
 import { UserBubble } from '@/components/user-bubble'
-import { SNOTE_AGENT_CONTEXT_LIMIT, CHAT_MODEL } from '@/constants/ai'
+import { CHAT_MODEL, SNOTE_AGENT_CONTEXT_LIMIT } from '@/constants/ai'
+import { ChatReasoning } from '@/features/ask-sensei/components/chat-reasoning'
+import { ChatSearches } from '@/features/ask-sensei/components/chat-searches'
+import { Markdown } from '@/features/ask-sensei/components/markdown'
+
+import { widgetChatsRepo } from '../db/repo'
+import type { WidgetChat } from '../db/types'
+import { pageTitle } from '../editor/nodes/page-utils'
+import { useNoteStore } from '../note.store'
+import { compactSenseiChat, sendSensei, setNoteContext, stopSensei, useSenseiRuns } from './agent'
+import { WidgetComposer } from './WidgetComposer'
 
 const SUGGESTIONS = ['Summarize this note', 'How many blocks are on this page?', 'Add a to-do list of next steps']
 
@@ -55,7 +64,7 @@ export function SenseiWidget() {
   // Braces matter: Chrome's scrollIntoView returns a promise, and an effect may only return a cleanup function.
   useEffect(() => {
     endRef.current?.scrollIntoView({ block: 'end' })
-  }, [messages, open])
+  }, [open])
 
   const send = (text: string) => void sendSensei(text, chat, noteTitle)
 
@@ -75,7 +84,9 @@ export function SenseiWidget() {
               <PlusIcon />
             </Button>
             <DropdownMenu>
-              <DropdownMenuTrigger render={<Button variant="ghost" size="icon-xs" title="Chat history" />}><HistoryIcon /></DropdownMenuTrigger>
+              <DropdownMenuTrigger render={<Button variant="ghost" size="icon-xs" title="Chat history" />}>
+                <HistoryIcon />
+              </DropdownMenuTrigger>
               <DropdownMenuContent className="z-[60] w-60">
                 <DropdownMenuGroup>
                   <DropdownMenuLabel>History</DropdownMenuLabel>
@@ -116,7 +127,12 @@ export function SenseiWidget() {
                   <p className="text-sm text-muted-foreground">Ask me to read, write or organize your notes.</p>
                   <div className="flex flex-wrap justify-center gap-1.5">
                     {SUGGESTIONS.map((s) => (
-                      <button key={s} type="button" onClick={() => send(s)} className="rounded-full border px-3 py-1 text-xs hover:bg-muted">
+                      <button
+                        key={s}
+                        type="button"
+                        onClick={() => send(s)}
+                        className="rounded-full border px-3 py-1 text-xs hover:bg-muted"
+                      >
                         {s}
                       </button>
                     ))}
@@ -131,9 +147,27 @@ export function SenseiWidget() {
                   </div>
                 ) : (
                   <div key={m.id} className="mr-4 flex flex-col text-sm">
-                    <ChatReasoning reasoning={m.reasoning} steps={m.steps} isStreaming={busy && m === messages.at(-1) && !m.content} duration={m.reasoningSeconds} defaultOpen={false} className="mb-0" />
+                    <ChatReasoning
+                      reasoning={m.reasoning}
+                      steps={m.steps}
+                      isStreaming={busy && m === messages.at(-1) && !m.content}
+                      duration={m.reasoningSeconds}
+                      defaultOpen={false}
+                      className="mb-0"
+                    />
                     {!!m.searches?.length && <ChatSearches searches={m.searches} defaultOpen={false} className="mb-0" />}
-                    {m.content ? <div id={`tts-${m.id}`}><Markdown>{m.content}</Markdown></div> : !m.error && busy && m === messages.at(-1) && !m.reasoning && !m.steps?.length && !m.searches?.length && <TypingDots className="h-3" />}
+                    {m.content ? (
+                      <div id={`tts-${m.id}`}>
+                        <Markdown>{m.content}</Markdown>
+                      </div>
+                    ) : (
+                      !m.error &&
+                      busy &&
+                      m === messages.at(-1) &&
+                      !m.reasoning &&
+                      !m.steps?.length &&
+                      !m.searches?.length && <TypingDots className="h-3" />
+                    )}
                     {m.error && <p className="rounded-md bg-destructive/10 px-2 py-1 text-xs text-destructive">{m.error}</p>}
                     {m.content && !(busy && m === messages.at(-1)) && <ReplyActions text={m.content} speakId={`tts-${m.id}`} />}
                   </div>
@@ -149,7 +183,22 @@ export function SenseiWidget() {
               streaming={busy}
               onStop={() => chat && stopSensei(chat.id)}
               autoFocus={open}
-              toolbarStart={<div className="mr-auto"><ContextRing onCompact={async () => chat && compactSenseiChat(chat)} compactDisabled={!messages.length ? 'Nothing to compact yet' : busy ? 'Wait for the reply to finish' : undefined} used={chat?.summary ? Math.ceil(chat.summary.text.length / 4) + 1500 : usage?.contextTokens ?? Math.ceil(messages.reduce((n, m) => n + m.content.length, 0) / 4)} max={SNOTE_AGENT_CONTEXT_LIMIT} modelId={`google:${CHAT_MODEL}`} compactions={messages.reduce((n, m) => n + (m.compactions ?? 0), 0)} /></div>}
+              toolbarStart={
+                <div className="mr-auto">
+                  <ContextRing
+                    onCompact={async () => chat && compactSenseiChat(chat)}
+                    compactDisabled={!messages.length ? 'Nothing to compact yet' : busy ? 'Wait for the reply to finish' : undefined}
+                    used={
+                      chat?.summary
+                        ? Math.ceil(chat.summary.text.length / 4) + 1500
+                        : (usage?.contextTokens ?? Math.ceil(messages.reduce((n, m) => n + m.content.length, 0) / 4))
+                    }
+                    max={SNOTE_AGENT_CONTEXT_LIMIT}
+                    modelId={`google:${CHAT_MODEL}`}
+                    compactions={messages.reduce((n, m) => n + (m.compactions ?? 0), 0)}
+                  />
+                </div>
+              }
             />
           </div>
         </section>
@@ -161,7 +210,11 @@ export function SenseiWidget() {
         onClick={() => setOpen((v) => !v)}
         className="relative flex size-14 items-center justify-center rounded-full border bg-background shadow-lg transition-transform hover:scale-105 focus-visible:ring-[3px] focus-visible:ring-ring/50 focus-visible:outline-none"
       >
-        {open ? <XIcon className="size-6 text-foreground" /> : <img src={senseiLogo} alt="Sensei" className="size-8 brightness-0 dark:invert" />}
+        {open ? (
+          <XIcon className="size-6 text-foreground" />
+        ) : (
+          <img src={senseiLogo} alt="Sensei" className="size-8 brightness-0 dark:invert" />
+        )}
         {/* Replies keep going while the widget is closed. */}
         {!open && anyBusy && <TypingDots className="absolute -top-1 -right-1 h-4 rounded-full border bg-background px-1 pb-0.5" />}
       </button>

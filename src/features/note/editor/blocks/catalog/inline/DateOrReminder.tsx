@@ -1,4 +1,5 @@
 import { CalendarIcon } from 'lucide-react'
+
 import { type BlockDefinition, chain } from '../../insert'
 
 /** Date or reminder block for the "/" and "+" menus. */

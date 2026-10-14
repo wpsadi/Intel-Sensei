@@ -1,5 +1,25 @@
 import { describe, expect, it } from 'vitest'
-import { type Pixels, backgroundEraseStroke, clipToMask, cloneStroke, combineMasks, densify, featherMask, fillMask, growMask, healSpot, hexRgb, hueSaturation, invertMask, maskSummary, paintStroke, pickColor, selectionMask, vibrance } from './pixels'
+
+import {
+  type Pixels,
+  backgroundEraseStroke,
+  clipToMask,
+  cloneStroke,
+  combineMasks,
+  densify,
+  featherMask,
+  fillMask,
+  growMask,
+  healSpot,
+  hexRgb,
+  hueSaturation,
+  invertMask,
+  maskSummary,
+  paintStroke,
+  pickColor,
+  selectionMask,
+  vibrance,
+} from './pixels'
 
 const blank = (width: number, height: number, rgba: [number, number, number, number] = [0, 0, 0, 0]): Pixels => {
   const data = new Uint8ClampedArray(width * height * 4)
@@ -24,7 +44,15 @@ describe('brush and eraser', () => {
   })
 
   it('spaces stamps evenly along a path', () => {
-    expect(densify([[0, 0], [10, 0]], 2)).toHaveLength(6)
+    expect(
+      densify(
+        [
+          [0, 0],
+          [10, 0],
+        ],
+        2,
+      ),
+    ).toHaveLength(6)
     expect(densify([[5, 5]], 2)).toEqual([[5, 5]])
   })
 })
@@ -77,7 +105,16 @@ describe('selections', () => {
 
   it('lasso fills the polygon interior', () => {
     const px = blank(20, 20)
-    const { pixels } = maskSummary(selectionMask(px, { type: 'lasso', points: [[0, 0], [20, 0], [0, 20]] }))
+    const { pixels } = maskSummary(
+      selectionMask(px, {
+        type: 'lasso',
+        points: [
+          [0, 0],
+          [20, 0],
+          [0, 20],
+        ],
+      }),
+    )
     expect(Math.abs(pixels / 400 - 0.5)).toBeLessThan(0.05)
   })
 

@@ -29,7 +29,8 @@ function load(base64: string) {
  */
 export async function compareImages(before: string, after: string) {
   const [a, b] = await Promise.all([load(before), load(after)])
-  const w = b.width, h = b.height
+  const w = b.width,
+    h = b.height
   const read = (img: HTMLImageElement) => {
     const c = document.createElement('canvas')
     c.width = w
@@ -38,10 +39,14 @@ export async function compareImages(before: string, after: string) {
     g.drawImage(img, 0, 0, w, h)
     return g.getImageData(0, 0, w, h)
   }
-  const da = read(a), db = read(b)
+  const da = read(a),
+    db = read(b)
   const diff = new ImageData(w, h)
   let changed = 0
-  let x0 = w, y0 = h, x1 = -1, y1 = -1
+  let x0 = w,
+    y0 = h,
+    x1 = -1,
+    y1 = -1
   for (let i = 0; i < w * h; i++) {
     const o = i * 4
     const d = Math.abs(da.data[o] - db.data[o]) + Math.abs(da.data[o + 1] - db.data[o + 1]) + Math.abs(da.data[o + 2] - db.data[o + 2])
@@ -53,7 +58,8 @@ export async function compareImages(before: string, after: string) {
     diff.data[o + 3] = 255
     if (hit) {
       changed++
-      const x = i % w, y = (i / w) | 0
+      const x = i % w,
+        y = (i / w) | 0
       if (x < x0) x0 = x
       if (x > x1) x1 = x
       if (y < y0) y0 = y

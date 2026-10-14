@@ -1,5 +1,6 @@
 import * as THREE from 'three'
 import { describe, expect, it } from 'vitest'
+
 import { cleanMesh, joinPieces, signedVolume, smoothMesh, voxelMesh } from './mesh-ops'
 
 const box = (w: number, h: number, d: number, at: [number, number, number], color: string) => ({
@@ -10,7 +11,10 @@ const box = (w: number, h: number, d: number, at: [number, number, number], colo
 describe('mesh-ops', () => {
   it('fuses overlapping boxes into one outward-facing surface of the union volume', () => {
     // Two 1×1×1 boxes overlapping by half: the union is 1.5 in volume.
-    const m = voxelMesh([[box(1, 1, 1, [0, 0, 0], '#ff0000')], [box(1, 1, 1, [0.5, 0, 0], '#0000ff')]], 'union', { resolution: 48, smooth: 1 })
+    const m = voxelMesh([[box(1, 1, 1, [0, 0, 0], '#ff0000')], [box(1, 1, 1, [0.5, 0, 0], '#0000ff')]], 'union', {
+      resolution: 48,
+      smooth: 1,
+    })
     expect(m.indices.length).toBeGreaterThan(0)
     expect(signedVolume(m)).toBeGreaterThan(1.3)
     expect(signedVolume(m)).toBeLessThan(1.7)
@@ -60,7 +64,10 @@ describe('mesh refinement', () => {
 
   it('paints patches and variation as vertex colours', () => {
     const m = fused()
-    const out = paintMesh(m, new THREE.Color('#ffffff'), [{ kind: 'patches', color: '#000000', coverage: 0.4, scale: 0.3 }, { kind: 'variation', amount: 0.05 }])
+    const out = paintMesh(m, new THREE.Color('#ffffff'), [
+      { kind: 'patches', color: '#000000', coverage: 0.4, scale: 0.3 },
+      { kind: 'variation', amount: 0.05 },
+    ])
     expect(out.colors?.length).toBe(m.positions.length)
     const dark = out.colors!.filter((_, i) => i % 3 === 0 && out.colors![i] < 0.3).length
     expect(dark).toBeGreaterThan(0)

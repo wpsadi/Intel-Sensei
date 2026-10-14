@@ -1,24 +1,26 @@
-import { ScrollArea } from '@/components/ui/scroll-area'
-import '@/features/note/snote.css'
 import { ChevronRightIcon, StarIcon } from 'lucide-react'
+
+import '@/features/note/snote.css'
 import { Fragment, useEffect, useLayoutEffect } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
-import { SidebarInset, SidebarProvider, SidebarTrigger } from '@/components/ui/sidebar'
-import { ensureWorkspace, startReminders } from '@/features/note/lib/bootstrap'
-import { useAncestry, usePage } from '@/features/note/db/hooks'
-import { PageMenu } from '@/features/note/components/PageMenu'
 
-import { PageView } from '@/features/note/components/PageView'
-import { TrashView } from '@/features/note/components/TrashView'
-import SNoteSidebar from '@/features/note/components/SNote.sidebar'
+import { ScrollArea } from '@/components/ui/scroll-area'
+import { SidebarInset, SidebarProvider, SidebarTrigger } from '@/components/ui/sidebar'
 import { Toaster } from '@/components/ui/sonner'
-import { cn } from '@/lib/utils'
-import { PageIcon, pageTitle } from '@/features/note/editor/nodes/pages'
-import { useNoteStore } from '@/features/note/note.store'
-import { NoteTools } from '@/features/note/webmcp/NoteTools'
-import { SenseiWidget } from '@/features/note/sensei-widget/SenseiWidget'
-import { useUndoShortcuts } from '@/features/note/editor/live-editors'
+import { PageMenu } from '@/features/note/components/PageMenu'
+import { PageView } from '@/features/note/components/PageView'
+import SNoteSidebar from '@/features/note/components/SNote.sidebar'
 import { SNoteSkeleton } from '@/features/note/components/SNoteSkeleton'
+import { TrashView } from '@/features/note/components/TrashView'
+import { useAncestry, usePage } from '@/features/note/db/hooks'
+import { useUndoShortcuts } from '@/features/note/editor/live-editors'
+import { pageTitle } from '@/features/note/editor/nodes/page-utils'
+import { PageIcon } from '@/features/note/editor/nodes/PageIcon'
+import { ensureWorkspace, startReminders } from '@/features/note/lib/bootstrap'
+import { useNoteStore } from '@/features/note/note.store'
+import { SenseiWidget } from '@/features/note/sensei-widget/SenseiWidget'
+import { NoteTools } from '@/features/note/webmcp/NoteTools'
+import { cn } from '@/lib/utils'
 function PageHeader({ pageId }: { pageId?: string }) {
   const chain = useAncestry(pageId) ?? []
   const page = usePage(pageId)
@@ -41,7 +43,12 @@ function PageHeader({ pageId }: { pageId?: string }) {
       {page && (
         <>
           <span className="hidden text-xs text-muted-foreground sm:block">Edited {new Date(page.updatedAt).toLocaleString()}</span>
-          <button type="button" title="Favorite" onClick={() => updatePage(page.id, { favorite: !page.favorite })} className="rounded p-1 hover:bg-muted">
+          <button
+            type="button"
+            title="Favorite"
+            onClick={() => updatePage(page.id, { favorite: !page.favorite })}
+            className="rounded p-1 hover:bg-muted"
+          >
             <StarIcon className={cn('size-4', page.favorite && 'fill-yellow-400 text-yellow-400')} />
           </button>
           <PageMenu page={page} />

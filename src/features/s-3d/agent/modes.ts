@@ -1,4 +1,5 @@
 import { create } from 'zustand'
+
 import { settingsRepo } from '../db'
 
 /**
@@ -16,7 +17,20 @@ export const MODES: { id: AgentMode; label: string; hint: string }[] = [
 ]
 
 /** Tools that only look: allowed in every mode, and never need approval. */
-const READ = ['get_document', 'get_scene', 'list_pages', 'render_scene', 'render_views', 'render_turntable', 'snapshot_view', 'render_timeline', 'verify_design', 'search_3d_models', 'ask_user', 'ask_questions']
+const READ = [
+  'get_document',
+  'get_scene',
+  'list_pages',
+  'render_scene',
+  'render_views',
+  'render_turntable',
+  'snapshot_view',
+  'render_timeline',
+  'verify_design',
+  'search_3d_models',
+  'ask_user',
+  'ask_questions',
+]
 /** Moves around the canvas without changing the design: allowed to build modes without approval. */
 const NAVIGATE = ['select_nodes', 'set_page']
 
@@ -31,7 +45,8 @@ const ALLOWED: Record<AgentMode, (name: string) => boolean> = {
 export const toolAllowed = (mode: AgentMode, name: string) => ALLOWED[mode](name)
 
 /** Whether a call must be approved by the user first: only in edit mode, and only for tools that change the file. */
-export const needsApproval = (mode: AgentMode, name: string) => mode === 'edit' && !READ.includes(name) && !NAVIGATE.includes(name) && name !== 'update_todos' && name !== 'complete_goal'
+export const needsApproval = (mode: AgentMode, name: string) =>
+  mode === 'edit' && !READ.includes(name) && !NAVIGATE.includes(name) && name !== 'update_todos' && name !== 'complete_goal'
 
 const MODE_KEY = 's3d:agent-mode'
 const readMode = (): AgentMode => {
@@ -100,7 +115,8 @@ export async function approveTool(docId: string, request: ApprovalRequest, signa
     channel?.postMessage({ kind: 'open', id: p.id, request } satisfies Sync)
     signal.addEventListener('abort', () => settle(p, 'deny'), { once: true })
   })
-  if (answer === 'deny') throw new Error(`The user did not allow ${request.label}. Do not retry it; say what you could not do and ask how they want to proceed.`)
+  if (answer === 'deny')
+    throw new Error(`The user did not allow ${request.label}. Do not retry it; say what you could not do and ask how they want to proceed.`)
   if (answer === 'file') await saveApprovals(docId, [...(useApprovals.getState().allowed[docId] ?? []), request.tool])
 }
 
@@ -128,7 +144,12 @@ channel?.addEventListener('message', (e: MessageEvent<Sync>) => {
   const { queue } = useApprovals.getState()
   if (msg.kind === 'open') {
     if (queue.some((p) => p.id === msg.id)) return
-    const p: Pending = { id: msg.id, request: msg.request, remote: true, resolve: (answer) => channel?.postMessage({ kind: 'answer', id: msg.id, answer } satisfies Sync) }
+    const p: Pending = {
+      id: msg.id,
+      request: msg.request,
+      remote: true,
+      resolve: (answer) => channel?.postMessage({ kind: 'answer', id: msg.id, answer } satisfies Sync),
+    }
     useApprovals.setState((s) => ({ queue: [...s.queue, p] }))
   } else if (msg.kind === 'answer') {
     const p = queue.find((x) => x.id === msg.id && !x.remote)

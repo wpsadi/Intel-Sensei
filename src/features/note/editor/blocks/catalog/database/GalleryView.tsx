@@ -1,4 +1,5 @@
 import { LayoutGridIcon } from 'lucide-react'
+
 import { type BlockDefinition, database } from '../../insert'
 
 /** Gallery view block for the "/" and "+" menus. */

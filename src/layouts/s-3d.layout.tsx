@@ -1,28 +1,39 @@
-import { Outlet, useSearchParams } from 'react-router-dom'
 import { PlayIcon, Share2Icon } from 'lucide-react'
+import { useEffect, useRef, useState } from 'react'
+import { Outlet, useSearchParams } from 'react-router-dom'
+
+import { ResizeHandle } from '@/components/s-3d/resize-handle'
 import { S3DLeftSidebar } from '@/components/s-3d/s-3d-left-sidebar'
 import { S3DRightSidebar } from '@/components/s-3d/s-3d-right-sidebar'
-import {
-  Menubar, MenubarCheckboxItem, MenubarContent, MenubarItem, MenubarMenu, MenubarSeparator, MenubarShortcut, MenubarSub,
-  MenubarSubContent, MenubarSubTrigger, MenubarTrigger,
-} from '@/components/ui/menubar'
 import { Button } from '@/components/ui/button'
+import {
+  Menubar,
+  MenubarCheckboxItem,
+  MenubarContent,
+  MenubarItem,
+  MenubarMenu,
+  MenubarSeparator,
+  MenubarShortcut,
+  MenubarSub,
+  MenubarSubContent,
+  MenubarSubTrigger,
+  MenubarTrigger,
+} from '@/components/ui/menubar'
+import { SidebarInset, SidebarProvider } from '@/components/ui/sidebar'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
-import { SidebarInset, SidebarProvider, useSidebar } from '@/components/ui/sidebar'
-import { cmd } from '@/features/s-3d/commands'
-import type { Service } from '@/features/s-3d/types'
-import { useS3D } from '@/features/s-3d/store'
-import { chatsRepo } from '@/features/s-3d/db'
 import { useAgentRun } from '@/features/s-3d/agent/runner'
+import { cmd } from '@/features/s-3d/commands'
+import { isMac } from '@/features/s-3d/commands'
+import { chatsRepo } from '@/features/s-3d/db'
 import { type S3DDialog, useS3DDialog } from '@/features/s-3d/dialogs/dialog-store'
 import { exportProject, importFiles, openFiles } from '@/features/s-3d/io'
-import { ADD_LIGHTS, ADD_SHAPES, label } from '@/features/s-3d/scene-editor/scene-editor'
+import { sceneOf } from '@/features/s-3d/render/scene3d'
+import { ADD_LIGHTS, ADD_SHAPES, label } from '@/features/s-3d/scene-editor/add-menu'
 import { addObject, deleteObject, duplicateObject, editScene, sceneActions, selectObject } from '@/features/s-3d/scene-editor/edit'
 import { exportScene } from '@/features/s-3d/scene-editor/scene-export'
-import { sceneOf } from '@/features/s-3d/render/scene3d'
-import { isMac } from '@/features/s-3d/commands'
-import { useEffect, useRef, useState } from 'react'
-import { ResizeHandle } from '@/components/s-3d/resize-handle'
+import { livePeers, useS3D } from '@/features/s-3d/store'
+import type { Service } from '@/features/s-3d/types'
+import { useSidebar } from '@/hooks/use-sidebar'
 import { cn } from '@/lib/utils'
 
 const M = isMac ? '⌘' : 'Ctrl+'
@@ -54,11 +65,18 @@ function DialogItem({ dialog, label, shortcut }: { dialog: S3DDialog; label: str
 
 function Peers() {
   const peers = useS3D((s) => s.peers)
-  const list = Object.values(peers).filter((p) => Date.now() - p.seen < 15000)
+  const list = livePeers(peers)
   return (
     <div className="flex -space-x-1.5">
       {list.slice(0, 4).map((p) => (
-        <div key={p.id} title={p.name} className="grid size-5 place-items-center rounded-full border-2 border-background text-[9px] font-semibold text-white" style={{ background: p.color }}>{p.name.at(-4)?.toUpperCase()}</div>
+        <div
+          key={p.id}
+          title={p.name}
+          className="grid size-5 place-items-center rounded-full border-2 border-background text-[9px] font-semibold text-white"
+          style={{ background: p.color }}
+        >
+          {p.name.at(-4)?.toUpperCase()}
+        </div>
       ))}
     </div>
   )
@@ -88,14 +106,20 @@ function S3DMenubar({ service, rightOpen, setRightOpen }: { service: Service; ri
       <MenubarMenu>
         <MenubarTrigger className="h-6 px-2 py-0 text-xs">File</MenubarTrigger>
         <MenubarContent className={contentClass}>
-          <MenubarItem className={itemClass} onClick={() => void st().newDoc()}>{is2d ? 'New design file' : 'New 3D file'}</MenubarItem>
+          <MenubarItem className={itemClass} onClick={() => void st().newDoc()}>
+            {is2d ? 'New design file' : 'New 3D file'}
+          </MenubarItem>
           <DialogItem dialog="open" label="Open…" shortcut={`${M}O`} />
-          <MenubarItem className={itemClass} onClick={() => void openFiles()}>Open from computer…</MenubarItem>
+          <MenubarItem className={itemClass} onClick={() => void openFiles()}>
+            Open from computer…
+          </MenubarItem>
           <MenubarSub>
             <MenubarSubTrigger className={itemClass}>Recent</MenubarSubTrigger>
             <MenubarSubContent className={contentClass}>
               {docs.slice(0, 10).map((d) => (
-                <MenubarItem key={d.id} className={itemClass} disabled={d.id === docId} onClick={() => void st().openDoc(d.id)}>{d.name}</MenubarItem>
+                <MenubarItem key={d.id} className={itemClass} disabled={d.id === docId} onClick={() => void st().openDoc(d.id)}>
+                  {d.name}
+                </MenubarItem>
               ))}
             </MenubarSubContent>
           </MenubarSub>
@@ -103,46 +127,80 @@ function S3DMenubar({ service, rightOpen, setRightOpen }: { service: Service; ri
           <CmdItem id="save" />
           <DialogItem dialog="versions" label="Version history" />
           <MenubarSeparator />
-          {is2d ? <CmdItem id="import" /> : <MenubarItem className={itemClass} onClick={() => void importFiles()}>Import model or image…<MenubarShortcut>{`${SH}${M}K`}</MenubarShortcut></MenubarItem>}
+          {is2d ? (
+            <CmdItem id="import" />
+          ) : (
+            <MenubarItem className={itemClass} onClick={() => void importFiles()}>
+              Import model or image…<MenubarShortcut>{`${SH}${M}K`}</MenubarShortcut>
+            </MenubarItem>
+          )}
           {is2d ? (
             <DialogItem dialog="export" label="Export…" shortcut={`${M}E`} />
           ) : (
             <MenubarSub>
               <MenubarSubTrigger className={itemClass}>Export as</MenubarSubTrigger>
               <MenubarSubContent className={contentClass}>
-                <MenubarItem className={itemClass} onClick={() => exportScene('png').catch(() => {})}>Image (PNG render)</MenubarItem>
-                <MenubarItem className={itemClass} onClick={() => exportScene('glb').catch(() => {})}>3D model (.glb)</MenubarItem>
-                <MenubarItem className={itemClass} onClick={() => exportScene('obj').catch(() => {})}>3D model (.obj)</MenubarItem>
-                <MenubarItem className={itemClass} onClick={() => exportScene('stl').catch(() => {})}>3D print (.stl)</MenubarItem>
+                <MenubarItem className={itemClass} onClick={() => exportScene('png').catch(() => {})}>
+                  Image (PNG render)
+                </MenubarItem>
+                <MenubarItem className={itemClass} onClick={() => exportScene('glb').catch(() => {})}>
+                  3D model (.glb)
+                </MenubarItem>
+                <MenubarItem className={itemClass} onClick={() => exportScene('obj').catch(() => {})}>
+                  3D model (.obj)
+                </MenubarItem>
+                <MenubarItem className={itemClass} onClick={() => exportScene('stl').catch(() => {})}>
+                  3D print (.stl)
+                </MenubarItem>
               </MenubarSubContent>
             </MenubarSub>
           )}
           <DialogItem dialog="video" label="Export video…" />
-          <MenubarItem className={itemClass} onClick={() => void exportProject()}>Save local copy (.s3d)</MenubarItem>
+          <MenubarItem className={itemClass} onClick={() => void exportProject()}>
+            Save local copy (.s3d)
+          </MenubarItem>
           <MenubarSeparator />
           <DialogItem dialog="share" label="Publish & share…" />
           <MenubarSeparator />
-          <MenubarItem className={itemClass} variant="destructive" onClick={() => { if (confirm('Delete this file? Its version history is deleted too.')) void st().deleteDoc(docId) }}>Delete file</MenubarItem>
+          <MenubarItem
+            className={itemClass}
+            variant="destructive"
+            onClick={() => {
+              if (confirm('Delete this file? Its version history is deleted too.')) void st().deleteDoc(docId)
+            }}
+          >
+            Delete file
+          </MenubarItem>
         </MenubarContent>
       </MenubarMenu>
       <MenubarMenu>
         <MenubarTrigger className="h-6 px-2 py-0 text-xs">Edit</MenubarTrigger>
         <MenubarContent className={contentClass}>
-          {['undo', 'redo'].map((id) => <CmdItem key={id} id={id} />)}
+          {['undo', 'redo'].map((id) => (
+            <CmdItem key={id} id={id} />
+          ))}
           <MenubarSeparator />
           {is2d ? (
             <>
-              {['copy', 'cut', 'paste', 'duplicate', 'delete'].map((id) => <CmdItem key={id} id={id} />)}
+              {['copy', 'cut', 'paste', 'duplicate', 'delete'].map((id) => (
+                <CmdItem key={id} id={id} />
+              ))}
               <MenubarSeparator />
               <CmdItem id="select-all" />
             </>
           ) : (
             <>
               {/* In a 3D scene the commands act on scene objects, not canvas nodes. */}
-              <MenubarItem className={itemClass} disabled={!selected} onClick={() => selected && duplicateObject(selected)}>Duplicate object<MenubarShortcut>{`${M}D`}</MenubarShortcut></MenubarItem>
-              <MenubarItem className={itemClass} disabled={!selected} onClick={() => selected && deleteObject(selected)}>Delete object<MenubarShortcut>⌫</MenubarShortcut></MenubarItem>
+              <MenubarItem className={itemClass} disabled={!selected} onClick={() => selected && duplicateObject(selected)}>
+                Duplicate object<MenubarShortcut>{`${M}D`}</MenubarShortcut>
+              </MenubarItem>
+              <MenubarItem className={itemClass} disabled={!selected} onClick={() => selected && deleteObject(selected)}>
+                Delete object<MenubarShortcut>⌫</MenubarShortcut>
+              </MenubarItem>
               <MenubarSeparator />
-              <MenubarItem className={itemClass} disabled={!selected} onClick={() => selectObject(null)}>Deselect<MenubarShortcut>Esc</MenubarShortcut></MenubarItem>
+              <MenubarItem className={itemClass} disabled={!selected} onClick={() => selectObject(null)}>
+                Deselect<MenubarShortcut>Esc</MenubarShortcut>
+              </MenubarItem>
             </>
           )}
         </MenubarContent>
@@ -152,7 +210,20 @@ function S3DMenubar({ service, rightOpen, setRightOpen }: { service: Service; ri
         <MenubarContent className={contentClass}>
           {is2d ? (
             <>
-              {['tool-frame', 'tool-section', 'tool-rect', 'tool-ellipse', 'tool-polygon', 'tool-star', 'tool-pen', 'tool-text', 'tool-3d', 'tool-comment'].map((id) => <CmdItem key={id} id={id} />)}
+              {[
+                'tool-frame',
+                'tool-section',
+                'tool-rect',
+                'tool-ellipse',
+                'tool-polygon',
+                'tool-star',
+                'tool-pen',
+                'tool-text',
+                'tool-3d',
+                'tool-comment',
+              ].map((id) => (
+                <CmdItem key={id} id={id} />
+              ))}
               <MenubarSeparator />
               <CmdItem id="import" />
             </>
@@ -161,19 +232,31 @@ function S3DMenubar({ service, rightOpen, setRightOpen }: { service: Service; ri
               <MenubarSub>
                 <MenubarSubTrigger className={itemClass}>Shape</MenubarSubTrigger>
                 <MenubarSubContent className={contentClass}>
-                  {ADD_SHAPES.map((g) => <MenubarItem key={g} className={itemClass} onClick={() => addObject(g)}>{label(g)}</MenubarItem>)}
+                  {ADD_SHAPES.map((g) => (
+                    <MenubarItem key={g} className={itemClass} onClick={() => addObject(g)}>
+                      {label(g)}
+                    </MenubarItem>
+                  ))}
                 </MenubarSubContent>
               </MenubarSub>
               <MenubarSub>
                 <MenubarSubTrigger className={itemClass}>Light</MenubarSubTrigger>
                 <MenubarSubContent className={contentClass}>
-                  {ADD_LIGHTS.map((l) => <MenubarItem key={l} className={itemClass} onClick={() => addObject(l)}>{label(l)} light</MenubarItem>)}
+                  {ADD_LIGHTS.map((l) => (
+                    <MenubarItem key={l} className={itemClass} onClick={() => addObject(l)}>
+                      {label(l)} light
+                    </MenubarItem>
+                  ))}
                 </MenubarSubContent>
               </MenubarSub>
-              <MenubarItem className={itemClass} onClick={() => addObject('group')}>Empty group</MenubarItem>
+              <MenubarItem className={itemClass} onClick={() => addObject('group')}>
+                Empty group
+              </MenubarItem>
               <MenubarSeparator />
               <DialogItem dialog="discover" label="Discover 3D models…" />
-              <MenubarItem className={itemClass} onClick={() => void importFiles()}>Import model or image…</MenubarItem>
+              <MenubarItem className={itemClass} onClick={() => void importFiles()}>
+                Import model or image…
+              </MenubarItem>
             </>
           )}
         </MenubarContent>
@@ -183,48 +266,110 @@ function S3DMenubar({ service, rightOpen, setRightOpen }: { service: Service; ri
         <MenubarContent className={contentClass}>
           {is2d && (
             <>
-              <MenubarCheckboxItem className={checkClass} checked={showRulers} onCheckedChange={() => st().set({ showRulers: !showRulers })}>Rulers<MenubarShortcut>{cmd('toggle-rulers').shortcut}</MenubarShortcut></MenubarCheckboxItem>
-              <MenubarCheckboxItem className={checkClass} checked={showGrid} onCheckedChange={() => st().set({ showGrid: !showGrid })}>Grid<MenubarShortcut>{cmd('toggle-grid').shortcut}</MenubarShortcut></MenubarCheckboxItem>
-              <MenubarCheckboxItem className={checkClass} checked={snapToGrid} onCheckedChange={() => st().set({ snapToGrid: !snapToGrid })}>Snap to grid<MenubarShortcut>{cmd('toggle-snap').shortcut}</MenubarShortcut></MenubarCheckboxItem>
+              <MenubarCheckboxItem
+                className={checkClass}
+                checked={showRulers}
+                onCheckedChange={() => st().set({ showRulers: !showRulers })}
+              >
+                Rulers<MenubarShortcut>{cmd('toggle-rulers').shortcut}</MenubarShortcut>
+              </MenubarCheckboxItem>
+              <MenubarCheckboxItem className={checkClass} checked={showGrid} onCheckedChange={() => st().set({ showGrid: !showGrid })}>
+                Grid<MenubarShortcut>{cmd('toggle-grid').shortcut}</MenubarShortcut>
+              </MenubarCheckboxItem>
+              <MenubarCheckboxItem
+                className={checkClass}
+                checked={snapToGrid}
+                onCheckedChange={() => st().set({ snapToGrid: !snapToGrid })}
+              >
+                Snap to grid<MenubarShortcut>{cmd('toggle-snap').shortcut}</MenubarShortcut>
+              </MenubarCheckboxItem>
               <MenubarSeparator />
-              {['zoom-in', 'zoom-out', 'zoom-fit', 'zoom-selection', 'zoom-100'].map((id) => <CmdItem key={id} id={id} />)}
+              {['zoom-in', 'zoom-out', 'zoom-fit', 'zoom-selection', 'zoom-100'].map((id) => (
+                <CmdItem key={id} id={id} />
+              ))}
               <MenubarSeparator />
             </>
           )}
           {!is2d && (
             <>
-              <MenubarItem className={itemClass} disabled={!selected} onClick={() => sceneActions.frame?.(selected)}>Frame selection<MenubarShortcut>F</MenubarShortcut></MenubarItem>
-              <MenubarItem className={itemClass} onClick={() => sceneActions.frame?.(null)}>Frame all</MenubarItem>
+              <MenubarItem className={itemClass} disabled={!selected} onClick={() => sceneActions.frame?.(selected)}>
+                Frame selection<MenubarShortcut>F</MenubarShortcut>
+              </MenubarItem>
+              <MenubarItem className={itemClass} onClick={() => sceneActions.frame?.(null)}>
+                Frame all
+              </MenubarItem>
               <MenubarSeparator />
               {scene && (
                 <>
-                  <MenubarCheckboxItem className={checkClass} checked={scene.ground.visible} onCheckedChange={(v) => editScene((sc) => { sc.ground = { ...sc.ground, visible: !!v } })}>Ground</MenubarCheckboxItem>
-                  <MenubarCheckboxItem className={checkClass} checked={scene.shadows} onCheckedChange={(v) => editScene((sc) => { sc.shadows = !!v })}>Shadows</MenubarCheckboxItem>
-                  <MenubarCheckboxItem className={checkClass} checked={scene.environment === 'studio'} onCheckedChange={(v) => editScene((sc) => { sc.environment = v ? 'studio' : 'none' })}>Studio lighting</MenubarCheckboxItem>
+                  <MenubarCheckboxItem
+                    className={checkClass}
+                    checked={scene.ground.visible}
+                    onCheckedChange={(v) =>
+                      editScene((sc) => {
+                        sc.ground = { ...sc.ground, visible: !!v }
+                      })
+                    }
+                  >
+                    Ground
+                  </MenubarCheckboxItem>
+                  <MenubarCheckboxItem
+                    className={checkClass}
+                    checked={scene.shadows}
+                    onCheckedChange={(v) =>
+                      editScene((sc) => {
+                        sc.shadows = !!v
+                      })
+                    }
+                  >
+                    Shadows
+                  </MenubarCheckboxItem>
+                  <MenubarCheckboxItem
+                    className={checkClass}
+                    checked={scene.environment === 'studio'}
+                    onCheckedChange={(v) =>
+                      editScene((sc) => {
+                        sc.environment = v ? 'studio' : 'none'
+                      })
+                    }
+                  >
+                    Studio lighting
+                  </MenubarCheckboxItem>
                   <MenubarSeparator />
                 </>
               )}
             </>
           )}
-          <MenubarCheckboxItem className={checkClass} checked={leftOpen} onCheckedChange={toggleSidebar}>Left sidebar</MenubarCheckboxItem>
-          <MenubarCheckboxItem className={checkClass} checked={rightOpen} onCheckedChange={() => setRightOpen(!rightOpen)}>Inspector</MenubarCheckboxItem>
+          <MenubarCheckboxItem className={checkClass} checked={leftOpen} onCheckedChange={toggleSidebar}>
+            Left sidebar
+          </MenubarCheckboxItem>
+          <MenubarCheckboxItem className={checkClass} checked={rightOpen} onCheckedChange={() => setRightOpen(!rightOpen)}>
+            Inspector
+          </MenubarCheckboxItem>
           <MenubarSeparator />
           <CmdItem id="play" />
         </MenubarContent>
       </MenubarMenu>
       {is2d && (
-      <MenubarMenu>
-        <MenubarTrigger className="h-6 px-2 py-0 text-xs">Object</MenubarTrigger>
-        <MenubarContent className={contentClass}>
-          {['group', 'ungroup', 'frame-selection', 'add-auto-layout'].map((id) => <CmdItem key={id} id={id} />)}
-          <MenubarSeparator />
-          {['mask', 'union', 'subtract', 'intersect', 'exclude'].map((id) => <CmdItem key={id} id={id} />)}
-          <MenubarSeparator />
-          {['bring-front', 'bring-forward', 'send-backward', 'send-back'].map((id) => <CmdItem key={id} id={id} />)}
-          <MenubarSeparator />
-          {['flip-h', 'flip-v', 'toggle-visible', 'toggle-lock', 'toggle-clip'].map((id) => <CmdItem key={id} id={id} />)}
-        </MenubarContent>
-      </MenubarMenu>
+        <MenubarMenu>
+          <MenubarTrigger className="h-6 px-2 py-0 text-xs">Object</MenubarTrigger>
+          <MenubarContent className={contentClass}>
+            {['group', 'ungroup', 'frame-selection', 'add-auto-layout'].map((id) => (
+              <CmdItem key={id} id={id} />
+            ))}
+            <MenubarSeparator />
+            {['mask', 'union', 'subtract', 'intersect', 'exclude'].map((id) => (
+              <CmdItem key={id} id={id} />
+            ))}
+            <MenubarSeparator />
+            {['bring-front', 'bring-forward', 'send-backward', 'send-back'].map((id) => (
+              <CmdItem key={id} id={id} />
+            ))}
+            <MenubarSeparator />
+            {['flip-h', 'flip-v', 'toggle-visible', 'toggle-lock', 'toggle-clip'].map((id) => (
+              <CmdItem key={id} id={id} />
+            ))}
+          </MenubarContent>
+        </MenubarMenu>
       )}
       <MenubarMenu>
         <MenubarTrigger className="h-6 px-2 py-0 text-xs">Help</MenubarTrigger>
@@ -233,19 +378,32 @@ function S3DMenubar({ service, rightOpen, setRightOpen }: { service: Service; ri
         </MenubarContent>
       </MenubarMenu>
       {!is2d && (
-        <button type="button" onClick={() => useS3DDialog.getState().setOpen('discover')} className="h-6 rounded-sm px-2 text-xs hover:bg-muted">
+        <button
+          type="button"
+          onClick={() => useS3DDialog.getState().setOpen('discover')}
+          className="h-6 rounded-sm px-2 text-xs hover:bg-muted"
+        >
           Discover
         </button>
       )}
       <div className="ml-auto flex items-center gap-1.5 pr-1">
         <Peers />
         <Tooltip>
-          <TooltipTrigger render={<Button variant="ghost" size="icon-xs" className="size-6" aria-label="Preview" onClick={() => st().set({ mode: 'play' })} />}>
+          <TooltipTrigger
+            render={
+              <Button variant="ghost" size="icon-xs" className="size-6" aria-label="Preview" onClick={() => st().set({ mode: 'play' })} />
+            }
+          >
             <PlayIcon />
           </TooltipTrigger>
-          <TooltipContent side="bottom" className="text-xs">Preview{cmd('play').shortcut && ` (${cmd('play').shortcut})`}</TooltipContent>
+          <TooltipContent side="bottom" className="text-xs">
+            Preview{cmd('play').shortcut && ` (${cmd('play').shortcut})`}
+          </TooltipContent>
         </Tooltip>
-        <Button size="xs" className="h-6 px-2 text-xs" onClick={() => useS3DDialog.getState().setOpen('share')}><Share2Icon />Share</Button>
+        <Button size="xs" className="h-6 px-2 text-xs" onClick={() => useS3DDialog.getState().setOpen('share')}>
+          <Share2Icon />
+          Share
+        </Button>
       </div>
     </Menubar>
   )
@@ -279,8 +437,10 @@ function useFileUrlSync(service: Service) {
       }
       if (!cancelled) setApplied(true)
     })()
-    return () => { cancelled = true }
-  }, [ready, applied])
+    return () => {
+      cancelled = true
+    }
+  }, [ready, applied, params])
 
   // Store -> URL.
   useEffect(() => {
@@ -292,7 +452,7 @@ function useFileUrlSync(service: Service) {
     if (chatId) next.set('chatId', chatId)
     else next.delete('chatId')
     setParams(next, { replace: true })
-  }, [ready, applied, docId, pageId, chatId])
+  }, [ready, applied, docId, pageId, chatId, setParams, params])
 }
 
 const LEFT = { min: 200, max: 480, initial: 240 }
@@ -335,25 +495,39 @@ function S3DLayout({ service }: { service: Service }) {
     if (dragging) return
     saveWidth(`${service}:left-width`, leftWidth)
     saveWidth(`${service}:right-width`, rightWidth)
-  }, [dragging, leftWidth, rightWidth])
+  }, [dragging, leftWidth, rightWidth, service])
 
   return (
     <SidebarProvider
-      className={cn('h-svh min-h-0 flex-col', dragging && 'cursor-col-resize select-none [&_[data-slot=sidebar-container]]:transition-none [&_[data-slot=sidebar-gap]]:transition-none')}
+      className={cn(
+        'h-svh min-h-0 flex-col',
+        dragging &&
+          'cursor-col-resize select-none [&_[data-slot=sidebar-container]]:transition-none [&_[data-slot=sidebar-gap]]:transition-none',
+      )}
       style={{ '--sidebar-width': `${leftWidth}px`, '--sidebar-width-icon': '2.5rem' } as React.CSSProperties}
     >
       <S3DMenubar service={service} rightOpen={rightOpen} setRightOpen={setRightOpen} />
       <div className="flex min-h-0 flex-1">
         <S3DLeftSidebar
           className="top-8 h-[calc(100svh-2rem)]"
-          resizer={<ResizeHandle className="-right-1" onDragChange={onDragChange} onResize={(dx) => setLeftWidth(clamp(start.current.left + dx, LEFT))} />}
+          resizer={
+            <ResizeHandle
+              className="-right-1"
+              onDragChange={onDragChange}
+              onResize={(dx) => setLeftWidth(clamp(start.current.left + dx, LEFT))}
+            />
+          }
         />
         <SidebarInset className="relative h-full min-w-0">
           <Outlet />
         </SidebarInset>
         {rightOpen && (
           <div className="relative hidden shrink-0 lg:flex">
-            <ResizeHandle className="-left-1" onDragChange={onDragChange} onResize={(dx) => setRightWidth(clamp(start.current.right - dx, RIGHT))} />
+            <ResizeHandle
+              className="-left-1"
+              onDragChange={onDragChange}
+              onResize={(dx) => setRightWidth(clamp(start.current.right - dx, RIGHT))}
+            />
             <S3DRightSidebar service={service} className="top-8 h-[calc(100svh-2rem)]" style={{ width: rightWidth }} />
           </div>
         )}

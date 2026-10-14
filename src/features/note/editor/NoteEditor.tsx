@@ -1,20 +1,22 @@
 import 'katex/dist/katex.min.css'
 import { type Editor, EditorContent, useEditor } from '@tiptap/react'
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { useDrop } from 'react-dnd'
+
+import { cn } from '@/lib/utils'
+
+import { putMedia } from '../db/media'
+import { markdownToHtml } from '../lib/markdown-import'
 import { BLOCK_DRAG, type BlockHover, type DraggedBlock, LIST_ITEMS, blockUnder } from './blocks/block-dom'
 import { BlockActions } from './blocks/BlockActions'
 import { BlockCommentsPanel } from './blocks/BlockCommentsPanel'
-import { commentsOf } from './blocks/comments'
 import { BlockHandle } from './blocks/BlockHandle'
 import { BlockInsertMenu } from './blocks/BlockInsertMenu'
-import { EditorPageContext } from './nodes/helpers'
+import { commentsOf } from './blocks/comments'
 import { FormatMenu } from './blocks/FormatMenu'
 import { buildExtensions } from './extensions'
 import { registerLiveEditor } from './live-editors'
-import { cn } from '@/lib/utils'
-import { putMedia } from '../db/media'
-import { markdownToHtml } from '../lib/markdown-import'
+import { EditorPageContext } from './nodes/block-utils'
 
 interface NoteEditorProps {
   /** Serialized Tiptap JSON. Only read on mount; remount with a `key` to load other content. */
@@ -66,7 +68,9 @@ const RICH_HTML = /<(strong|b|em|i|u|s|del|h[1-6]|ul|ol|li|table|a|code|pre|bloc
 
 export function NoteEditor({ content, pageId = '', nested = false, editable = true, onChange }: NoteEditorProps) {
   const onChangeRef = useRef(onChange)
-  onChangeRef.current = onChange
+  useLayoutEffect(() => {
+    onChangeRef.current = onChange
+  })
   const extensions = useMemo(() => buildExtensions({ pageId, nested }), [pageId, nested])
 
   const editor = useEditor(
@@ -110,7 +114,11 @@ export function NoteEditor({ content, pageId = '', nested = false, editable = tr
           }
           const synced = text.match(/^snote-synced:([\w-]+)$/)
           if (synced && !nested) {
-            current.chain().focus().insertContent({ type: 'syncedBlock', attrs: { syncId: synced[1] } }).run()
+            current
+              .chain()
+              .focus()
+              .insertContent({ type: 'syncedBlock', attrs: { syncId: synced[1] } })
+              .run()
             return true
           }
           return false
@@ -120,7 +128,9 @@ export function NoteEditor({ content, pageId = '', nested = false, editable = tr
     [extensions],
   )
   const editorRef = useRef<Editor | null>(editor)
-  editorRef.current = editor
+  useLayoutEffect(() => {
+    editorRef.current = editor
+  })
 
   useEffect(() => {
     editor?.setEditable(editable)
@@ -166,7 +176,14 @@ export function NoteEditor({ content, pageId = '', nested = false, editable = tr
     const { clientX: x, clientY: y } = event
     // Moving across to the handles (through a callout's padding, say) keeps the current block.
     const wrapBox = wrapRef.current.getBoundingClientRect()
-    if (hover && x <= wrapBox.left + hover.left && x >= wrapBox.left + hover.left - 56 && y >= wrapBox.top + hover.top && y <= wrapBox.top + hover.top + hover.height) return
+    if (
+      hover &&
+      x <= wrapBox.left + hover.left &&
+      x >= wrapBox.left + hover.left - 56 &&
+      y >= wrapBox.top + hover.top &&
+      y <= wrapBox.top + hover.top + hover.height
+    )
+      return
     let target = event.target as Element
     if (!editor.view.dom.contains(target)) {
       // In the gutter: keep the current handle while the pointer stays level with its block…
@@ -190,11 +207,21 @@ export function NoteEditor({ content, pageId = '', nested = false, editable = tr
     const type = hoveredNode(editor, hover.start)?.type.name ?? ''
     // A list row gets a new empty row of the same kind; anything else gets a paragraph.
     if (LIST_ITEMS.includes(type)) {
-      editor.chain().focus().insertContentAt(at, { type, content: [{ type: 'paragraph' }] }).setTextSelection(at + 2).run()
+      editor
+        .chain()
+        .focus()
+        .insertContentAt(at, { type, content: [{ type: 'paragraph' }] })
+        .setTextSelection(at + 2)
+        .run()
       setMenu({ at: at + 2, top: hover.top + hover.height })
       return
     }
-    editor.chain().focus().insertContentAt(at, { type: 'paragraph' }).setTextSelection(at + 1).run()
+    editor
+      .chain()
+      .focus()
+      .insertContentAt(at, { type: 'paragraph' })
+      .setTextSelection(at + 1)
+      .run()
     setMenu({ at: at + 1, top: hover.top + hover.height })
   }
 
@@ -278,11 +305,12 @@ export function NoteEditor({ content, pageId = '', nested = false, editable = tr
             onComment={() => setCommentsFor({ start: blockActions.start, top: blockActions.top })}
           />
         )}
-        {commentsFor && editor && <BlockCommentsPanel key={commentsFor.start} editor={editor} {...commentsFor} onClose={() => setCommentsFor(null)} />}
+        {commentsFor && editor && (
+          <BlockCommentsPanel key={commentsFor.start} editor={editor} {...commentsFor} onClose={() => setCommentsFor(null)} />
+        )}
         <EditorContent editor={editor} />
       </div>
       {editor && <FormatMenu editor={editor} />}
     </EditorPageContext.Provider>
   )
 }
-

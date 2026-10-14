@@ -1,24 +1,25 @@
-import { AiBlock, ButtonBlock } from './nodes/actions'
-import { BlockComments } from './blocks/comments'
-import { Breadcrumb, PageBlock, TableOfContents } from './nodes/pages'
-import { Callout, Column, Columns, TabPanel, Tabs } from './nodes/layout'
-import { Color, TextStyle } from '@tiptap/extension-text-style'
-import { DatabaseBlock } from './blocks/catalog/database/DatabaseBlock'
-import { SyncedBlock } from './nodes/data'
-import { Details, DetailsContent, DetailsSummary } from '@tiptap/extension-details'
 import { type Editor, Extension, type Extensions } from '@tiptap/core'
-import { EmojiNode, MentionNode } from './nodes/inline'
-import { TaskItem, TaskList } from '@tiptap/extension-list'
-import { CodeBlock } from './nodes/code'
-import { Embed } from './nodes/embed'
+import { Details, DetailsContent, DetailsSummary } from '@tiptap/extension-details'
 import { Highlight } from '@tiptap/extension-highlight'
+import { TaskItem, TaskList } from '@tiptap/extension-list'
 import { Mathematics } from '@tiptap/extension-mathematics'
-import { Media } from './nodes/media'
-import { openMathEditor } from './math-editor'
-import { caretPlaceholder } from './caret-placeholder'
-import { SlashCommands } from './slash-commands'
-import StarterKit from '@tiptap/starter-kit'
 import { TableKit } from '@tiptap/extension-table'
+import { Color, TextStyle } from '@tiptap/extension-text-style'
+import StarterKit from '@tiptap/starter-kit'
+
+import { DatabaseBlock } from './blocks/catalog/database/DatabaseBlock'
+import { BlockComments } from './blocks/comments'
+import { caretPlaceholder } from './caret-placeholder'
+import { openMathEditor } from './math-editor'
+import { AiBlock, ButtonBlock } from './nodes/actions'
+import { CodeBlock } from './nodes/code'
+import { SyncedBlock } from './nodes/data'
+import { Embed } from './nodes/embed'
+import { EmojiNode, MentionNode } from './nodes/inline'
+import { Callout, Column, Columns, TabPanel, Tabs } from './nodes/layout'
+import { Media } from './nodes/media'
+import { Breadcrumb, PageBlock, TableOfContents } from './nodes/pages'
+import { SlashCommands } from './slash-commands'
 
 /** Toggle list (level 0) and toggle headings 1–3 share one node; the level styles the summary. */
 const ToggleBlock = Details.extend({
@@ -44,7 +45,6 @@ const SNoteStorage = Extension.create<{ pageId: string }, { pageId: string }>({
     return { pageId: this.options.pageId }
   },
 })
-
 
 export function buildExtensions({ pageId, nested }: { pageId: string; nested: boolean }): Extensions {
   // Math click handlers only receive (node, pos), so capture the owning editor here.

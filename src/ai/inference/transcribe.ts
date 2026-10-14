@@ -21,10 +21,7 @@ export async function transcribeAudio(audio: Blob): Promise<string> {
       contents: [
         {
           role: 'user',
-          parts: [
-            { text: 'Transcribe this audio exactly.' },
-            { inlineData: { mimeType: audio.type.split(';')[0] || 'audio/webm', data } },
-          ],
+          parts: [{ text: 'Transcribe this audio exactly.' }, { inlineData: { mimeType: audio.type.split(';')[0] || 'audio/webm', data } }],
         },
       ],
     }),
@@ -32,7 +29,10 @@ export async function transcribeAudio(audio: Blob): Promise<string> {
   const body = await response.json()
   if (!response.ok) throw new Error(body?.error?.message ?? `Transcription failed (${response.status})`)
   const parts = (body.candidates?.[0]?.content?.parts ?? []) as { text?: string; audioTranscription?: { text?: string } }[]
-  const transcript = parts.map((part) => part.audioTranscription?.text ?? part.text ?? '').join('').trim()
+  const transcript = parts
+    .map((part) => part.audioTranscription?.text ?? part.text ?? '')
+    .join('')
+    .trim()
   if (!transcript) throw new Error('No speech was recognised.')
   return transcript
 }

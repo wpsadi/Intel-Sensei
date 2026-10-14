@@ -1,4 +1,5 @@
 import { BookmarkIcon } from 'lucide-react'
+
 import { type BlockDefinition, block } from '../../insert'
 
 /** Web bookmark block for the "/" and "+" menus. */

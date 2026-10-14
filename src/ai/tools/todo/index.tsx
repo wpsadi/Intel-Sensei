@@ -1,5 +1,6 @@
 import { tool } from 'ai'
 import { z } from 'zod'
+
 import type { ChatTodoList } from '@/features/note/db/types'
 
 /** Added to the chat agent's instructions so it shares a to-do list for work that takes several items. */
@@ -20,7 +21,8 @@ export function createTodoTools(onTodos?: (todos: ChatTodoList | null) => void, 
   }
 
   const createTodoList = tool({
-    description: 'Show the user a to-do checklist for a task with several items, to tick off as you work. Not for explaining an approach: use createPlan for that. Replaces any list you made before.',
+    description:
+      'Show the user a to-do checklist for a task with several items, to tick off as you work. Not for explaining an approach: use createPlan for that. Replaces any list you made before.',
     inputSchema: z.object({
       title: z.string().describe('Short name of the task'),
       description: z.string().optional().describe('One sentence on the goal'),

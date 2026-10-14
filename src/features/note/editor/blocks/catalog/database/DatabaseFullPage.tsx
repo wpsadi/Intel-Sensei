@@ -1,6 +1,7 @@
 import { SheetIcon } from 'lucide-react'
-import { type BlockDefinition, chain, hostPageId } from '../../insert'
+
 import { useNoteStore } from '../../../../note.store'
+import { type BlockDefinition, chain, hostPageId } from '../../insert'
 
 /** Database - Full page block for the "/" and "+" menus. */
 export const DatabaseFullPageBlock: BlockDefinition = {

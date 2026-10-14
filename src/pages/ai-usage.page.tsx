@@ -1,13 +1,14 @@
-import { useMemo } from 'react'
 import { Trash2Icon } from 'lucide-react'
-import { SidebarInset, SidebarProvider } from '@/components/ui/sidebar'
+import { useMemo } from 'react'
+
+import { clearUsage } from '@/ai/usage'
 import { AppSidebar } from '@/components/app-sidebar'
 import { SiteHeader } from '@/components/site-header'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { ScrollArea } from '@/components/ui/scroll-area'
+import { SidebarInset, SidebarProvider } from '@/components/ui/sidebar'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
-import { clearUsage } from '@/ai/usage'
 import { useUsage } from '@/features/ai-usage/use-usage'
 
 const usd = (value: number) => `$${value.toFixed(2)}`
@@ -15,29 +16,32 @@ const usd = (value: number) => `$${value.toFixed(2)}`
 const usd7 = (value: number) => `$${value.toFixed(7)}`
 const count = new Intl.NumberFormat('en', { notation: 'compact', maximumFractionDigits: 1 })
 
+/** Spend per period and per model; reads the clock, so it lives outside render. */
+function summarize(rows: ReturnType<typeof useUsage>['rows']) {
+  const day = 24 * 60 * 60 * 1000
+  const sum = (since: number) => (rows ?? []).filter((r) => r.at >= since).reduce((t, r) => t + (r.cost ?? 0), 0)
+  const byModel = new Map<string, { calls: number; tokens: number; cost: number }>()
+  for (const r of rows ?? []) {
+    const entry = byModel.get(`${r.provider}/${r.model}`) ?? { calls: 0, tokens: 0, cost: 0 }
+    entry.calls++
+    entry.tokens += r.inputTokens + r.outputTokens
+    entry.cost += r.cost ?? 0
+    byModel.set(`${r.provider}/${r.model}`, entry)
+  }
+  const startOfDay = new Date().setHours(0, 0, 0, 0)
+  return {
+    today: sum(startOfDay),
+    week: sum(Date.now() - 7 * day),
+    all: sum(0),
+    unpriced: (rows ?? []).filter((r) => r.cost === null).length,
+    byModel: [...byModel.entries()].sort((a, b) => b[1].cost - a[1].cost),
+  }
+}
+
 function AiUsagePage() {
   const { rows } = useUsage()
 
-  const totals = useMemo(() => {
-    const day = 24 * 60 * 60 * 1000
-    const sum = (since: number) => (rows ?? []).filter((r) => r.at >= since).reduce((t, r) => t + (r.cost ?? 0), 0)
-    const byModel = new Map<string, { calls: number; tokens: number; cost: number }>()
-    for (const r of rows ?? []) {
-      const entry = byModel.get(`${r.provider}/${r.model}`) ?? { calls: 0, tokens: 0, cost: 0 }
-      entry.calls++
-      entry.tokens += r.inputTokens + r.outputTokens
-      entry.cost += r.cost ?? 0
-      byModel.set(`${r.provider}/${r.model}`, entry)
-    }
-    const startOfDay = new Date().setHours(0, 0, 0, 0)
-    return {
-      today: sum(startOfDay),
-      week: sum(Date.now() - 7 * day),
-      all: sum(0),
-      unpriced: (rows ?? []).filter((r) => r.cost === null).length,
-      byModel: [...byModel.entries()].sort((a, b) => b[1].cost - a[1].cost),
-    }
-  }, [rows])
+  const totals = useMemo(() => summarize(rows), [rows])
 
   return (
     <SidebarProvider
@@ -55,15 +59,28 @@ function AiUsagePage() {
           <div className="flex items-center justify-between">
             <div>
               <h1 className="text-xl font-semibold">AI usage</h1>
-              <p className="text-sm text-muted-foreground">Every model call Sensei makes, priced with models.dev. Stored in this browser only.</p>
+              <p className="text-sm text-muted-foreground">
+                Every model call Sensei makes, priced with models.dev. Stored in this browser only.
+              </p>
             </div>
-            <Button variant="outline" size="sm" disabled={!rows?.length} onClick={() => confirm('Delete the whole usage log?') && void clearUsage()}>
+            <Button
+              variant="outline"
+              size="sm"
+              disabled={!rows?.length}
+              onClick={() => confirm('Delete the whole usage log?') && void clearUsage()}
+            >
               <Trash2Icon /> Clear log
             </Button>
           </div>
 
           <div className="grid gap-4 sm:grid-cols-3">
-            {([['Today', totals.today], ['Last 7 days', totals.week], ['All time', totals.all]] as const).map(([label, value]) => (
+            {(
+              [
+                ['Today', totals.today],
+                ['Last 7 days', totals.week],
+                ['All time', totals.all],
+              ] as const
+            ).map(([label, value]) => (
               <Card key={label}>
                 <CardHeader>
                   <CardDescription>{label}</CardDescription>
@@ -73,7 +90,9 @@ function AiUsagePage() {
             ))}
           </div>
           {totals.unpriced > 0 && (
-            <p className="text-xs text-muted-foreground">{totals.unpriced} calls have no price on models.dev (or you are offline), so they count as $0.</p>
+            <p className="text-xs text-muted-foreground">
+              {totals.unpriced} calls have no price on models.dev (or you are offline), so they count as $0.
+            </p>
           )}
 
           <Card>
@@ -101,7 +120,9 @@ function AiUsagePage() {
                   ))}
                   {rows && !rows.length && (
                     <TableRow>
-                      <TableCell colSpan={4} className="text-center text-muted-foreground">No AI calls logged yet.</TableCell>
+                      <TableCell colSpan={4} className="text-center text-muted-foreground">
+                        No AI calls logged yet.
+                      </TableCell>
                     </TableRow>
                   )}
                 </TableBody>

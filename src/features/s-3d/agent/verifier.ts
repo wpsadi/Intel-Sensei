@@ -1,15 +1,29 @@
 import { z } from 'zod'
 
 /** The tools the verifier may use: it only looks, it never changes anything. */
-export const VERIFIER_TOOLS = ['get_document', 'get_scene', 'list_pages', 'render_scene', 'render_views', 'snapshot_view', 'render_timeline', 'verify_design']
+export const VERIFIER_TOOLS = [
+  'get_document',
+  'get_scene',
+  'list_pages',
+  'render_scene',
+  'render_views',
+  'snapshot_view',
+  'render_timeline',
+  'verify_design',
+]
 
 export const verdictSchema = z.object({
   achieved: z.boolean().describe('true only if EVERY part of the goal is truly met in the current state'),
   summary: z.string().describe('One or two sentences: what you checked and what you found'),
-  problems: z.array(z.string()).describe('What is wrong or missing, one concrete fix per item, naming object ids and the angle where you saw it. Empty only when achieved.'),
+  problems: z
+    .array(z.string())
+    .describe(
+      'What is wrong or missing, one concrete fix per item, naming object ids and the angle where you saw it. Empty only when achieved.',
+    ),
 })
 
-export const VERDICT_DESCRIPTION = 'Give your verdict on the goal. Call this exactly once, after you have looked at the work from every relevant angle.'
+export const VERDICT_DESCRIPTION =
+  'Give your verdict on the goal. Call this exactly once, after you have looked at the work from every relevant angle.'
 
 /**
  * The verifier is a second agent with its own fresh context. It is not told how the work was done, only what was

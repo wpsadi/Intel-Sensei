@@ -1,4 +1,5 @@
 import { FileIcon } from 'lucide-react'
+
 import { type BlockDefinition, block } from '../../insert'
 
 /** File block for the "/" and "+" menus. */

@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { toast } from 'sonner'
+
 import { transcribeAudio } from '@/ai/inference/transcribe'
 
 /** `text` is typing, `voice` is a recording, `transcribing` is a recording being sent to Gemini. */

@@ -1,16 +1,33 @@
+import { ContextMenu } from '@base-ui/react/context-menu'
+import {
+  ChevronDownIcon,
+  ChevronRightIcon,
+  CopyIcon,
+  EyeIcon,
+  EyeOffIcon,
+  FileIcon,
+  LockIcon,
+  PencilIcon,
+  PlusIcon,
+  SearchIcon,
+  Trash2Icon,
+  UnlockIcon,
+  XIcon,
+} from 'lucide-react'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import type { DragEvent, ReactNode } from 'react'
-import { ChevronDownIcon, ChevronRightIcon, CopyIcon, EyeIcon, EyeOffIcon, FileIcon, LockIcon, PencilIcon, PlusIcon, SearchIcon, Trash2Icon, UnlockIcon, XIcon } from 'lucide-react'
-import { ContextMenu } from '@base-ui/react/context-menu'
-import { ScrollArea } from '@/components/ui/scroll-area'
-import { Input } from '@/components/ui/input'
+
 import { Button } from '@/components/ui/button'
-import { cn } from '@/lib/utils'
-import { currentPage, useS3D } from '@/features/s-3d/store'
+import { Input } from '@/components/ui/input'
+import { ScrollArea } from '@/components/ui/scroll-area'
 import { ancestors, childrenOf, isContainer } from '@/features/s-3d/model'
-import { CommandContextMenu, NODE_MENU } from '../components/command-context-menu'
-import { NodeIcon } from './node-icon'
+import { currentPage, useS3D } from '@/features/s-3d/store'
 import type { Doc, SNode } from '@/features/s-3d/types'
+import { cn } from '@/lib/utils'
+
+import { CommandContextMenu } from '../components/command-context-menu'
+import { NODE_MENU } from '../components/command-menus'
+import { NodeIcon } from './node-icon'
 
 interface Row {
   node: SNode
@@ -72,7 +89,9 @@ function PagesSection() {
           {open ? <ChevronDownIcon className="size-3" /> : <ChevronRightIcon className="size-3" />}
           {open ? 'Pages' : page?.name}
         </button>
-        <Button variant="ghost" size="icon-xs" className="size-6" aria-label="Add page" onClick={() => st().addPage()}><PlusIcon /></Button>
+        <Button variant="ghost" size="icon-xs" className="size-6" aria-label="Add page" onClick={() => st().addPage()}>
+          <PlusIcon />
+        </Button>
       </div>
       {open && (
         <ScrollArea className="max-h-36" style={{ height: Math.min(144, doc.pages.length * 26 + 4) }}>
@@ -81,27 +100,62 @@ function PagesSection() {
               <ContextMenu.Trigger
                 render={<div />}
                 draggable={renaming !== p.id}
-                onDragStart={(e: DragEvent) => { setDragId(p.id); e.dataTransfer.effectAllowed = 'move' }}
+                onDragStart={(e: DragEvent) => {
+                  setDragId(p.id)
+                  e.dataTransfer.effectAllowed = 'move'
+                }}
                 onDragOver={(e: DragEvent) => e.preventDefault()}
-                onDrop={(e: DragEvent) => { e.preventDefault(); if (dragId && dragId !== p.id) st().movePage(dragId, i); setDragId(null) }}
-                className={cn('flex h-6 items-center gap-2 rounded-sm px-2 text-xs hover:bg-accent', p.id === pageId && 'bg-accent font-medium')}
+                onDrop={(e: DragEvent) => {
+                  e.preventDefault()
+                  if (dragId && dragId !== p.id) st().movePage(dragId, i)
+                  setDragId(null)
+                }}
+                className={cn(
+                  'flex h-6 items-center gap-2 rounded-sm px-2 text-xs hover:bg-accent',
+                  p.id === pageId && 'bg-accent font-medium',
+                )}
                 onClick={() => p.id !== pageId && st().setPage(p.id)}
                 onDoubleClick={() => setRenaming(p.id)}
               >
                 <FileIcon className="size-3 shrink-0 text-muted-foreground" />
-                {renaming === p.id
-                  ? <InlineRename value={p.name} onDone={(v) => { if (v) st().renamePage(p.id, v); setRenaming(null) }} />
-                  : <span className="truncate">{p.name}</span>}
+                {renaming === p.id ? (
+                  <InlineRename
+                    value={p.name}
+                    onDone={(v) => {
+                      if (v) st().renamePage(p.id, v)
+                      setRenaming(null)
+                    }}
+                  />
+                ) : (
+                  <span className="truncate">{p.name}</span>
+                )}
               </ContextMenu.Trigger>
               <ContextMenu.Portal>
                 <ContextMenu.Positioner className="z-50 outline-none">
                   <ContextMenu.Popup className="z-50 min-w-40 rounded-md bg-popover p-1 text-popover-foreground shadow-md ring-1 ring-foreground/10 outline-none">
-                    <ContextMenu.Item className={item} onClick={() => setRenaming(p.id)}><PencilIcon className="size-3" />Rename</ContextMenu.Item>
-                    <ContextMenu.Item className={item} onClick={() => st().duplicatePage(p.id)}><CopyIcon className="size-3" />Duplicate</ContextMenu.Item>
-                    <ContextMenu.Item className={item} disabled={i === 0} onClick={() => st().movePage(p.id, i - 1)}>Move up</ContextMenu.Item>
-                    <ContextMenu.Item className={item} disabled={i === doc.pages.length - 1} onClick={() => st().movePage(p.id, i + 1)}>Move down</ContextMenu.Item>
+                    <ContextMenu.Item className={item} onClick={() => setRenaming(p.id)}>
+                      <PencilIcon className="size-3" />
+                      Rename
+                    </ContextMenu.Item>
+                    <ContextMenu.Item className={item} onClick={() => st().duplicatePage(p.id)}>
+                      <CopyIcon className="size-3" />
+                      Duplicate
+                    </ContextMenu.Item>
+                    <ContextMenu.Item className={item} disabled={i === 0} onClick={() => st().movePage(p.id, i - 1)}>
+                      Move up
+                    </ContextMenu.Item>
+                    <ContextMenu.Item className={item} disabled={i === doc.pages.length - 1} onClick={() => st().movePage(p.id, i + 1)}>
+                      Move down
+                    </ContextMenu.Item>
                     <ContextMenu.Separator className="my-1 h-px bg-border" />
-                    <ContextMenu.Item className={cn(item, 'text-destructive data-disabled:opacity-40')} disabled={doc.pages.length < 2} onClick={() => st().deletePage(p.id)}><Trash2Icon className="size-3" />Delete</ContextMenu.Item>
+                    <ContextMenu.Item
+                      className={cn(item, 'text-destructive data-disabled:opacity-40')}
+                      disabled={doc.pages.length < 2}
+                      onClick={() => st().deletePage(p.id)}
+                    >
+                      <Trash2Icon className="size-3" />
+                      Delete
+                    </ContextMenu.Item>
                   </ContextMenu.Popup>
                 </ContextMenu.Positioner>
               </ContextMenu.Portal>
@@ -115,7 +169,16 @@ function PagesSection() {
 
 type DropPos = 'before' | 'after' | 'inside'
 
-function LayerRow({ row, selected, ancestorSelected, onDragStart, onDrop, dropHint, setDropHint, onClick }: {
+function LayerRow({
+  row,
+  selected,
+  ancestorSelected,
+  onDragStart,
+  onDrop,
+  dropHint,
+  setDropHint,
+  onClick,
+}: {
   row: Row
   selected: boolean
   ancestorSelected: boolean
@@ -144,12 +207,23 @@ function LayerRow({ row, selected, ancestorSelected, onDragStart, onDrop, dropHi
     <div
       data-layer-id={node.id}
       draggable={!renaming}
-      onDragStart={(e) => { e.dataTransfer.effectAllowed = 'move'; onDragStart(node.id) }}
-      onDragOver={(e) => { e.preventDefault(); setDropHint({ id: node.id, pos: posFor(e) }) }}
+      onDragStart={(e) => {
+        e.dataTransfer.effectAllowed = 'move'
+        onDragStart(node.id)
+      }}
+      onDragOver={(e) => {
+        e.preventDefault()
+        setDropHint({ id: node.id, pos: posFor(e) })
+      }}
       onDragLeave={() => setDropHint(null)}
-      onDrop={(e) => { e.preventDefault(); onDrop(node.id, posFor(e)) }}
+      onDrop={(e) => {
+        e.preventDefault()
+        onDrop(node.id, posFor(e))
+      }}
       onClick={(e) => onClick(e, node.id)}
-      onContextMenu={() => { if (!st().selection.includes(node.id)) st().select([node.id]) }}
+      onContextMenu={() => {
+        if (!st().selection.includes(node.id)) st().select([node.id])
+      }}
       onDoubleClick={() => setRenaming(true)}
       onMouseEnter={() => st().set({ hovered: node.id })}
       onMouseLeave={() => st().set({ hovered: null })}
@@ -161,24 +235,62 @@ function LayerRow({ row, selected, ancestorSelected, onDragStart, onDrop, dropHi
       )}
       style={{ paddingLeft: 4 + depth * 12 }}
     >
-      {hint === 'before' && <div className="pointer-events-none absolute inset-x-0 top-0 h-0.5 bg-primary" style={{ left: 4 + depth * 12 }} />}
-      {hint === 'after' && <div className="pointer-events-none absolute inset-x-0 bottom-0 h-0.5 bg-primary" style={{ left: 4 + depth * 12 }} />}
+      {hint === 'before' && (
+        <div className="pointer-events-none absolute inset-x-0 top-0 h-0.5 bg-primary" style={{ left: 4 + depth * 12 }} />
+      )}
+      {hint === 'after' && (
+        <div className="pointer-events-none absolute inset-x-0 bottom-0 h-0.5 bg-primary" style={{ left: 4 + depth * 12 }} />
+      )}
       <button
         className={cn('grid size-4 shrink-0 place-items-center', !node.children.length && 'invisible')}
-        onClick={(e) => { e.stopPropagation(); st().updateNodes([node.id], { expanded: !node.expanded }) }}
+        onClick={(e) => {
+          e.stopPropagation()
+          st().updateNodes([node.id], { expanded: !node.expanded })
+        }}
         aria-label={node.expanded ? 'Collapse' : 'Expand'}
       >
         {node.expanded ? <ChevronDownIcon className="size-3" /> : <ChevronRightIcon className="size-3" />}
       </button>
-      <NodeIcon node={node} className={cn('size-3.5 shrink-0', node.type === 'frame' || node.type === 'section' ? 'text-foreground' : 'text-muted-foreground', (node.type === 'shape3d' || node.type === 'model3d') && 'text-violet-500')} />
-      {renaming
-        ? <InlineRename value={node.name} onDone={(v) => { if (v && v !== node.name) st().updateNodes([node.id], { name: v }); setRenaming(false) }} />
-        : <span className={cn('min-w-0 flex-1 truncate', (node.type === 'frame' || node.type === 'section') && 'font-medium')}>{node.name}</span>}
+      <NodeIcon
+        node={node}
+        className={cn(
+          'size-3.5 shrink-0',
+          node.type === 'frame' || node.type === 'section' ? 'text-foreground' : 'text-muted-foreground',
+          (node.type === 'shape3d' || node.type === 'model3d') && 'text-violet-500',
+        )}
+      />
+      {renaming ? (
+        <InlineRename
+          value={node.name}
+          onDone={(v) => {
+            if (v && v !== node.name) st().updateNodes([node.id], { name: v })
+            setRenaming(false)
+          }}
+        />
+      ) : (
+        <span className={cn('min-w-0 flex-1 truncate', (node.type === 'frame' || node.type === 'section') && 'font-medium')}>
+          {node.name}
+        </span>
+      )}
       <div className={cn('flex items-center', !node.locked && node.visible && 'opacity-0 group-hover/row:opacity-100')}>
-        <button className={cn(iconBtn, !node.locked && 'opacity-0 group-hover/row:opacity-100')} aria-label={node.locked ? 'Unlock' : 'Lock'} onClick={(e) => { e.stopPropagation(); st().updateNodes([node.id], { locked: !node.locked }) }}>
+        <button
+          className={cn(iconBtn, !node.locked && 'opacity-0 group-hover/row:opacity-100')}
+          aria-label={node.locked ? 'Unlock' : 'Lock'}
+          onClick={(e) => {
+            e.stopPropagation()
+            st().updateNodes([node.id], { locked: !node.locked })
+          }}
+        >
           {node.locked ? <LockIcon className="size-3" /> : <UnlockIcon className="size-3" />}
         </button>
-        <button className={cn(iconBtn, node.visible && 'opacity-0 group-hover/row:opacity-100')} aria-label={node.visible ? 'Hide' : 'Show'} onClick={(e) => { e.stopPropagation(); st().updateNodes([node.id], { visible: !node.visible }) }}>
+        <button
+          className={cn(iconBtn, node.visible && 'opacity-0 group-hover/row:opacity-100')}
+          aria-label={node.visible ? 'Hide' : 'Show'}
+          onClick={(e) => {
+            e.stopPropagation()
+            st().updateNodes([node.id], { visible: !node.visible })
+          }}
+        >
           {node.visible ? <EyeIcon className="size-3" /> : <EyeOffIcon className="size-3" />}
         </button>
       </div>
@@ -211,7 +323,10 @@ export function LayersPanel() {
       const a = rows.findIndex((r) => r.node.id === anchor.current)
       const b = rows.findIndex((r) => r.node.id === id)
       const parent = st.doc.nodes[id].parentId
-      const range = rows.slice(Math.min(a, b), Math.max(a, b) + 1).map((r) => r.node.id).filter((x) => st.doc.nodes[x].parentId === parent)
+      const range = rows
+        .slice(Math.min(a, b), Math.max(a, b) + 1)
+        .map((r) => r.node.id)
+        .filter((x) => st.doc.nodes[x].parentId === parent)
       st.set({ selection: range })
       return
     }
@@ -242,7 +357,12 @@ export function LayersPanel() {
   }
 
   let body: ReactNode
-  if (!rows.length) body = <p className="px-3 py-6 text-center text-xs text-muted-foreground">{query ? 'No layers match.' : 'No layers yet. Pick a tool below and draw on the canvas.'}</p>
+  if (!rows.length)
+    body = (
+      <p className="px-3 py-6 text-center text-xs text-muted-foreground">
+        {query ? 'No layers match.' : 'No layers yet. Pick a tool below and draw on the canvas.'}
+      </p>
+    )
   else
     body = rows.map((row) => (
       <LayerRow
@@ -265,13 +385,25 @@ export function LayersPanel() {
         <div className="relative flex-1">
           <SearchIcon className="pointer-events-none absolute top-1/2 left-2 size-3 -translate-y-1/2 text-muted-foreground" />
           <Input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Search layers" className="h-7 pl-6 text-xs" />
-          {query && <button className="absolute top-1/2 right-1.5 -translate-y-1/2" onClick={() => setQuery('')} aria-label="Clear search"><XIcon className="size-3" /></button>}
+          {query && (
+            <button className="absolute top-1/2 right-1.5 -translate-y-1/2" onClick={() => setQuery('')} aria-label="Clear search">
+              <XIcon className="size-3" />
+            </button>
+          )}
         </div>
       </div>
       {selection.length > 1 && <div className="px-3 pb-1 text-[10px] text-muted-foreground">{selection.length} layers selected</div>}
       <CommandContextMenu items={() => NODE_MENU} render={<div className="min-h-0 flex-1" />}>
         <ScrollArea className="h-full">
-          <div className="pb-4" onDragEnd={() => { setDropHint(null); setDragIds([]) }}>{body}</div>
+          <div
+            className="pb-4"
+            onDragEnd={() => {
+              setDropHint(null)
+              setDragIds([])
+            }}
+          >
+            {body}
+          </div>
         </ScrollArea>
       </CommandContextMenu>
     </div>

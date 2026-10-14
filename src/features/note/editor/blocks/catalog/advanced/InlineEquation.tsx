@@ -1,4 +1,5 @@
 import { SquareSigmaIcon } from 'lucide-react'
+
 import { type BlockDefinition, math } from '../../insert'
 
 /** Inline equation block for the "/" and "+" menus. */

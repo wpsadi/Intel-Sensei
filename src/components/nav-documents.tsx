@@ -1,4 +1,7 @@
-"use client"
+'use client'
+
+import { FolderIcon, MoreHorizontalIcon, ShareIcon, Trash2Icon } from 'lucide-react'
+import { Link } from 'react-router-dom'
 
 import {
   DropdownMenu,
@@ -6,8 +9,7 @@ import {
   DropdownMenuItem,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu"
-import { FolderIcon, MoreHorizontalIcon, ShareIcon, Trash2Icon } from "lucide-react"
+} from '@/components/ui/dropdown-menu'
 import {
   SidebarGroup,
   SidebarGroupLabel,
@@ -15,9 +17,8 @@ import {
   SidebarMenuAction,
   SidebarMenuButton,
   SidebarMenuItem,
-} from "@/components/ui/sidebar"
-import { Link } from "react-router-dom"
-import { useSidebar } from "@/hooks/use-sidebar"
+} from '@/components/ui/sidebar'
+import { useSidebar } from '@/hooks/use-sidebar'
 
 export function NavDocuments({
   items,
@@ -40,37 +41,22 @@ export function NavDocuments({
               <span>{item.name}</span>
             </SidebarMenuButton>
             <DropdownMenu>
-              <DropdownMenuTrigger
-                render={
-                  <SidebarMenuAction
-                    showOnHover
-                    className="aria-expanded:bg-muted"
-                  />
-                }
-              >
-                <MoreHorizontalIcon
-                />
+              <DropdownMenuTrigger render={<SidebarMenuAction showOnHover className="aria-expanded:bg-muted" />}>
+                <MoreHorizontalIcon />
                 <span className="sr-only">More</span>
               </DropdownMenuTrigger>
-              <DropdownMenuContent
-                className="w-24"
-                side={isMobile ? "bottom" : "right"}
-                align={isMobile ? "end" : "start"}
-              >
+              <DropdownMenuContent className="w-24" side={isMobile ? 'bottom' : 'right'} align={isMobile ? 'end' : 'start'}>
                 <DropdownMenuItem>
-                  <FolderIcon
-                  />
+                  <FolderIcon />
                   <span>Open</span>
                 </DropdownMenuItem>
                 <DropdownMenuItem>
-                  <ShareIcon
-                  />
+                  <ShareIcon />
                   <span>Share</span>
                 </DropdownMenuItem>
                 <DropdownMenuSeparator />
                 <DropdownMenuItem variant="destructive">
-                  <Trash2Icon
-                  />
+                  <Trash2Icon />
                   <span>Delete</span>
                 </DropdownMenuItem>
               </DropdownMenuContent>

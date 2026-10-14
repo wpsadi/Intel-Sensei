@@ -1,15 +1,16 @@
-import type { Editor, JSONContent } from '@tiptap/react'
 import type { Node as PMNode } from '@tiptap/pm/model'
+import type { Editor, JSONContent } from '@tiptap/react'
 import type { z } from 'zod'
+
 import { BLOCKS } from '../editor/blocks/registry'
 import { getLiveEditor, waitForLiveEditor } from '../editor/live-editors'
-import { useNoteStore } from '../note.store'
-import { pageTitle } from '../editor/nodes/pages'
-import { markdownToDoc } from './markdown'
+import { pageTitle } from '../editor/nodes/page-utils'
 import { inlineMarkdown } from '../lib/markdown-import'
-import { findDatabase, findPage, isoDay, parseDate } from './tools'
+import { useNoteStore } from '../note.store'
+import { markdownToDoc } from './markdown'
 import { assertRead, forgetRead, markRead } from './read-guard'
 import type * as S from './schemas'
+import { findDatabase, findPage, isoDay, parseDate } from './tools'
 
 /*
  * Block-level tools. Reads work from the live editor when the note is open, otherwise from the saved document.
@@ -27,7 +28,14 @@ export interface BlockContext {
 const PAGE_SIZE = 15
 const INLINE = new Set(['text', 'hardBreak', 'mention', 'emoji', 'inlineMath'])
 const TEXTBLOCKS = new Set(['paragraph', 'heading', 'codeBlock', 'detailsSummary'])
-const EMBED_KEYS: Record<string, string> = { embed: 'embed', bookmark: 'bookmark', html: 'html', tweet: 'tweet', drive: 'drive', gist: 'gist' }
+const EMBED_KEYS: Record<string, string> = {
+  embed: 'embed',
+  bookmark: 'bookmark',
+  html: 'html',
+  tweet: 'tweet',
+  drive: 'drive',
+  gist: 'gist',
+}
 
 const state = () => useNoteStore.getState()
 const clip = (text: string, max: number) => (text.length > max ? `${text.slice(0, max - 1)}…` : text)
@@ -39,34 +47,61 @@ const para = (text: string): JSONContent => ({ type: 'paragraph', content: text 
 function kindOf(node: JSONContent): string {
   const attrs = node.attrs ?? {}
   switch (node.type) {
-    case 'paragraph': return 'text'
-    case 'heading': return `h${attrs.level}`
-    case 'bulletList': return 'bullet'
-    case 'orderedList': return 'numbered'
-    case 'taskList': return 'todo'
-    case 'listItem': return 'item'
-    case 'taskItem': return 'todo_item'
-    case 'details': return attrs.level ? `th${attrs.level}` : 'toggle'
-    case 'detailsSummary': return 'toggle_title'
-    case 'detailsContent': return 'toggle_body'
-    case 'blockquote': return 'quote'
-    case 'codeBlock': return attrs.language === 'mermaid' ? 'mermaid' : 'code'
-    case 'horizontalRule': return 'divider'
-    case 'media': return String(attrs.kind)
-    case 'embed': return EMBED_KEYS[String(attrs.kind)] ?? 'embed'
-    case 'pageBlock': return attrs.link ? 'link-page' : 'page'
-    case 'databaseBlock': return 'database'
-    case 'tableOfContents': return 'toc'
-    case 'buttonBlock': return 'button'
-    case 'aiBlock': return 'ai'
-    case 'blockMath': return 'equation'
-    case 'columns': return `col${node.content?.length ?? 0}`
-    case 'tabPanel': return 'tab'
-    case 'tableRow': return 'row'
+    case 'paragraph':
+      return 'text'
+    case 'heading':
+      return `h${attrs.level}`
+    case 'bulletList':
+      return 'bullet'
+    case 'orderedList':
+      return 'numbered'
+    case 'taskList':
+      return 'todo'
+    case 'listItem':
+      return 'item'
+    case 'taskItem':
+      return 'todo_item'
+    case 'details':
+      return attrs.level ? `th${attrs.level}` : 'toggle'
+    case 'detailsSummary':
+      return 'toggle_title'
+    case 'detailsContent':
+      return 'toggle_body'
+    case 'blockquote':
+      return 'quote'
+    case 'codeBlock':
+      return attrs.language === 'mermaid' ? 'mermaid' : 'code'
+    case 'horizontalRule':
+      return 'divider'
+    case 'media':
+      return String(attrs.kind)
+    case 'embed':
+      return EMBED_KEYS[String(attrs.kind)] ?? 'embed'
+    case 'pageBlock':
+      return attrs.link ? 'link-page' : 'page'
+    case 'databaseBlock':
+      return 'database'
+    case 'tableOfContents':
+      return 'toc'
+    case 'buttonBlock':
+      return 'button'
+    case 'aiBlock':
+      return 'ai'
+    case 'blockMath':
+      return 'equation'
+    case 'columns':
+      return `col${node.content?.length ?? 0}`
+    case 'tabPanel':
+      return 'tab'
+    case 'tableRow':
+      return 'row'
     case 'tableCell':
-    case 'tableHeader': return 'cell'
-    case 'syncedBlock': return 'synced'
-    default: return node.type ?? 'unknown'
+    case 'tableHeader':
+      return 'cell'
+    case 'syncedBlock':
+      return 'synced'
+    default:
+      return node.type ?? 'unknown'
   }
 }
 
@@ -91,13 +126,20 @@ function atomText(node: JSONContent): string {
       if (!page) return attrs.pageId ? '(missing note)' : '(no note chosen)'
       return pageTitle(page.kind === 'database' ? databases[page.databaseId ?? '']?.title : page.title)
     }
-    case 'databaseBlock': return attrs.databaseId ? (databases[String(attrs.databaseId)]?.title || 'Untitled database') : '(no database chosen)'
-    case 'media': return String(attrs.caption || attrs.name || attrs.src || '(empty)')
-    case 'embed': return String(attrs.title || attrs.url || (attrs.html ? 'custom HTML' : '(empty)'))
-    case 'buttonBlock': return String(attrs.label)
-    case 'aiBlock': return String(attrs.prompt || '(no prompt)')
-    case 'blockMath': return String(attrs.latex || '(empty)')
-    default: return ''
+    case 'databaseBlock':
+      return attrs.databaseId ? databases[String(attrs.databaseId)]?.title || 'Untitled database' : '(no database chosen)'
+    case 'media':
+      return String(attrs.caption || attrs.name || attrs.src || '(empty)')
+    case 'embed':
+      return String(attrs.title || attrs.url || (attrs.html ? 'custom HTML' : '(empty)'))
+    case 'buttonBlock':
+      return String(attrs.label)
+    case 'aiBlock':
+      return String(attrs.prompt || '(no prompt)')
+    case 'blockMath':
+      return String(attrs.latex || '(empty)')
+    default:
+      return ''
   }
 }
 
@@ -191,7 +233,8 @@ function targetPos(doc: PMNode, position: z.output<typeof S.insertBlocks>['posit
   const { node, pos } = nodeAt(doc, position.block)
   if (where === 'before') return pos
   if (where === 'after') return pos + node.nodeSize
-  if (node.isTextblock || node.isAtom) throw new Error(`Block ${position.block} (${kindOf(node.toJSON())}) cannot hold other blocks. Use after instead.`)
+  if (node.isTextblock || node.isAtom)
+    throw new Error(`Block ${position.block} (${kindOf(node.toJSON())}) cannot hold other blocks. Use after instead.`)
   return pos + 1 + node.content.size
 }
 
@@ -201,7 +244,9 @@ function apply(editor: Editor, build: (tr: Editor['state']['tr']) => void, where
   try {
     build(tr)
   } catch {
-    throw new Error(`That block cannot go ${where}. List items only live inside lists, and table cells inside tables; place it after the whole list or table instead.`)
+    throw new Error(
+      `That block cannot go ${where}. List items only live inside lists, and table cells inside tables; place it after the whole list or table instead.`,
+    )
   }
   editor.view.dispatch(tr)
 }
@@ -215,7 +260,10 @@ async function fill(json: JSONContent, { text, items, rows, attrs }: Content) {
   const store = state()
   if (rows) {
     if (json.type !== 'table') throw new Error('rows only apply to table blocks.')
-    json.content = rows.map((cells, r) => ({ type: 'tableRow', content: cells.map((cell) => ({ type: r === 0 ? 'tableHeader' : 'tableCell', content: [para(cell)] })) }))
+    json.content = rows.map((cells, r) => ({
+      type: 'tableRow',
+      content: cells.map((cell) => ({ type: r === 0 ? 'tableHeader' : 'tableCell', content: [para(cell)] })),
+    }))
   }
   if (items) {
     const lines = items.map(para)
@@ -225,7 +273,11 @@ async function fill(json: JSONContent, { text, items, rows, attrs }: Content) {
         json.content = items.map((item) => ({ type: 'listItem', content: [para(item)] }))
         break
       case 'taskList':
-        json.content = items.map((item) => ({ type: 'taskItem', attrs: { checked: /^\[x\]\s*/i.test(item) }, content: [para(item.replace(/^\[[ x]\]\s*/i, ''))] }))
+        json.content = items.map((item) => ({
+          type: 'taskItem',
+          attrs: { checked: /^\[x\]\s*/i.test(item) },
+          content: [para(item.replace(/^\[[ x]\]\s*/i, ''))],
+        }))
         break
       case 'columns':
         json.content = items.map((item) => ({ type: 'column', content: [para(item)] }))
@@ -270,11 +322,23 @@ async function fill(json: JSONContent, { text, items, rows, attrs }: Content) {
         }
         break
       }
-      case 'media': a.src = text; a.name = text.split('/').pop(); break
-      case 'embed': if (a.kind === 'html') a.html = text; else a.url = /^https?:\/\//.test(text) ? text : `https://${text}`; break
-      case 'buttonBlock': a.label = text; break
-      case 'aiBlock': a.prompt = text; break
-      case 'blockMath': a.latex = text; break
+      case 'media':
+        a.src = text
+        a.name = text.split('/').pop()
+        break
+      case 'embed':
+        if (a.kind === 'html') a.html = text
+        else a.url = /^https?:\/\//.test(text) ? text : `https://${text}`
+        break
+      case 'buttonBlock':
+        a.label = text
+        break
+      case 'aiBlock':
+        a.prompt = text
+        break
+      case 'blockMath':
+        a.latex = text
+        break
       default: {
         const target = firstTextblock(json)
         if (!target) throw new Error(`A ${kindOf(json)} block has no text of its own. Use items, rows or attrs instead.`)
@@ -301,7 +365,9 @@ async function fillAt(editor: Editor, pos: number, content: Content) {
   const unknown = Object.keys(content.attrs ?? {}).filter((key) => !(key in node.attrs))
   if (unknown.length) {
     const known = Object.keys(node.attrs).filter((key) => key !== 'comments')
-    throw new Error(`A ${kindOf(node.toJSON())} block has no setting ${unknown.join(', ')}. ${known.length ? `Its settings: ${known.join(', ')}.` : 'It has no settings.'}`)
+    throw new Error(
+      `A ${kindOf(node.toJSON())} block has no setting ${unknown.join(', ')}. ${known.length ? `Its settings: ${known.join(', ')}.` : 'It has no settings.'}`,
+    )
   }
   const json = node.toJSON() as JSONContent
   await fill(json, content)
@@ -318,21 +384,42 @@ const INLINE_KEYS = new Set(['mention-person', 'mention-page', 'date', 'emoji', 
 
 /** Inline items, which the "/" menu inserts through a pop-up, built directly as a paragraph holding them. */
 async function inlineParagraph(type: string, text = ''): Promise<JSONContent> {
-  if (!text) throw new Error(`${type} needs text: ${type === 'mention-person' ? 'the person\'s name' : type === 'mention-page' ? 'the note title' : type === 'date' ? 'a date like "tomorrow"' : type === 'emoji' ? 'the emoji' : 'the LaTeX'}.`)
+  if (!text)
+    throw new Error(
+      `${type} needs text: ${type === 'mention-person' ? "the person's name" : type === 'mention-page' ? 'the note title' : type === 'date' ? 'a date like "tomorrow"' : type === 'emoji' ? 'the emoji' : 'the LaTeX'}.`,
+    )
   switch (type) {
     case 'mention-person': {
       const person = state().people.find((p) => p.name.toLowerCase() === text.toLowerCase()) ?? (await state().createPerson(text))
-      return { type: 'paragraph', content: [{ type: 'mention', attrs: { kind: 'person', id: person.id, label: person.name } }, { type: 'text', text: ' ' }] }
+      return {
+        type: 'paragraph',
+        content: [
+          { type: 'mention', attrs: { kind: 'person', id: person.id, label: person.name } },
+          { type: 'text', text: ' ' },
+        ],
+      }
     }
     case 'mention-page': {
       const page = findPage(text)
-      return { type: 'paragraph', content: [{ type: 'mention', attrs: { kind: 'page', id: page.id, label: pageTitle(page.title) } }, { type: 'text', text: ' ' }] }
+      return {
+        type: 'paragraph',
+        content: [
+          { type: 'mention', attrs: { kind: 'page', id: page.id, label: pageTitle(page.title) } },
+          { type: 'text', text: ' ' },
+        ],
+      }
     }
     case 'date': {
       const date = parseDate(text)
       if (!date) throw new Error(`Could not read "${text}" as a date. Use 2026-10-20, "today", "tomorrow" or "in 3 days".`)
       const value = isoDay(date)
-      return { type: 'paragraph', content: [{ type: 'mention', attrs: { kind: 'date', id: value, label: value, date: value, reminder: false } }, { type: 'text', text: ' ' }] }
+      return {
+        type: 'paragraph',
+        content: [
+          { type: 'mention', attrs: { kind: 'date', id: value, label: value, date: value, reminder: false } },
+          { type: 'text', text: ' ' },
+        ],
+      }
     }
     case 'emoji':
       return para(text)
@@ -429,14 +516,46 @@ export async function insertBlocks({ note, position, blocks }: z.output<typeof S
   }
   // Later blocks moved down, so the next edit needs a fresh read.
   forgetRead(pageId)
-  return { status: 'inserted', note: title, blocks: added, total_count: editor.state.doc.childCount, next: 'Call list_blocks before editing again.' }
+  return {
+    status: 'inserted',
+    note: title,
+    blocks: added,
+    total_count: editor.state.doc.childCount,
+    next: 'Call list_blocks before editing again.',
+  }
 }
 
 /** Blocks whose text kind the "/" menu commands can switch in place. */
 const IN_PLACE = new Set(['paragraph', 'heading', 'codeBlock', 'listItem', 'taskItem'])
 /** Kinds that take a list of lines as `items` when a multi-line block is converted into them. */
-const ITEM_KINDS = new Set(['bullet', 'numbered', 'todo', 'toggle', 'th1', 'th2', 'th3', 'callout', 'quote', 'col2', 'col3', 'col4', 'col5', 'tabs'])
-const CONVERT_KEYS: Record<string, string> = { text: 'text', h1: 'h1', h2: 'h2', h3: 'h3', h4: 'h4', bullet: 'bullet', numbered: 'numbered', todo: 'todo', quote: 'quote', code: 'code' }
+const ITEM_KINDS = new Set([
+  'bullet',
+  'numbered',
+  'todo',
+  'toggle',
+  'th1',
+  'th2',
+  'th3',
+  'callout',
+  'quote',
+  'col2',
+  'col3',
+  'col4',
+  'col5',
+  'tabs',
+])
+const CONVERT_KEYS: Record<string, string> = {
+  text: 'text',
+  h1: 'h1',
+  h2: 'h2',
+  h3: 'h3',
+  h4: 'h4',
+  bullet: 'bullet',
+  numbered: 'numbered',
+  todo: 'todo',
+  quote: 'quote',
+  code: 'code',
+}
 
 /** True when text uses Markdown that makes whole blocks: headings, lists, quotes, rules, code fences, tables, or several paragraphs. */
 export const hasBlockMarkdown = (text: string) => /\n\s*\n|^\s{0,3}(#{1,6}\s|[-*+]\s|\d+[.)]\s|>|```|~~~|-{3,}\s*$|\|.+\|)/m.test(text)
@@ -467,12 +586,20 @@ export async function updateBlock(args: z.output<typeof S.updateBlock>, ctx: Blo
       apply(editor, (tr) => tr.delete(pos, pos + node.nodeSize), 'removed')
       await insertOne(editor, pos, { type: convert_to, ...carried })
       forgetRead(pageId)
-      return { status: 'converted', note: title, block: summarize(editor.state.doc.nodeAt(pos)!.toJSON(), pathAt(editor.state.doc, pos)), next: 'Call list_blocks before editing again.' }
+      return {
+        status: 'converted',
+        note: title,
+        block: summarize(editor.state.doc.nodeAt(pos)!.toJSON(), pathAt(editor.state.doc, pos)),
+        next: 'Call list_blocks before editing again.',
+      }
     }
   }
   const attrs: Record<string, unknown> = { ...content.attrs }
   if (checked !== undefined) {
-    if (node.type.name !== 'taskItem') throw new Error(`Block ${block} is a ${kindOf(node.toJSON())}, not a to-do item. Use list_blocks with inside: "${block}" to find its items.`)
+    if (node.type.name !== 'taskItem')
+      throw new Error(
+        `Block ${block} is a ${kindOf(node.toJSON())}, not a to-do item. Use list_blocks with inside: "${block}" to find its items.`,
+      )
     attrs.checked = checked
   }
   if (comment) {
@@ -480,7 +607,17 @@ export async function updateBlock(args: z.output<typeof S.updateBlock>, ctx: Blo
     attrs.comments = [...((node.attrs.comments as unknown[]) ?? []), { id: crypto.randomUUID(), text: comment, createdAt: Date.now() }]
   }
   // Markdown with headings, lists and the like in a plain text block becomes real blocks, as when it is pasted or inserted.
-  if (!convert_to && content.text !== undefined && !content.items && !content.rows && !content.attrs && checked === undefined && !comment && (node.type.name === 'paragraph' || node.type.name === 'heading') && hasBlockMarkdown(content.text)) {
+  if (
+    !convert_to &&
+    content.text !== undefined &&
+    !content.items &&
+    !content.rows &&
+    !content.attrs &&
+    checked === undefined &&
+    !comment &&
+    (node.type.name === 'paragraph' || node.type.name === 'heading') &&
+    hasBlockMarkdown(content.text)
+  ) {
     const parsed = markdownToDoc(content.text, pageId).content ?? []
     if (parsed.length && !(parsed.length === 1 && parsed[0].type === 'paragraph')) {
       try {
@@ -488,7 +625,13 @@ export async function updateBlock(args: z.output<typeof S.updateBlock>, ctx: Blo
         nodes.forEach((next) => next.check())
         apply(editor, (tr) => tr.replaceWith(pos, pos + node.nodeSize, nodes), 'here')
         forgetRead(pageId)
-        return { status: 'updated', note: title, block: summarize(editor.state.doc.nodeAt(pos)!.toJSON(), block), replaced_with: `${nodes.length} block${nodes.length === 1 ? '' : 's'} from the Markdown`, next: 'Call list_blocks before editing again.' }
+        return {
+          status: 'updated',
+          note: title,
+          block: summarize(editor.state.doc.nodeAt(pos)!.toJSON(), block),
+          replaced_with: `${nodes.length} block${nodes.length === 1 ? '' : 's'} from the Markdown`,
+          next: 'Call list_blocks before editing again.',
+        }
       } catch {
         // Blocks of those kinds cannot go here (for example inside a list), so the text is written as inline Markdown below.
       }
@@ -533,16 +676,26 @@ export async function deleteBlocks({ note, blocks, empty_note }: z.output<typeof
       return { path, from: pos, to: pos + node.nodeSize, type: kindOf(node.toJSON()) }
     })
     .sort((a, b) => b.from - a.from)
-  const kept = ranges.filter((r) => !ranges.some((o) => o !== r && o.from <= r.from && o.to >= r.to && (o.from !== r.from || o.to !== r.to)))
+  const kept = ranges.filter(
+    (r) => !ranges.some((o) => o !== r && o.from <= r.from && o.to >= r.to && (o.from !== r.from || o.to !== r.to)),
+  )
   // Emptying a note is never a side effect of a smaller request.
   const filled: number[] = []
   doc.forEach((child, offset) => {
     if (child.content.size || child.isAtom) filled.push(offset)
   })
   if (!empty_note && filled.length > 1 && filled.every((offset) => kept.some((r) => r.from <= offset && offset < r.to))) {
-    throw new Error(`This would remove every block of "${title}". Only do that if the user asked to clear the whole note, then pass empty_note: true. Nothing was deleted.`)
+    throw new Error(
+      `This would remove every block of "${title}". Only do that if the user asked to clear the whole note, then pass empty_note: true. Nothing was deleted.`,
+    )
   }
   apply(editor, (tr) => kept.forEach((r) => tr.delete(r.from, r.to)), 'removed')
   forgetRead(pageId)
-  return { status: 'deleted', note: title, deleted: kept.map((r) => `${r.path} ${r.type}`).reverse(), total_count: editor.state.doc.childCount, undo: 'The user can press Ctrl+Z to undo.' }
+  return {
+    status: 'deleted',
+    note: title,
+    deleted: kept.map((r) => `${r.path} ${r.type}`).reverse(),
+    total_count: editor.state.doc.childCount,
+    undo: 'The user can press Ctrl+Z to undo.',
+  }
 }

@@ -1,5 +1,6 @@
 import { tool } from 'ai'
 import { z } from 'zod'
+
 import type { ChatPlan } from '@/features/note/db/types'
 
 /** Added to the agent's instructions so it makes a plan card only when the user asks for one. */
@@ -13,7 +14,9 @@ export function createPlanTools(onPlan?: (plan: ChatPlan | undefined) => void) {
       title: z.string().describe('Short name of what the plan achieves'),
       description: z.string().optional().describe('One sentence on the approach'),
       steps: z
-        .array(z.object({ title: z.string().describe('What to do'), details: z.string().optional().describe('A short note on how or why') }))
+        .array(
+          z.object({ title: z.string().describe('What to do'), details: z.string().optional().describe('A short note on how or why') }),
+        )
         .min(1)
         .describe('The steps in order'),
     }),

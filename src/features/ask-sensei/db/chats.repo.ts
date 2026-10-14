@@ -1,5 +1,5 @@
-import type { Chat, ChatMessage } from '@/features/note/db/types'
 import { getDb, notify, uid } from '@/features/note/db/idb'
+import type { Chat, ChatMessage } from '@/features/note/db/types'
 
 export const chatsRepo = {
   /** Newest conversation first. */

@@ -1,6 +1,6 @@
-import { useS3D } from '../store'
-import { absPos, absRect, shapePath, translatePath, unionRect } from '../model'
 import { downloadBlob, fileDataUrl } from '../files'
+import { absPos, absRect, shapePath, translatePath, unionRect } from '../model'
+import { useS3D } from '../store'
 import type { Doc, ExportSetting, Fill, SNode } from '../types'
 
 const esc = (s: string) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;')
@@ -64,9 +64,11 @@ class Builder {
     if (f.kind === 'linear' || f.kind === 'radial') {
       const gid = this.id('g')
       const stops = f.stops.map((s) => `<stop offset="${s.offset}" stop-color="${s.color}"/>`).join('')
-      this.defs.push(f.kind === 'linear'
-        ? `<linearGradient id="${gid}" gradientTransform="rotate(${f.angle - 90} .5 .5)">${stops}</linearGradient>`
-        : `<radialGradient id="${gid}">${stops}</radialGradient>`)
+      this.defs.push(
+        f.kind === 'linear'
+          ? `<linearGradient id="${gid}" gradientTransform="rotate(${f.angle - 90} .5 .5)">${stops}</linearGradient>`
+          : `<radialGradient id="${gid}">${stops}</radialGradient>`,
+      )
       return `<path d="${d}" fill="url(#${gid})" fill-opacity="${f.opacity}"/>`
     }
     if (f.kind === 'image' || f.kind === 'video') {
@@ -87,25 +89,31 @@ class Builder {
   }
 
   strokes(n: SNode, d: string) {
-    return n.strokes.filter((s) => s.visible).map((s) => {
-      const dash = s.dash ? ` stroke-dasharray="${s.dash} ${s.dash}"` : ''
-      const base = `fill="none" stroke="${s.color}" stroke-opacity="${s.opacity}" stroke-linejoin="round"${dash}`
-      if (s.align === 'center') return `<path d="${d}" ${base} stroke-width="${s.width}"/>`
-      const cid = this.id('c')
-      if (s.align === 'inside') {
-        this.defs.push(`<clipPath id="${cid}"><path d="${d}"/></clipPath>`)
-        return `<path d="${d}" ${base} stroke-width="${s.width * 2}" clip-path="url(#${cid})"/>`
-      }
-      this.defs.push(`<mask id="${cid}"><rect x="-10000" y="-10000" width="20000" height="20000" fill="white"/><path d="${d}" fill="black"/></mask>`)
-      return `<path d="${d}" ${base} stroke-width="${s.width * 2}" mask="url(#${cid})"/>`
-    }).join('')
+    return n.strokes
+      .filter((s) => s.visible)
+      .map((s) => {
+        const dash = s.dash ? ` stroke-dasharray="${s.dash} ${s.dash}"` : ''
+        const base = `fill="none" stroke="${s.color}" stroke-opacity="${s.opacity}" stroke-linejoin="round"${dash}`
+        if (s.align === 'center') return `<path d="${d}" ${base} stroke-width="${s.width}"/>`
+        const cid = this.id('c')
+        if (s.align === 'inside') {
+          this.defs.push(`<clipPath id="${cid}"><path d="${d}"/></clipPath>`)
+          return `<path d="${d}" ${base} stroke-width="${s.width * 2}" clip-path="url(#${cid})"/>`
+        }
+        this.defs.push(
+          `<mask id="${cid}"><rect x="-10000" y="-10000" width="20000" height="20000" fill="white"/><path d="${d}" fill="black"/></mask>`,
+        )
+        return `<path d="${d}" ${base} stroke-width="${s.width * 2}" mask="url(#${cid})"/>`
+      })
+      .join('')
   }
 
   filter(n: SNode) {
     const parts: string[] = []
     for (const e of n.effects) {
       if (!e.visible) continue
-      if (e.kind === 'drop-shadow') parts.push(`<feDropShadow dx="${e.x}" dy="${e.y}" stdDeviation="${e.blur / 2}" flood-color="${e.color}"/>`)
+      if (e.kind === 'drop-shadow')
+        parts.push(`<feDropShadow dx="${e.x}" dy="${e.y}" stdDeviation="${e.blur / 2}" flood-color="${e.color}"/>`)
       if (e.kind === 'layer-blur') parts.push(`<feGaussianBlur stdDeviation="${e.radius / 2}"/>`)
     }
     if (!parts.length) return ''
@@ -117,7 +125,12 @@ class Builder {
   text(n: SNode) {
     const t = n.text!
     const fill = n.fills.find((f) => f.visible)
-    const color = fill?.kind === 'solid' ? fill.color : fill && (fill.kind === 'linear' || fill.kind === 'radial') ? fill.stops[0]?.color ?? '#000' : '#000'
+    const color =
+      fill?.kind === 'solid'
+        ? fill.color
+        : fill && (fill.kind === 'linear' || fill.kind === 'radial')
+          ? (fill.stops[0]?.color ?? '#000')
+          : '#000'
     let content = t.content
     if (t.transform === 'uppercase') content = content.toUpperCase()
     if (t.transform === 'lowercase') content = content.toLowerCase()
@@ -145,7 +158,9 @@ class Builder {
     if (n.booleanOp === 'exclude') return `<path fill-rule="evenodd" d="${paths.join(' ')}" fill="${color}" fill-opacity="${op}"/>`
     if (n.booleanOp === 'subtract') {
       const mid = this.id('m')
-      this.defs.push(`<mask id="${mid}"><rect x="-10000" y="-10000" width="20000" height="20000" fill="white"/><g fill="black">${rest.map(shape).join('')}</g></mask>`)
+      this.defs.push(
+        `<mask id="${mid}"><rect x="-10000" y="-10000" width="20000" height="20000" fill="white"/><g fill="black">${rest.map(shape).join('')}</g></mask>`,
+      )
       return `<path d="${first}" fill="${color}" fill-opacity="${op}" mask="url(#${mid})"/>`
     }
     let out = `<path d="${first}" fill="${color}" fill-opacity="${op}"/>`
@@ -177,11 +192,14 @@ class Builder {
       const data = n.src ? await mediaData(n.src, n.type === 'video') : ''
       const cid = this.id('c')
       this.defs.push(`<clipPath id="${cid}"><path d="${d}"/></clipPath>`)
-      if (data) body += `<image href="${data}" width="${n.w}" height="${n.h}" preserveAspectRatio="xMidYMid slice" clip-path="url(#${cid})"/>`
+      if (data)
+        body += `<image href="${data}" width="${n.w}" height="${n.h}" preserveAspectRatio="xMidYMid slice" clip-path="url(#${cid})"/>`
     }
     if (n.type === 'shape3d' || n.type === 'model3d') {
       const data = threeSnapshot(n.id)
-      body += data ? `<image href="${data}" width="${n.w}" height="${n.h}"/>` : `<rect width="${n.w}" height="${n.h}" fill="${n.modelColor}" fill-opacity=".25" rx="8"/>`
+      body += data
+        ? `<image href="${data}" width="${n.w}" height="${n.h}"/>`
+        : `<rect width="${n.w}" height="${n.h}" fill="${n.modelColor}" fill-opacity=".25" rx="8"/>`
     }
     if (n.type !== 'boolean' && n.type !== 'group' && n.type !== 'text') body += this.strokes(n, d)
     if (['frame', 'section', 'group'].includes(n.type) && n.children.length) {
@@ -224,7 +242,11 @@ export async function nodeToSvg(doc: Doc, nodeIds: string[], anim: AnimFrame = {
   }
   const w = Math.max(1, Math.ceil(box.w))
   const h = Math.max(1, Math.ceil(box.h))
-  return { svg: `<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="${w}" height="${h}" viewBox="0 0 ${w} ${h}"><defs>${b.defs.join('')}</defs>${body}</svg>`, w, h }
+  return {
+    svg: `<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="${w}" height="${h}" viewBox="0 0 ${w} ${h}"><defs>${b.defs.join('')}</defs>${body}</svg>`,
+    w,
+    h,
+  }
 }
 
 export async function exportSvgString(nodeIds: string[]) {
@@ -282,22 +304,30 @@ export async function renderPdf(nodeIds: string[], scale = 2) {
     push('\nendobj\n')
   }
   push('%PDF-1.4\n%\xE2\xE3\xCF\xD3\n')
-  const pages = await Promise.all(ids.map(async (id) => {
-    const { canvas, w, h } = await rasterCanvas([id], scale, '#ffffff')
-    const jpeg = new Uint8Array(await (await toBlob(canvas, 'image/jpeg', 0.92)).arrayBuffer())
-    return { jpeg, w, h, pw: canvas.width, ph: canvas.height }
-  }))
+  const pages = await Promise.all(
+    ids.map(async (id) => {
+      const { canvas, w, h } = await rasterCanvas([id], scale, '#ffffff')
+      const jpeg = new Uint8Array(await (await toBlob(canvas, 'image/jpeg', 0.92)).arrayBuffer())
+      return { jpeg, w, h, pw: canvas.width, ph: canvas.height }
+    }),
+  )
   // Objects: 1 catalog, 2 pages, then per page: page, content, image.
   const kids = pages.map((_, i) => `${3 + i * 3} 0 R`).join(' ')
   obj(1, () => push('<< /Type /Catalog /Pages 2 0 R >>'))
   obj(2, () => push(`<< /Type /Pages /Kids [${kids}] /Count ${pages.length} >>`))
   pages.forEach((p, i) => {
     const pn = 3 + i * 3
-    obj(pn, () => push(`<< /Type /Page /Parent 2 0 R /MediaBox [0 0 ${p.w} ${p.h}] /Resources << /XObject << /Im${i} ${pn + 2} 0 R >> >> /Contents ${pn + 1} 0 R >>`))
+    obj(pn, () =>
+      push(
+        `<< /Type /Page /Parent 2 0 R /MediaBox [0 0 ${p.w} ${p.h}] /Resources << /XObject << /Im${i} ${pn + 2} 0 R >> >> /Contents ${pn + 1} 0 R >>`,
+      ),
+    )
     const content = `q ${p.w} 0 0 ${p.h} 0 0 cm /Im${i} Do Q`
     obj(pn + 1, () => push(`<< /Length ${content.length} >>\nstream\n${content}\nendstream`))
     obj(pn + 2, () => {
-      push(`<< /Type /XObject /Subtype /Image /Width ${p.pw} /Height ${p.ph} /ColorSpace /DeviceRGB /BitsPerComponent 8 /Filter /DCTDecode /Length ${p.jpeg.length} >>\nstream\n`)
+      push(
+        `<< /Type /XObject /Subtype /Image /Width ${p.pw} /Height ${p.ph} /ColorSpace /DeviceRGB /BitsPerComponent 8 /Filter /DCTDecode /Length ${p.jpeg.length} >>\nstream\n`,
+      )
       push(p.jpeg)
       push('\nendstream')
     })
@@ -317,7 +347,7 @@ export async function exportNodes(nodeIds: string[], settings: ExportSetting[]) 
   const ids = targets(nodeIds)
   for (const s of settings) {
     if (s.format === 'pdf') {
-      const name = ids.length === 1 ? doc.nodes[ids[0]]?.name ?? doc.name : doc.name
+      const name = ids.length === 1 ? (doc.nodes[ids[0]]?.name ?? doc.name) : doc.name
       downloadBlob(await renderPdf(ids, Math.max(1, s.scale)), `${safe(name)}${s.suffix}.pdf`)
       continue
     }
@@ -353,7 +383,15 @@ function animAt(doc: Doc, rootId: string, t: number): AnimFrame {
   return out
 }
 
-export async function exportVideo(opts: { nodeId: string; duration: number; fps: number; width: number; height: number; onProgress?: (p: number) => void; signal?: AbortSignal }) {
+export async function exportVideo(opts: {
+  nodeId: string
+  duration: number
+  fps: number
+  width: number
+  height: number
+  onProgress?: (p: number) => void
+  signal?: AbortSignal
+}) {
   const { doc } = useS3D.getState()
   const node = doc.nodes[opts.nodeId]
   if (!node) throw new Error('Nothing to export')
@@ -365,7 +403,7 @@ export async function exportVideo(opts: { nodeId: string; duration: number; fps:
   const pos = absPos(doc, opts.nodeId)
   const root = { ...doc, nodes: { ...doc.nodes, [opts.nodeId]: { ...node, ...pos, parentId: '' } } }
   const draw = async (t: number, cached?: HTMLImageElement) => {
-    const img = cached ?? await svgToImage((await nodeToSvg(root, [opts.nodeId], animAt(doc, opts.nodeId, t))).svg)
+    const img = cached ?? (await svgToImage((await nodeToSvg(root, [opts.nodeId], animAt(doc, opts.nodeId, t))).svg))
     const s = Math.min(opts.width / img.width, opts.height / img.height)
     ctx.fillStyle = '#000'
     ctx.fillRect(0, 0, opts.width, opts.height)
@@ -373,7 +411,8 @@ export async function exportVideo(opts: { nodeId: string; duration: number; fps:
     return img
   }
   const still = animated ? undefined : await draw(0)
-  const mime = ['video/webm;codecs=vp9', 'video/webm;codecs=vp8', 'video/webm', 'video/mp4'].find((m) => MediaRecorder.isTypeSupported(m)) ?? ''
+  const mime =
+    ['video/webm;codecs=vp9', 'video/webm;codecs=vp8', 'video/webm', 'video/mp4'].find((m) => MediaRecorder.isTypeSupported(m)) ?? ''
   const stream = canvas.captureStream(opts.fps)
   const rec = new MediaRecorder(stream, mime ? { mimeType: mime, videoBitsPerSecond: 8_000_000 } : undefined)
   const parts: Blob[] = []

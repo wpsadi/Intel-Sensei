@@ -1,7 +1,7 @@
-import { Context, ContextContent, ContextContentBody, ContextContentHeader, ContextTrigger } from '@/components/ai-elements/context'
-import type { ChatMessage } from '@/features/note/db/types'
-import { CHAT_MODEL } from '@/constants/ai'
 import { messageText } from '@/ai/utils/messages'
+import { Context, ContextContent, ContextContentBody, ContextContentHeader, ContextTrigger } from '@/components/ai-elements/context'
+import { CHAT_MODEL } from '@/constants/ai'
+import type { ChatMessage } from '@/features/note/db/types'
 import { cn } from '@/lib/utils'
 
 /** Gemini Flash-Lite's context window. */
@@ -75,7 +75,9 @@ export function ContextUsage({ messages }: { messages: ChatMessage[] }) {
       <ContextContent align="start" side="top" className="w-72">
         <ContextContentHeader />
         <ContextContentBody className="space-y-3">
-          <p className="text-xs text-muted-foreground">{reported ? 'What fills the context (total reported by Gemini, split estimated)' : 'What fills the context (estimated)'}</p>
+          <p className="text-xs text-muted-foreground">
+            {reported ? 'What fills the context (total reported by Gemini, split estimated)' : 'What fills the context (estimated)'}
+          </p>
           {/* One stacked bar; segments are separated by a 2px gap and the ends are rounded. */}
           <div className="flex h-3 w-full gap-0.5 overflow-hidden rounded-sm" role="img" aria-label="Context breakdown">
             {PARTS.filter((part) => tokens[part.key] > 0).map((part) => (

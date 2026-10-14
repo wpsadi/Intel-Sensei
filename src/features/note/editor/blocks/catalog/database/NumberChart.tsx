@@ -1,4 +1,5 @@
 import { HashIcon } from 'lucide-react'
+
 import { type BlockDefinition, database } from '../../insert'
 
 /** Number chart block for the "/" and "+" menus. */

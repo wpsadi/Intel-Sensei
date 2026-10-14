@@ -1,4 +1,5 @@
 import { CodeIcon } from 'lucide-react'
+
 import { type BlockDefinition, chain } from '../../insert'
 
 /** Code block for the "/" and "+" menus. */

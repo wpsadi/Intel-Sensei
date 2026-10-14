@@ -1,4 +1,7 @@
-"use client"
+'use client'
+
+import { ArrowUpRightIcon, LinkIcon, MoreHorizontalIcon, StarOffIcon, Trash2Icon } from 'lucide-react'
+import { Link } from 'react-router-dom'
 
 import {
   DropdownMenu,
@@ -7,7 +10,7 @@ import {
   DropdownMenuItem,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu"
+} from '@/components/ui/dropdown-menu'
 import {
   SidebarGroup,
   SidebarGroupLabel,
@@ -15,10 +18,8 @@ import {
   SidebarMenuAction,
   SidebarMenuButton,
   SidebarMenuItem,
-  useSidebar,
-} from "@/components/ui/sidebar"
-import { MoreHorizontalIcon, StarOffIcon, LinkIcon, ArrowUpRightIcon, Trash2Icon } from "lucide-react"
-import { Link } from "react-router-dom"
+} from '@/components/ui/sidebar'
+import { useSidebar } from '@/hooks/use-sidebar'
 
 export function NavFavorites({
   favorites,
@@ -41,23 +42,11 @@ export function NavFavorites({
               <span>{item.name}</span>
             </SidebarMenuButton>
             <DropdownMenu>
-              <DropdownMenuTrigger
-                render={
-                  <SidebarMenuAction
-                    showOnHover
-                    className="aria-expanded:bg-muted"
-                  />
-                }
-              >
-                <MoreHorizontalIcon
-                />
+              <DropdownMenuTrigger render={<SidebarMenuAction showOnHover className="aria-expanded:bg-muted" />}>
+                <MoreHorizontalIcon />
                 <span className="sr-only">More</span>
               </DropdownMenuTrigger>
-              <DropdownMenuContent
-                className="w-56 rounded-lg"
-                side={isMobile ? "bottom" : "right"}
-                align={isMobile ? "end" : "start"}
-              >
+              <DropdownMenuContent className="w-56 rounded-lg" side={isMobile ? 'bottom' : 'right'} align={isMobile ? 'end' : 'start'}>
                 <DropdownMenuGroup>
                   <DropdownMenuItem>
                     <StarOffIcon className="text-muted-foreground" />
@@ -86,8 +75,7 @@ export function NavFavorites({
         ))}
         <SidebarMenuItem>
           <SidebarMenuButton className="text-sidebar-foreground/70">
-            <MoreHorizontalIcon
-            />
+            <MoreHorizontalIcon />
             <span>More</span>
           </SidebarMenuButton>
         </SidebarMenuItem>

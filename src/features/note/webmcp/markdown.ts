@@ -1,8 +1,9 @@
 /* Markdown → editor document. Pulls in the editor's extensions, so import it lazily outside /s-note. */
 import { type JSONContent, generateJSON } from '@tiptap/react'
 import { marked } from 'marked'
-import { buildExtensions } from '../editor/extensions'
+
 import { EMPTY_DOC } from '../db/repo'
+import { buildExtensions } from '../editor/extensions'
 
 const parseDoc = (content: string): JSONContent => {
   try {

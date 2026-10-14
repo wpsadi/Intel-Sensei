@@ -1,4 +1,4 @@
-import { getUsageDb, type UsageLog } from './db'
+import { type UsageLog, getUsageDb } from './db'
 
 export { costOf, loadPrices } from './pricing'
 export type { UsageLog, UsageProvider } from './db'

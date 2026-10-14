@@ -1,7 +1,8 @@
-import type { ModelMessage } from 'ai'
 import { GoogleGenAI } from '@google/genai'
-import type { ChatAttachment, ChatMessage } from '@/features/note/db/types'
+import type { ModelMessage } from 'ai'
+
 import { readMedia } from '@/features/note/db/media'
+import type { ChatAttachment, ChatMessage } from '@/features/note/db/types'
 
 export interface ChatTurn {
   role: 'user' | 'assistant'
@@ -16,10 +17,14 @@ export interface ChatTurn {
 export function messageText(message: Pick<ChatMessage, 'content' | 'plan' | 'todos'>) {
   const parts = [message.content]
   if (message.plan) {
-    parts.push(`[Plan shown to the user: ${message.plan.title}\n${message.plan.steps.map((step, index) => `${index + 1}. ${step.title}`).join('\n')}]`)
+    parts.push(
+      `[Plan shown to the user: ${message.plan.title}\n${message.plan.steps.map((step, index) => `${index + 1}. ${step.title}`).join('\n')}]`,
+    )
   }
   if (message.todos) {
-    parts.push(`[To-do list shown to the user: ${message.todos.title}\n${message.todos.items.map((item) => `- (${item.status}) ${item.title}`).join('\n')}]`)
+    parts.push(
+      `[To-do list shown to the user: ${message.todos.title}\n${message.todos.items.map((item) => `- (${item.status}) ${item.title}`).join('\n')}]`,
+    )
   }
   if (message.todos === null) parts.push('[To-do list removed]')
   return parts.filter(Boolean).join('\n\n')

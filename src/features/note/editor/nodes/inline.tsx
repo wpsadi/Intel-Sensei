@@ -1,81 +1,19 @@
-import { AlarmClockIcon, AtSignIcon, CalendarIcon, UserPlusIcon } from 'lucide-react'
 import Emoji, { gitHubEmojis } from '@tiptap/extension-emoji'
 import Mention, { type MentionOptions } from '@tiptap/extension-mention'
-import { type MenuItem, matches, renderSuggestion, runMenuItem } from '../suggestion-menu'
-import { type NodeViewProps, NodeViewWrapper, ReactNodeViewRenderer } from '@tiptap/react'
-import { PageIcon, pageTitle } from './pages'
+import { ReactNodeViewRenderer } from '@tiptap/react'
+import { AlarmClockIcon, AtSignIcon, CalendarIcon, UserPlusIcon } from 'lucide-react'
+
 import { useNoteStore } from '../../note.store'
-import { usePage, usePeople } from '../../db/hooks'
-import { Link } from 'react-router-dom'
-import { cn } from '@/lib/utils'
+import { type MenuItem, matches } from '../menu-items'
+import { renderSuggestion, runMenuItem } from '../suggestion-menu'
+import { formatDate, toLocalInput } from './format-date'
+import { pageTitle } from './page-utils'
+import { PageIcon } from './PageIcon'
+import { MentionView } from './views/inline'
 
 /* --------------------------------- mentions ------------------------------- */
 
 export type MentionKind = 'person' | 'page' | 'date'
-
-const toLocalInput = (date: Date) => {
-  const shifted = new Date(date.getTime() - date.getTimezoneOffset() * 60000)
-  return shifted.toISOString().slice(0, 16)
-}
-
-export function formatDate(value: string, withTime = value.length > 10) {
-  const date = new Date(value)
-  if (Number.isNaN(date.getTime())) return value
-  return date.toLocaleString(undefined, {
-    month: 'short',
-    day: 'numeric',
-    year: 'numeric',
-    ...(withTime ? { hour: 'numeric', minute: '2-digit' } : {}),
-  })
-}
-
-function MentionView({ node, updateAttributes }: NodeViewProps) {
-  const { kind, id, label, date, reminder } = node.attrs as {
-    kind: MentionKind
-    id: string
-    label: string
-    date: string
-    reminder: boolean
-  }
-  const page = usePage(kind === 'page' ? id : undefined)
-  const people = usePeople()
-
-  if (kind === 'page') {
-    return (
-      <NodeViewWrapper as="span" className="snote-mention">
-        <Link to={`/s-note/${id}`} className="inline-flex items-baseline gap-1 rounded px-0.5 hover:bg-muted">
-          <PageIcon icon={page?.icon} content={page?.content} className="text-[0.95em]" />
-          <span className="border-b border-foreground/30 font-medium">{page ? pageTitle(page.title) : label}</span>
-        </Link>
-      </NodeViewWrapper>
-    )
-  }
-
-  if (kind === 'date') {
-    const overdue = reminder && new Date(date).getTime() < Date.now()
-    return (
-      <NodeViewWrapper as="span" className="snote-mention">
-        <label className={cn('relative inline-flex cursor-pointer items-center gap-1 rounded px-0.5 text-muted-foreground hover:bg-muted', overdue && 'text-red-500')}>
-          {reminder ? <AlarmClockIcon className="size-3.5" /> : <span>@</span>}
-          {formatDate(date)}
-          <input
-            type={date.length > 10 ? 'datetime-local' : 'date'}
-            value={date}
-            onChange={(event) => updateAttributes({ date: event.target.value })}
-            className="absolute inset-0 opacity-0"
-          />
-        </label>
-      </NodeViewWrapper>
-    )
-  }
-
-  const person = people?.find((p) => p.id === id)
-  return (
-    <NodeViewWrapper as="span" className="snote-mention rounded px-0.5 text-muted-foreground">
-      @{person?.name ?? label}
-    </NodeViewWrapper>
-  )
-}
 
 async function mentionItems(query: string): Promise<MenuItem[]> {
   const state = useNoteStore.getState()
@@ -83,14 +21,32 @@ async function mentionItems(query: string): Promise<MenuItem[]> {
   const pages = Object.values(state.pages)
   const databases = Object.values(state.databases)
   const insert = (attrs: Record<string, unknown>) => (editor: Parameters<MenuItem['run']>[0], range: Parameters<MenuItem['run']>[1]) =>
-    editor.chain().focus().insertContentAt(range, [{ type: 'mention', attrs }, { type: 'text', text: ' ' }]).run()
+    editor
+      .chain()
+      .focus()
+      .insertContentAt(range, [
+        { type: 'mention', attrs },
+        { type: 'text', text: ' ' },
+      ])
+      .run()
 
   const now = new Date()
   const tomorrow = new Date(now.getTime() + 864e5)
   const dates: MenuItem[] = [
     { key: 'today', title: 'Today', subtitle: formatDate(toLocalInput(now).slice(0, 10)), date: toLocalInput(now).slice(0, 10) },
-    { key: 'tomorrow', title: 'Tomorrow', subtitle: formatDate(toLocalInput(tomorrow).slice(0, 10)), date: toLocalInput(tomorrow).slice(0, 10) },
-    { key: 'remind', title: 'Remind me', subtitle: 'Tomorrow 9:00 AM', date: `${toLocalInput(tomorrow).slice(0, 10)}T09:00`, reminder: true },
+    {
+      key: 'tomorrow',
+      title: 'Tomorrow',
+      subtitle: formatDate(toLocalInput(tomorrow).slice(0, 10)),
+      date: toLocalInput(tomorrow).slice(0, 10),
+    },
+    {
+      key: 'remind',
+      title: 'Remind me',
+      subtitle: 'Tomorrow 9:00 AM',
+      date: `${toLocalInput(tomorrow).slice(0, 10)}T09:00`,
+      reminder: true,
+    },
   ]
     .filter((d) => matches(d, query) || matches({ title: 'date reminder' }, query))
     .map(({ date, reminder, ...item }) => ({
@@ -174,9 +130,19 @@ export const EmojiNode = Emoji.configure({
     char: ':',
     items: ({ query }: { query: string }): MenuItem[] =>
       localEmojis
-        .filter((e) => e.emoji && (e.shortcodes.some((s) => s.includes(query.toLowerCase())) || e.tags.some((t) => t.startsWith(query.toLowerCase()))))
+        .filter(
+          (e) =>
+            e.emoji && (e.shortcodes.some((s) => s.includes(query.toLowerCase())) || e.tags.some((t) => t.startsWith(query.toLowerCase()))),
+        )
         // Shortcode prefix matches first, then other shortcode matches, then tag matches.
-        .map((e) => ({ e, rank: e.shortcodes.some((s) => s.startsWith(query.toLowerCase())) ? 0 : e.shortcodes.some((s) => s.includes(query.toLowerCase())) ? 1 : 2 }))
+        .map((e) => ({
+          e,
+          rank: e.shortcodes.some((s) => s.startsWith(query.toLowerCase()))
+            ? 0
+            : e.shortcodes.some((s) => s.includes(query.toLowerCase()))
+              ? 1
+              : 2,
+        }))
         .sort((a, b) => a.rank - b.rank)
         .map(({ e }) => e)
         .slice(0, 12)

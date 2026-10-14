@@ -1,4 +1,5 @@
 import { Heading3Icon } from 'lucide-react'
+
 import { type BlockDefinition, toggle } from '../../insert'
 
 /** Toggle heading 3 block for the "/" and "+" menus. */

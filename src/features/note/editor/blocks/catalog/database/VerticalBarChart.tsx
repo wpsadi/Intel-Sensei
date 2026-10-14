@@ -1,4 +1,5 @@
 import { ChartColumnIcon } from 'lucide-react'
+
 import { type BlockDefinition, database } from '../../insert'
 
 /** Vertical bar chart block for the "/" and "+" menus. */

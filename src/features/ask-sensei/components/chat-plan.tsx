@@ -1,4 +1,5 @@
 import { FileTextIcon, ListTodoIcon } from 'lucide-react'
+
 import { Plan, PlanContent, PlanDescription, PlanHeader, PlanTitle, PlanTrigger } from '@/components/ai-elements/plan'
 import {
   Queue,
@@ -42,20 +43,35 @@ export function ChatPlanCard({ plan, isStreaming }: { plan: ChatPlan; isStreamin
 }
 
 /** The newest to-do list as a checklist pinned above the chat input, until every item is done. */
-export function ChatTodoQueue({ todos, open, onOpenChange }: { todos: ChatTodoList; open: boolean; onOpenChange: (open: boolean) => void }) {
+export function ChatTodoQueue({
+  todos,
+  open,
+  onOpenChange,
+}: {
+  todos: ChatTodoList
+  open: boolean
+  onOpenChange: (open: boolean) => void
+}) {
   const done = todos.items.filter((item) => item.status === 'completed').length
   return (
     <Queue className="mb-2">
       <QueueSection open={open} onOpenChange={onOpenChange}>
         <QueueSectionTrigger>
-          <QueueSectionLabel icon={<ListTodoIcon className="size-4" />} count={todos.items.length - done} label={`of ${todos.items.length} left · ${todos.title}`} />
+          <QueueSectionLabel
+            icon={<ListTodoIcon className="size-4" />}
+            count={todos.items.length - done}
+            label={`of ${todos.items.length} left · ${todos.title}`}
+          />
         </QueueSectionTrigger>
         <QueueSectionContent>
           <QueueList>
             {todos.items.map((item, index) => (
               <QueueItem key={index}>
                 <div className="flex items-center gap-2">
-                  <QueueItemIndicator completed={item.status === 'completed'} className={item.status === 'in_progress' ? 'border-primary bg-primary/20' : undefined} />
+                  <QueueItemIndicator
+                    completed={item.status === 'completed'}
+                    className={item.status === 'in_progress' ? 'border-primary bg-primary/20' : undefined}
+                  />
                   <QueueItemContent completed={item.status === 'completed'}>{item.title}</QueueItemContent>
                 </div>
               </QueueItem>

@@ -1,19 +1,35 @@
 import { toast } from 'sonner'
+
 import { impl } from '@/features/s-3d/agent/tools-impl'
 import { absPos } from '@/features/s-3d/model'
-import { useS3D } from '@/features/s-3d/store'
-import type { Doc, SNode, Tool } from '@/features/s-3d/types'
 import { decode } from '@/features/s-3d/raster/bake'
 import type { Point } from '@/features/s-3d/raster/pixels'
+import { useS3D } from '@/features/s-3d/store'
+import type { Doc, SNode, Tool } from '@/features/s-3d/types'
 
 /** Pixel tools on the canvas. Each one calls the same agent tool that the model uses, so both paths stay in step. */
 export type RasterTool = 'brush' | 'eraser' | 'clone' | 'heal' | 'marquee' | 'lasso' | 'wand' | 'quick' | 'crop' | 'eyedropper' | 'zoom'
 
-export const RASTER_TOOLS: RasterTool[] = ['brush', 'eraser', 'clone', 'heal', 'marquee', 'lasso', 'wand', 'quick', 'crop', 'eyedropper', 'zoom']
+export const RASTER_TOOLS: RasterTool[] = [
+  'brush',
+  'eraser',
+  'clone',
+  'heal',
+  'marquee',
+  'lasso',
+  'wand',
+  'quick',
+  'crop',
+  'eyedropper',
+  'zoom',
+]
 export const BRUSH_TOOLS: Tool[] = ['brush', 'eraser', 'clone', 'heal']
 export const isRaster = (t: Tool): t is RasterTool => (RASTER_TOOLS as Tool[]).includes(t)
 
-export interface XY { x: number; y: number }
+export interface XY {
+  x: number
+  y: number
+}
 
 /** A pixel gesture: world points collected while the pointer is down, converted to source pixels on release. */
 export interface RasterGesture {
@@ -151,7 +167,13 @@ export async function commitRaster(g: RasterGesture) {
         return
       case 'wand':
       case 'quick':
-        await select({ type: 'wand', x: Math.floor(at[0]), y: Math.floor(at[1]), tolerance: g.tool === 'quick' ? 64 : 32, contiguous: true })
+        await select({
+          type: 'wand',
+          x: Math.floor(at[0]),
+          y: Math.floor(at[1]),
+          tolerance: g.tool === 'quick' ? 64 : 32,
+          contiguous: true,
+        })
         return
       case 'crop': {
         const r = pixelRect(at, last, dims)

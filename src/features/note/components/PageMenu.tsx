@@ -8,8 +8,11 @@ import {
   MoreHorizontalIcon,
   Trash2Icon,
 } from 'lucide-react'
+import { useEffect, useState } from 'react'
+import { useNavigate } from 'react-router-dom'
+import { toast } from 'sonner'
+
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
-import { ScrollArea } from '@/components/ui/scroll-area'
 import {
   DropdownMenu,
   DropdownMenuCheckboxItem,
@@ -22,17 +25,16 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
-import type { Page, PageFont } from '../db/types'
-import { useEffect, useState } from 'react'
-import { displaySettings } from '../lib/display'
-import { PageIcon, pageTitle } from '../editor/nodes/pages'
-import { pageToMarkdown } from '../lib/markdown'
-
-import { selectAncestry, useNoteStore } from '../note.store'
+import { ScrollArea } from '@/components/ui/scroll-area'
 import { copyText } from '@/lib/clipboard'
-import { toast } from 'sonner'
+
 import { useAllPages } from '../db/hooks'
-import { useNavigate } from 'react-router-dom'
+import type { Page, PageFont } from '../db/types'
+import { pageTitle } from '../editor/nodes/page-utils'
+import { PageIcon } from '../editor/nodes/PageIcon'
+import { displaySettings } from '../lib/display'
+import { pageToMarkdown } from '../lib/markdown'
+import { selectAncestry, useNoteStore } from '../note.store'
 const FONTS: { value: PageFont; label: string }[] = [
   { value: 'default', label: 'Default' },
   { value: 'serif', label: 'Serif' },

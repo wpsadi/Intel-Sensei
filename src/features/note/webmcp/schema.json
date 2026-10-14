@@ -56,9 +56,7 @@
             "maximum": 9007199254740991
           }
         },
-        "required": [
-          "note"
-        ]
+        "required": ["note"]
       },
       "annotations": {
         "readOnlyHint": true,
@@ -77,9 +75,7 @@
             "description": "Note title or id, or \"trash\" to show the trash"
           }
         },
-        "required": [
-          "note"
-        ]
+        "required": ["note"]
       }
     },
     {
@@ -116,9 +112,7 @@
             "type": "boolean"
           }
         },
-        "required": [
-          "title"
-        ]
+        "required": ["title"]
       }
     },
     {
@@ -140,10 +134,7 @@
             "default": "append",
             "description": "Add content at the end or the start of the body",
             "type": "string",
-            "enum": [
-              "append",
-              "prepend"
-            ]
+            "enum": ["append", "prepend"]
           },
           "rewrite_whole_note": {
             "description": "Erase the whole body and write content instead. Only when the user explicitly asks to rewrite the entire note",
@@ -173,16 +164,10 @@
           },
           "font": {
             "type": "string",
-            "enum": [
-              "default",
-              "serif",
-              "mono"
-            ]
+            "enum": ["default", "serif", "mono"]
           }
         },
-        "required": [
-          "note"
-        ]
+        "required": ["note"]
       },
       "annotations": {
         "untrustedContentHint": true
@@ -200,9 +185,7 @@
             "description": "Note title as the user said it, or its id from search_notes"
           }
         },
-        "required": [
-          "note"
-        ]
+        "required": ["note"]
       },
       "annotations": {
         "untrustedContentHint": true
@@ -239,10 +222,7 @@
             "description": "New parent note (title or id), or null for the workspace top level"
           }
         },
-        "required": [
-          "notes",
-          "inside"
-        ]
+        "required": ["notes", "inside"]
       },
       "annotations": {
         "untrustedContentHint": true
@@ -270,9 +250,7 @@
             "type": "boolean"
           }
         },
-        "required": [
-          "notes"
-        ]
+        "required": ["notes"]
       },
       "annotations": {
         "untrustedContentHint": true
@@ -296,9 +274,7 @@
             "description": "Notes already in the trash, by title or id"
           }
         },
-        "required": [
-          "notes"
-        ]
+        "required": ["notes"]
       },
       "annotations": {
         "consequentialHint": true,
@@ -334,9 +310,7 @@
             "maximum": 9007199254740991
           }
         },
-        "required": [
-          "database"
-        ]
+        "required": ["database"]
       },
       "annotations": {
         "readOnlyHint": true,
@@ -396,16 +370,11 @@
                   "description": "Column name → value. Use \"Name\" for the row title"
                 }
               },
-              "required": [
-                "values"
-              ]
+              "required": ["values"]
             }
           }
         },
-        "required": [
-          "database",
-          "rows"
-        ]
+        "required": ["database", "rows"]
       },
       "annotations": {
         "untrustedContentHint": true
@@ -491,13 +460,7 @@
             "properties": {
               "where": {
                 "type": "string",
-                "enum": [
-                  "end",
-                  "start",
-                  "after",
-                  "before",
-                  "inside"
-                ],
+                "enum": ["end", "start", "after", "before", "inside"],
                 "description": "inside = at the end of a container block such as a callout, toggle or column"
               },
               "block": {
@@ -506,9 +469,7 @@
                 "pattern": "^\\d+(\\.\\d+)*$"
               }
             },
-            "required": [
-              "where"
-            ],
+            "required": ["where"],
             "description": "Where in the note. Defaults to the end"
           },
           "blocks": {
@@ -619,15 +580,11 @@
                   "additionalProperties": {}
                 }
               },
-              "required": [
-                "type"
-              ]
+              "required": ["type"]
             }
           }
         },
-        "required": [
-          "blocks"
-        ]
+        "required": ["blocks"]
       }
     },
     {
@@ -755,9 +712,7 @@
             "type": "string"
           }
         },
-        "required": [
-          "block"
-        ]
+        "required": ["block"]
       },
       "annotations": {
         "untrustedContentHint": true
@@ -784,13 +739,7 @@
             "properties": {
               "where": {
                 "type": "string",
-                "enum": [
-                  "end",
-                  "start",
-                  "after",
-                  "before",
-                  "inside"
-                ],
+                "enum": ["end", "start", "after", "before", "inside"],
                 "description": "inside = at the end of a container block such as a callout, toggle or column"
               },
               "block": {
@@ -799,16 +748,11 @@
                 "pattern": "^\\d+(\\.\\d+)*$"
               }
             },
-            "required": [
-              "where"
-            ],
+            "required": ["where"],
             "description": "Where in the note. Defaults to the end"
           }
         },
-        "required": [
-          "block",
-          "position"
-        ]
+        "required": ["block", "position"]
       }
     },
     {
@@ -837,9 +781,7 @@
             "type": "boolean"
           }
         },
-        "required": [
-          "blocks"
-        ]
+        "required": ["blocks"]
       },
       "annotations": {
         "untrustedContentHint": true

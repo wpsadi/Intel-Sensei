@@ -1,4 +1,5 @@
 import { ChevronsRightIcon } from 'lucide-react'
+
 import { type BlockDefinition, block } from '../../insert'
 
 /** Breadcrumb block for the "/" and "+" menus. */

@@ -39,7 +39,10 @@ export const editNote = z.object({
   note,
   content: z.string().optional().describe('Markdown to write into the body'),
   mode: z.enum(['append', 'prepend']).default('append').describe('Add content at the end or the start of the body'),
-  rewrite_whole_note: z.boolean().optional().describe('Erase the whole body and write content instead. Only when the user explicitly asks to rewrite the entire note'),
+  rewrite_whole_note: z
+    .boolean()
+    .optional()
+    .describe('Erase the whole body and write content instead. Only when the user explicitly asks to rewrite the entire note'),
   title: z.string().optional(),
   icon: z.string().max(8).optional().describe('One emoji, or "" to remove'),
   favorite: z.boolean().optional().describe('Star or unstar'),
@@ -90,22 +93,101 @@ export const updateDatabaseRows = z.object({
  * Every block the "/" menu can insert (the keys of BLOCKS in editor/blocks/registry), plus "markdown" for several
  * blocks at once. Listed here rather than imported so the editor code stays out of the main bundle; a test keeps them equal.
  */
-export const BLOCK_TYPES = ['text', 'h1', 'h2', 'h3', 'h4', 'bullet', 'numbered', 'todo', 'toggle', 'divider', 'link-page', 'callout', 'quote', 'code', 'page', 'table', 'image', 'video', 'audio', 'file', 'bookmark', 'embed', 'html', 'drive', 'tweet', 'gist', 'db-table', 'db-board', 'db-gallery', 'db-list', 'db-feed', 'db-dashboard', 'db-calendar', 'db-timeline', 'db-map', 'db-vbar', 'db-hbar', 'db-line', 'db-donut', 'db-number', 'db-form', 'db-inline', 'db-full', 'db-linked', 'toc', 'equation', 'inline-equation', 'button', 'breadcrumb', 'tabs', 'synced', 'th1', 'th2', 'th3', 'col2', 'col3', 'col4', 'col5', 'mermaid', 'ai', 'mention-person', 'mention-page', 'date', 'emoji', 'markdown'] as const
+export const BLOCK_TYPES = [
+  'text',
+  'h1',
+  'h2',
+  'h3',
+  'h4',
+  'bullet',
+  'numbered',
+  'todo',
+  'toggle',
+  'divider',
+  'link-page',
+  'callout',
+  'quote',
+  'code',
+  'page',
+  'table',
+  'image',
+  'video',
+  'audio',
+  'file',
+  'bookmark',
+  'embed',
+  'html',
+  'drive',
+  'tweet',
+  'gist',
+  'db-table',
+  'db-board',
+  'db-gallery',
+  'db-list',
+  'db-feed',
+  'db-dashboard',
+  'db-calendar',
+  'db-timeline',
+  'db-map',
+  'db-vbar',
+  'db-hbar',
+  'db-line',
+  'db-donut',
+  'db-number',
+  'db-form',
+  'db-inline',
+  'db-full',
+  'db-linked',
+  'toc',
+  'equation',
+  'inline-equation',
+  'button',
+  'breadcrumb',
+  'tabs',
+  'synced',
+  'th1',
+  'th2',
+  'th3',
+  'col2',
+  'col3',
+  'col4',
+  'col5',
+  'mermaid',
+  'ai',
+  'mention-person',
+  'mention-page',
+  'date',
+  'emoji',
+  'markdown',
+] as const
 
 const openNote_ = note.optional().describe('Note title or id. Omit for the note on screen')
-const blockPath = z.string().regex(/^\d+(\.\d+)*$/).describe('Block address from list_blocks, e.g. "3" or "3.1" for the 2nd child of block 3')
+const blockPath = z
+  .string()
+  .regex(/^\d+(\.\d+)*$/)
+  .describe('Block address from list_blocks, e.g. "3" or "3.1" for the 2nd child of block 3')
 const position = z
   .object({
-    where: z.enum(['end', 'start', 'after', 'before', 'inside']).describe('inside = at the end of a container block such as a callout, toggle or column'),
+    where: z
+      .enum(['end', 'start', 'after', 'before', 'inside'])
+      .describe('inside = at the end of a container block such as a callout, toggle or column'),
     block: blockPath.optional().describe('Needed for after, before and inside'),
   })
   .describe('Where in the note. Defaults to the end')
 
 const blockContent = {
-  text: z.string().optional().describe('Text of the block; note title for page/link-page; name for mentions; LaTeX for equations; Markdown for markdown. In a plain text or heading block, Markdown with headings, lists, tables or several paragraphs is turned into real blocks'),
+  text: z
+    .string()
+    .optional()
+    .describe(
+      'Text of the block; note title for page/link-page; name for mentions; LaTeX for equations; Markdown for markdown. In a plain text or heading block, Markdown with headings, lists, tables or several paragraphs is turned into real blocks',
+    ),
   items: z.array(z.string()).optional().describe('List items ("[x] " prefix = checked), toggle lines, column texts or tab titles'),
   rows: z.array(z.array(z.string())).optional().describe('Table cells row by row; the first row is the header'),
-  attrs: z.record(z.string(), z.unknown()).optional().describe('Block settings, e.g. {"language":"ts"}, {"src":url}, {"url":url}, {"icon":"🔥"}'),
+  attrs: z
+    .record(z.string(), z.unknown())
+    .optional()
+    .describe('Block settings, e.g. {"language":"ts"}, {"src":url}, {"url":url}, {"icon":"🔥"}'),
 }
 
 export const listBlocks = z.object({
@@ -135,7 +217,10 @@ export const updateBlock = z.object({
   note: openNote_,
   block: blockPath,
   ...blockContent,
-  convert_to: z.enum(BLOCK_TYPES).optional().describe('Change the block into another kind in place, keeping its content, e.g. "callout", "todo", "h2", "toggle"'),
+  convert_to: z
+    .enum(BLOCK_TYPES)
+    .optional()
+    .describe('Change the block into another kind in place, keeping its content, e.g. "callout", "todo", "h2", "toggle"'),
   checked: z.boolean().optional().describe('Tick or untick a to-do item'),
   comment: z.string().optional().describe('Add a comment to the block'),
 })

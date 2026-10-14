@@ -1,4 +1,5 @@
 import { ListCollapseIcon } from 'lucide-react'
+
 import { type BlockDefinition, toggle } from '../../insert'
 
 /** Toggle list block for the "/" and "+" menus. */

@@ -16,7 +16,12 @@
         "allowConstantExport": true
       }
     ],
-    "sort-imports": "error",
+    "sort-imports": [
+      "error",
+      {
+        "ignoreDeclarationSort": true
+      }
+    ],
     "no-unused-vars": "error"
   }
 }

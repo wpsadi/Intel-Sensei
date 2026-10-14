@@ -1,4 +1,5 @@
 import { MusicIcon } from 'lucide-react'
+
 import { type BlockDefinition, block } from '../../insert'
 
 /** Audio block for the "/" and "+" menus. */

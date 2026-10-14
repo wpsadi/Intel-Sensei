@@ -1,14 +1,18 @@
-import { ScrollArea } from '@/components/ui/scroll-area'
-import type { Page, PropertyDef, PropertyValue } from '../../db/types'
-import { PageIcon, pageTitle } from '../../editor/nodes/pages'
 import { PlusIcon, Trash2Icon } from 'lucide-react'
-import { PropertyDisplay, PropertyEditor, readValue, valueText } from '../properties'
-import { useNoteStore } from '../../note.store'
-import { PropertyHeader } from '../PropertyHeader'
-import type { ViewProps } from './types'
-import { cn } from '@/lib/utils'
-import { useMediaUrl } from '../../db/hooks'
 import { useState } from 'react'
+
+import { ScrollArea } from '@/components/ui/scroll-area'
+import { cn } from '@/lib/utils'
+
+import { useMediaUrl } from '../../db/hooks'
+import type { Page, PropertyValue } from '../../db/types'
+import { pageTitle } from '../../editor/nodes/page-utils'
+import { PageIcon } from '../../editor/nodes/PageIcon'
+import { useNoteStore } from '../../note.store'
+import { PropertyDisplay, PropertyEditor } from '../properties'
+import { PropertyHeader } from '../PropertyHeader'
+import { groupRows } from './group-rows'
+import type { ViewProps } from './types'
 
 const visible = ({ database, view }: Pick<ViewProps, 'database' | 'view'>) =>
   database.properties.filter((p) => p.type !== 'title' && !view.hiddenProperties?.includes(p.id))
@@ -67,7 +71,11 @@ export function TableView(props: ViewProps) {
                 </td>
               ))}
               <td className="border-b text-center">
-                <button type="button" onClick={() => setPageTrashed(row.id, true)} className="p-1 text-muted-foreground opacity-0 group-hover/row:opacity-100">
+                <button
+                  type="button"
+                  onClick={() => setPageTrashed(row.id, true)}
+                  className="p-1 text-muted-foreground opacity-0 group-hover/row:opacity-100"
+                >
                   <Trash2Icon className="size-3.5" />
                 </button>
               </td>
@@ -82,7 +90,11 @@ export function TableView(props: ViewProps) {
 
 export function NewRowButton({ onClick, label = 'New page' }: { onClick: () => void; label?: string }) {
   return (
-    <button type="button" onClick={onClick} className="flex w-full items-center gap-1.5 px-2 py-1.5 text-sm text-muted-foreground hover:bg-muted/60">
+    <button
+      type="button"
+      onClick={onClick}
+      className="flex w-full items-center gap-1.5 px-2 py-1.5 text-sm text-muted-foreground hover:bg-muted/60"
+    >
       <PlusIcon className="size-4" /> {label}
     </button>
   )
@@ -90,36 +102,10 @@ export function NewRowButton({ onClick, label = 'New page' }: { onClick: () => v
 
 /* ---------------------------------- board --------------------------------- */
 
-export function groupRows(rows: Page[], prop: PropertyDef | undefined) {
-  if (!prop) return [{ key: '', label: 'All', rows, value: null as PropertyValue }]
-  if (prop.options) {
-    const groups = prop.options.map((option) => ({
-      key: option.id,
-      label: option.name,
-      color: option.color,
-      value: (prop.type === 'multi_select' ? [option.id] : option.id) as PropertyValue,
-      rows: rows.filter((row) => {
-        const v = readValue(row, prop)
-        return Array.isArray(v) ? v.includes(option.id) : v === option.id
-      }),
-    }))
-    const none = rows.filter((row) => {
-      const v = readValue(row, prop)
-      return Array.isArray(v) ? !v.length : !v
-    })
-    return [{ key: '__none', label: `No ${prop.name}`, value: null as PropertyValue, rows: none }, ...groups]
-  }
-  const map = new Map<string, Page[]>()
-  rows.forEach((row) => {
-    const key = valueText(prop, readValue(row, prop))
-    map.set(key, [...(map.get(key) ?? []), row])
-  })
-  return [...map].map(([key, groupRowsList]) => ({ key, label: key || `No ${prop.name}`, value: key as PropertyValue, rows: groupRowsList }))
-}
-
 export function BoardView(props: ViewProps) {
   const { database, view, rows, openRow, addRow } = props
-  const groupProp = database.properties.find((p) => p.id === view.groupBy) ?? database.properties.find((p) => p.type === 'status' || p.type === 'select')
+  const groupProp =
+    database.properties.find((p) => p.id === view.groupBy) ?? database.properties.find((p) => p.type === 'status' || p.type === 'select')
   const [dragging, setDragging] = useState<string | null>(null)
   const setPageProperty = useNoteStore((s) => s.setPageProperty)
   const groups = groupRows(rows, groupProp)
@@ -133,42 +119,45 @@ export function BoardView(props: ViewProps) {
   return (
     <ScrollArea>
       <div className="flex gap-3 pb-2">
-      {groups.map((group) => (
-        <div
-          key={group.key}
-          onDragOver={(event) => event.preventDefault()}
-          onDrop={() => moveTo(group.value)}
-          className="w-64 shrink-0 rounded-md bg-muted/40 p-2"
-        >
-          <div className="mb-2 flex items-center gap-2 px-1 text-sm">
-            <span className={cn('rounded px-1.5', 'color' in group && `snote-tag-${group.color}`)}>{group.label}</span>
-            <span className="text-muted-foreground">{group.rows.length}</span>
-          </div>
-          <div className="flex flex-col gap-2">
-            {group.rows.map((row) => (
-              <div
-                key={row.id}
-                draggable
-                onDragStart={() => setDragging(row.id)}
-                onClick={() => openRow(row.id)}
-                className={cn('cursor-pointer rounded-md border bg-background p-2 text-sm shadow-xs hover:bg-muted/40', dragging === row.id && 'opacity-50')}
-              >
-                <div className="mb-1 flex items-center gap-1.5 font-medium">
-                  <PageIcon icon={row.icon} content={row.content} /> {pageTitle(row.title)}
+        {groups.map((group) => (
+          <div
+            key={group.key}
+            onDragOver={(event) => event.preventDefault()}
+            onDrop={() => moveTo(group.value)}
+            className="w-64 shrink-0 rounded-md bg-muted/40 p-2"
+          >
+            <div className="mb-2 flex items-center gap-2 px-1 text-sm">
+              <span className={cn('rounded px-1.5', 'color' in group && `snote-tag-${group.color}`)}>{group.label}</span>
+              <span className="text-muted-foreground">{group.rows.length}</span>
+            </div>
+            <div className="flex flex-col gap-2">
+              {group.rows.map((row) => (
+                <div
+                  key={row.id}
+                  draggable
+                  onDragStart={() => setDragging(row.id)}
+                  onClick={() => openRow(row.id)}
+                  className={cn(
+                    'cursor-pointer rounded-md border bg-background p-2 text-sm shadow-xs hover:bg-muted/40',
+                    dragging === row.id && 'opacity-50',
+                  )}
+                >
+                  <div className="mb-1 flex items-center gap-1.5 font-medium">
+                    <PageIcon icon={row.icon} content={row.content} /> {pageTitle(row.title)}
+                  </div>
+                  <div className="flex flex-col gap-1 text-xs">
+                    {visible(props)
+                      .filter((p) => p.id !== groupProp?.id)
+                      .map((prop) => (
+                        <PropertyDisplay key={prop.id} prop={prop} row={row} />
+                      ))}
+                  </div>
                 </div>
-                <div className="flex flex-col gap-1 text-xs">
-                  {visible(props)
-                    .filter((p) => p.id !== groupProp?.id)
-                    .map((prop) => (
-                      <PropertyDisplay key={prop.id} prop={prop} row={row} />
-                    ))}
-                </div>
-              </div>
-            ))}
-            <NewRowButton label="New" onClick={() => addRow(groupProp && group.value !== null ? { [groupProp.id]: group.value } : {})} />
+              ))}
+              <NewRowButton label="New" onClick={() => addRow(groupProp && group.value !== null ? { [groupProp.id]: group.value } : {})} />
+            </div>
           </div>
-        </div>
-      ))}
+        ))}
       </div>
     </ScrollArea>
   )
@@ -189,7 +178,11 @@ export function GalleryView(props: ViewProps) {
   return (
     <div className="grid grid-cols-[repeat(auto-fill,minmax(220px,1fr))] gap-3">
       {rows.map((row) => (
-        <div key={row.id} onClick={() => openRow(row.id)} className="cursor-pointer overflow-hidden rounded-md border bg-background shadow-xs hover:bg-muted/30">
+        <div
+          key={row.id}
+          onClick={() => openRow(row.id)}
+          className="cursor-pointer overflow-hidden rounded-md border bg-background shadow-xs hover:bg-muted/30"
+        >
           <CardCover src={firstImage(row)} />
           <div className="p-2 text-sm">
             <div className="mb-1 flex items-center gap-1.5 font-medium">
@@ -203,7 +196,11 @@ export function GalleryView(props: ViewProps) {
           </div>
         </div>
       ))}
-      <button type="button" onClick={() => addRow()} className="flex min-h-48 items-center justify-center gap-1 rounded-md border border-dashed text-sm text-muted-foreground hover:bg-muted/40">
+      <button
+        type="button"
+        onClick={() => addRow()}
+        className="flex min-h-48 items-center justify-center gap-1 rounded-md border border-dashed text-sm text-muted-foreground hover:bg-muted/40"
+      >
         <PlusIcon className="size-4" /> New page
       </button>
     </div>
@@ -305,9 +302,19 @@ export function FormView({ database }: ViewProps) {
             <span className="font-medium">{prop.name}</span>
             <div className="rounded-md border">
               {prop.type === 'title' ? (
-                <input value={title} onChange={(event) => setTitle(event.target.value)} className="h-8 w-full bg-transparent px-2 outline-none" required />
+                <input
+                  value={title}
+                  onChange={(event) => setTitle(event.target.value)}
+                  className="h-8 w-full bg-transparent px-2 outline-none"
+                  required
+                />
               ) : (
-                <PropertyEditor database={database} prop={prop} row={draftRow} onDraft={(value) => setDraft((d) => ({ ...d, [prop.id]: value }))} />
+                <PropertyEditor
+                  database={database}
+                  prop={prop}
+                  row={draftRow}
+                  onDraft={(value) => setDraft((d) => ({ ...d, [prop.id]: value }))}
+                />
               )}
             </div>
           </label>
