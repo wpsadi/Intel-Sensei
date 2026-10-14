@@ -1,7 +1,6 @@
 import { cjk } from '@streamdown/cjk'
 import { math } from '@streamdown/math'
 import { mermaid } from '@streamdown/mermaid'
-import type { ComponentProps } from 'react'
 import type { BundledLanguage } from 'shiki'
 import { type Components, Streamdown } from 'streamdown'
 
@@ -25,8 +24,8 @@ const components: Components = {
     const media = paragraphMedia(children)
     return media ? <MediaGallery items={media} /> : <p>{children}</p>
   },
-  img: MarkdownImage,
-  a: MarkdownLink,
+  img: MarkdownImage as Components['img'],
+  a: MarkdownLink as NonNullable<Components['a']>,
   // Streamdown puts list markers inside the text box with no indent, so lists sit flush left; indent them like prose.
   ul: ({ children }) => (
     <ul className="my-2 list-outside list-disc space-y-1 pl-5 marker:text-muted-foreground [&_ul]:list-[circle]">{children}</ul>
