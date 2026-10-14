@@ -101,7 +101,7 @@ export async function chatWithSensei(
     prepareStep: async ({ messages: stepMessages }) => {
       const steered = (await scope?.takeSteers?.()) ?? []
       const activeTools = await selector.activeTools(
-        steered.length ? steered.map((turn) => turn.text).join('\n') : lastUserText(stepMessages),
+        steered.length ? steered.map((turn) => turn.content).join('\n') : lastUserText(stepMessages),
         steered.length > 0,
       )
       return {

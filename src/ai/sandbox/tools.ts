@@ -117,7 +117,7 @@ export function createSandboxTools({ attachments = () => [], transfer = false }:
     description:
       'Shows you an image file from the sandbox (png, jpg, gif or webp) so you can see it. To look at a scanned or picture-based PDF page, first extract it with `pdfimages` in the terminal, then view each image. Images stay in your context, so view only the pages or pictures you need, at the lowest resolution that is readable.',
     inputSchema: z.object({ path: z.string().min(1).describe('The image file in the sandbox, such as "page-3.png"') }),
-    execute: async ({ path }, { abortSignal }) => {
+    execute: async ({ path }: { path: string }, { abortSignal }: { abortSignal?: AbortSignal }) => {
       const wait = sandboxUnavailable()
       if (wait) return wait
       const mediaType = IMAGE_TYPES[path.split('.').at(-1)?.toLowerCase() ?? '']

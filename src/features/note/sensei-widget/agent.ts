@@ -312,7 +312,10 @@ async function runSensei({
         messages: [],
       } as never,
     )
-  tools.memory = { description: memory.description ?? '', schema: await asSchema(memory.inputSchema).jsonSchema }
+  tools.memory = {
+    description: typeof memory.description === 'string' ? memory.description : '',
+    schema: await asSchema(memory.inputSchema).jsonSchema,
+  }
   const memoryBlock = await memoryPrompt({ chatId, scope: memoryScope.snote(noteCtx.currentPageId) }).catch(() => '')
   for (const t of await loadTools(() => noteCtx)) {
     calls[t.name] = t.call

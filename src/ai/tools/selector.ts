@@ -24,8 +24,11 @@ type Usage = {
 }
 
 /** The catalog of a tool map, with each description cut to its first sentence so the selector prompt stays small. */
-export const catalogOf = (tools: Record<string, { description?: string }>): ToolEntry[] =>
-  Object.entries(tools).map(([name, t]) => ({ name, description: (t.description ?? '').split(/(?<=[.!?])\s/)[0].slice(0, 160) }))
+export const catalogOf = (tools: Record<string, { description?: unknown }>): ToolEntry[] =>
+  Object.entries(tools).map(([name, t]) => ({
+    name,
+    description: (typeof t.description === 'string' ? t.description : '').split(/(?<=[.!?])\s/)[0].slice(0, 160),
+  }))
 
 /** The text of the newest user message, which is what the selector reads to decide. */
 export function lastUserText(messages: ModelMessage[]) {
