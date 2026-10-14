@@ -1,12 +1,14 @@
-import type { GoogleLanguageModelOptions } from '@ai-sdk/google'
 import { type ModelMessage, type Tool, asSchema } from 'ai'
 import { create } from 'zustand'
 
 import { generateChatTitle } from '@/ai/inference/title'
 import { MEMORY_INSTRUCTIONS, createMemoryTool, memoryPrompt, memoryScope } from '@/ai/memory'
-import { AI_MODELS, type ResolvedModel } from '@/ai/providers'
+import { AI_MODELS, type ResolvedModel, thinkingSummary } from '@/ai/providers'
+import { holdSandbox } from '@/ai/sandbox/client'
 import { SANDBOX_INSTRUCTIONS, createSandboxTools } from '@/ai/sandbox/tools'
 import { type PendingMessage, demoteSteering, removePending, submitWhileBusy, takeNextPending, useSendQueue } from '@/ai/send-queue'
+import { applySkillCommand } from '@/ai/skills/invoke'
+import { SKILLS_INSTRUCTIONS, createSkillTools, skillsPrompt } from '@/ai/skills/tools'
 import { createScrapeTool } from '@/ai/tools/scrape'
 import { createSearchTool, upsertSearch } from '@/ai/tools/search'
 import { currentTimePrompt } from '@/ai/utils/current-time'
@@ -87,7 +89,7 @@ async function loadTools(ctx: () => NoteToolContext): Promise<ToolInfo[]> {
   }))
 }
 
-const instructions = (noteTitle: string | undefined, memory = '') =>
+const instructions = (noteTitle: string | undefined, memory = '', skills = '') =>
   [
     `You are Sensei, the assistant inside S-Note, the user's notes workspace. Help them read, write and organize notes using your tools. Keep replies short.`,
     noteTitle
@@ -103,6 +105,8 @@ const instructions = (noteTitle: string | undefined, memory = '') =>
     'Change only what the user asked for, nothing more. To edit one block, call update_block on that block alone; never rewrite, delete or re-insert the blocks around it. Only set rewrite_whole_note or empty_note when the user explicitly asks to rewrite or clear the whole note.',
     'Never delete notes forever unless the user clearly asks. If a tool says a name is ambiguous, ask the user which one.',
     MEMORY_INSTRUCTIONS,
+    SKILLS_INSTRUCTIONS,
+    skills,
     'Your memory belongs to the note page that is open: what you save is about this page only and is not shared with other pages or apps.',
     memory,
     currentTimePrompt(),
@@ -291,6 +295,7 @@ async function runSensei({
     ...createSandboxTools({ transfer: true }),
     scrape: createScrapeTool(),
     paste_file: createPasteFileTool(),
+    ...createSkillTools(),
   }
   for (const [name, localTool] of Object.entries(localTools)) {
     calls[name] = (args) =>
@@ -316,6 +321,15 @@ async function runSensei({
     description: typeof memory.description === 'string' ? memory.description : '',
     schema: await asSchema(memory.inputSchema).jsonSchema,
   }
+  const skillsBlock = await skillsPrompt().catch(() => '')
+  // A message that starts with /skill-name reaches the model with that skill's instructions in front of it.
+  const modelMessages = await Promise.all(
+    messages.map(async (message) =>
+      message.role === 'user' && typeof message.content === 'string'
+        ? { ...message, content: await applySkillCommand(message.content) }
+        : message,
+    ),
+  )
   const memoryBlock = await memoryPrompt({ chatId, scope: memoryScope.snote(noteCtx.currentPageId) }).catch(() => '')
   for (const t of await loadTools(() => noteCtx)) {
     calls[t.name] = t.call
@@ -335,23 +349,24 @@ async function runSensei({
     steps = previous ? steps.map((s) => (s.id === step.id ? step : s)) : [...steps, step]
     onSteps(steps)
   }
+  const releaseSandbox = holdSandbox()
   const result = await streamInWorker(
     {
       provider: picked.provider,
       key: picked.key,
       baseURL: picked.baseURL,
       model: picked.model,
-      instructions: instructions(noteTitle, memoryBlock),
+      instructions: instructions(noteTitle, memoryBlock, skillsBlock),
       tools,
       // Notes, blocks, databases, files and web: the model picks the tools the request needs.
-      toolSelect: { alwaysInclude: ['webSearch', 'search_notes', 'read_note', 'open_note', 'list_blocks', 'read_block'], max: 10 },
-      messages,
+      toolSelect: {
+        alwaysInclude: ['webSearch', 'search_notes', 'read_note', 'open_note', 'list_blocks', 'read_block', 'use_skill'],
+        max: 10,
+      },
+      messages: modelMessages,
       contextLimit: SNOTE_AGENT_CONTEXT_LIMIT,
-      // Gemini leaves out its thought summaries unless asked for them.
-      providerOptions:
-        picked.provider === 'google'
-          ? { google: { thinkingConfig: { thinkingLevel: 'high', includeThoughts: true } } satisfies GoogleLanguageModelOptions }
-          : undefined,
+      // Claude and Gemini leave out their thought summaries unless asked for them.
+      providerOptions: thinkingSummary(picked.provider),
     },
     {
       signal,
@@ -410,7 +425,7 @@ async function runSensei({
         } else if (part.type === 'error') streamError = part.error
       },
     },
-  )
+  ).finally(releaseSandbox)
   if (streamError ?? result.error) throw new Error(streamError ?? result.error)
   return reply.trim()
 }

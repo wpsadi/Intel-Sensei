@@ -28,7 +28,7 @@ export interface PyodideLike {
   globals: { set(name: string, value: unknown): void }
   runPython(code: string): unknown
   runPythonAsync(code: string): Promise<unknown>
-  loadPackage(name: string): Promise<unknown>
+  loadPackage(name: string | string[]): Promise<unknown>
 }
 
 /** Writes text to a file in the sandbox, making its folders. A relative path counts from the home folder. */

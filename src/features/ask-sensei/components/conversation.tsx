@@ -17,6 +17,7 @@ import { Markdown } from '@/features/ask-sensei/components/markdown'
 import { useMediaUrl } from '@/features/note/db/hooks'
 import { resolveMedia } from '@/features/note/db/media'
 import type { ChatAttachment, ChatMessage } from '@/features/note/db/types'
+import { WorkedFor } from '@/features/s-3d/agent/worked-for'
 import { cn } from '@/lib/utils'
 
 /** Element id of the marker at the end of the list. The page scrolls to it from the down arrow. */
@@ -159,7 +160,14 @@ export function Conversation({
           const isReply = message.role === 'assistant'
           const isStreaming = message.id === streamingId
           const isWaiting =
-            isReply && isStreaming && !message.content && !message.reasoning && !message.plan && !message.searches && !message.questions
+            isReply &&
+            isStreaming &&
+            !message.content &&
+            !message.reasoning &&
+            !message.plan &&
+            !message.searches &&
+            !message.questions &&
+            !message.steps?.length
           return (
             <Message key={message.id} id={message.id} align={isReply ? 'start' : 'end'} className="scroll-mt-6">
               {/* An interrupted reply takes the full row, so its checkpoint line runs across the chat. */}
@@ -177,13 +185,21 @@ export function Conversation({
                     {isReply && (
                       // Thinking is over once the reply's first words arrive; the saved time shows after a reload too.
                       // Tool calls show inside the thinking block rather than between the reply's paragraphs.
-                      <ChatReasoning
-                        reasoning={message.reasoning}
-                        steps={message.parts?.flatMap((part) => (part.type === 'steps' ? part.steps : []))}
-                        isStreaming={isStreaming && !message.content}
-                        duration={message.reasoningSeconds}
-                        className="mb-3"
-                      />
+                      <>
+                        {/* A reply that ran commands or used tools shows how long it worked, like the S-3D agent. */}
+                        {message.steps?.length ? (
+                          <WorkedFor startedAt={message.createdAt} seconds={message.workedSeconds} running={isStreaming} />
+                        ) : null}
+                        <ChatReasoning
+                          reasoning={message.reasoning}
+                          steps={message.steps ?? message.parts?.flatMap((part) => (part.type === 'steps' ? part.steps : []))}
+                          isStreaming={isStreaming && !message.content}
+                          duration={message.reasoningSeconds ?? message.workedSeconds}
+                          toolCount={!message.steps?.length}
+                          defaultOpen={false}
+                          className="mb-3"
+                        />
+                      </>
                     )}
                     {isReply && message.parts?.length ? (
                       // A live-call reply: speech, searches and tool calls in the order they happened, in one message.

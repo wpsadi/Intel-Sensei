@@ -45,7 +45,40 @@ export function describeToolCall(name: string, args: Record<string, unknown>): {
       return { label: 'Checking the to-do list' }
     case 'deleteTodoList':
       return { label: 'Removing the to-do list' }
+    case 'terminal': {
+      const command = text(args.command)?.split('\n')[0]
+      return { label: 'Running a command', detail: command && command.length > 90 ? `${command.slice(0, 89)}…` : command }
+    }
+    case 'write_file':
+      return { label: 'Writing a file', detail: text(args.path) }
+    case 'scrape':
+      return { label: 'Reading a page', detail: text(args.url) }
+    case 'export_file':
+      return { label: 'Sharing a file', detail: text(args.path) }
+    case 'view_image':
+      return { label: 'Viewing an image', detail: text(args.path) }
+    case 'load_skill':
+      return { label: 'Reading a guide', detail: text(args.name) }
+    case 'sandbox_status':
+      return { label: 'Checking the environment' }
+    case 'find_skill':
+      return { label: 'Looking for a skill', detail: text(args.query) }
+    case 'use_skill':
+      return { label: 'Loading a skill', detail: text(args.name) }
+    case 'create_skill':
+      return { label: 'Saving a skill', detail: text(args.name) }
+    case 'request_tools':
+      return { label: 'Turning on tools' }
     default:
       return { label: name }
   }
+}
+
+/** Tools with their own place in the reply (searches, the plan card, to-dos, questions): they are not repeated as steps. */
+const OWN_UI = new Set(['webSearch', 'createPlan', 'createTodoList', 'seeTodoList', 'updateTodoList', 'deleteTodoList', 'askUser'])
+export const hasOwnUi = (name: string) => OWN_UI.has(name)
+
+/** Whether a finished call did not work: a command that exited with an error. */
+export function resultFailed(name: string, output: unknown) {
+  return name === 'terminal' && typeof output === 'string' && /\[exit code [1-9]/.test(output)
 }

@@ -13,7 +13,7 @@ export const EXPORT_INSTRUCTIONS = `Files for the user: when the answer is a fil
  * Hands a file from the sandbox to the user. The file is saved in the browser and `onFile` shows it with the reply, so
  * the bytes never enter the model's context.
  */
-export function createExportFileTool(onFile: (file: ChatAttachment) => void) {
+export function createExportFileTool(onFile: (file: ChatAttachment) => void, session?: string) {
   return {
     export_file: tool({
       description:
@@ -23,9 +23,9 @@ export function createExportFileTool(onFile: (file: ChatAttachment) => void) {
         name: z.string().optional().describe("The name to show. Leave out to use the file's own name"),
       }),
       execute: async ({ path, name }, { abortSignal }) => {
-        const wait = sandboxUnavailable()
+        const wait = sandboxUnavailable(session)
         if (wait) return wait
-        const bytes = await readSandboxFile(path, abortSignal)
+        const bytes = await readSandboxFile(path, abortSignal, session)
         const fileName = name?.trim() || path.split('/').at(-1) || 'file'
         const type = MIME[fileName.split('.').at(-1)?.toLowerCase() ?? ''] ?? 'application/octet-stream'
         const src = await putMedia(new Blob([bytes as BlobPart], { type }), fileName)

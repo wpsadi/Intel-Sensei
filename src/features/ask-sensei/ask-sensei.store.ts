@@ -8,6 +8,7 @@ import { AI_MODELS } from '@/ai/providers'
 import { type PendingMessage, demoteSteering, removePending, submitWhileBusy, takeNextPending } from '@/ai/send-queue'
 import { currentTodos, messageText } from '@/ai/utils/messages'
 import type { ChatTurn } from '@/ai/utils/messages'
+import { useTerminals } from '@/features/ask-sensei/terminal/terminal.store'
 import { uid } from '@/features/note/db/idb'
 import { deleteMedia } from '@/features/note/db/media'
 import { chatMessagesRepo, chatsRepo } from '@/features/note/db/repo'
@@ -155,6 +156,7 @@ export const useAskSenseiStore = create<AskSenseiState>()((set, get) => {
               return turns
             },
             onUsage: (usage) => patchMessage(chatId, reply.id, { usage }),
+            onSteps: (steps) => patchMessage(chatId, reply.id, { steps }),
             onFile: (file) => patchMessage(chatId, reply.id, { attachments: [...(current()?.attachments ?? []), file] }),
             onAsk: (questions) =>
               new Promise<ChatAnswers>((resolve, reject) => {
@@ -181,10 +183,15 @@ export const useAskSenseiStore = create<AskSenseiState>()((set, get) => {
     const searches = current()?.searches
     const questions = current()?.questions
     const files = current()?.attachments
+    // A call still running when the reply ended was cut off (the reply was stopped).
+    const steps = current()?.steps?.map((step) =>
+      step.status === 'running' ? { ...step, status: 'failed' as const, detail: 'Stopped' } : step,
+    )
+    const workedSeconds = steps?.length ? Math.max(1, Math.round((Date.now() - startedAt) / 1000)) : undefined
     pendingAnswers = null
     const interrupted = controller.signal.aborted || undefined
     if (abort === controller) abort = null
-    patchMessage(chatId, reply.id, { content: finalText, reasoning: thoughts, reasoningSeconds, interrupted })
+    patchMessage(chatId, reply.id, { content: finalText, reasoning: thoughts, reasoningSeconds, interrupted, workedSeconds, steps })
     set({ streamingId: null })
     await chatMessagesRepo.put({
       ...reply,
@@ -198,6 +205,8 @@ export const useAskSenseiStore = create<AskSenseiState>()((set, get) => {
       searches,
       questions,
       attachments: files,
+      steps,
+      workedSeconds,
     })
     await touchChat(chatId)
     if (!interrupted) void episodicMemory.append({ id: reply.id, chatId, role: 'assistant', content: finalText })
@@ -343,6 +352,8 @@ export const useAskSenseiStore = create<AskSenseiState>()((set, get) => {
       void episodicMemory.removeChat(id)
       void sessionMemory.clear(id)
       await chatsRepo.remove(id)
+      // Its terminals and Python environment go with it.
+      void useTerminals.getState().removeChat(id)
       set((state) => {
         const { [id]: _removed, ...rest } = state.messages
         return { chats: state.chats.filter((chat) => chat.id !== id), messages: rest }

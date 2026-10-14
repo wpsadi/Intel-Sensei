@@ -54,7 +54,7 @@ export function formatScrape(url: string, page: ScrapedPage, offset: number, sav
  * The scrape tool: reads a web page or PDF from a link as markdown. Use it where a download from the browser fails
  * because of CORS, or when only the text of a page is needed.
  */
-export function createScrapeTool() {
+export function createScrapeTool(session?: string) {
   return tool({
     description:
       'Reads the text of a web page or PDF from its link, as markdown, using Firecrawl. It fetches from its own servers, so it works for links the browser cannot download because of CORS errors, and for pages that need rendering. Long pages come back in pieces: continue with offset. Use save_as to keep the whole page in the sandbox as a file, then search it with the terminal.',
@@ -68,7 +68,7 @@ export function createScrapeTool() {
       const page = await scrapePage(url.trim(), abortSignal)
       let saved: string | undefined
       if (save_as?.trim() && page.markdown) {
-        await writeSandboxFile(save_as.trim(), page.markdown, false, abortSignal)
+        await writeSandboxFile(save_as.trim(), page.markdown, false, abortSignal, { session, source: 'ai' })
         saved = save_as.trim()
       }
       return formatScrape(url.trim(), page, offset ?? 0, saved)

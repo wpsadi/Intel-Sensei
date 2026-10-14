@@ -16,6 +16,8 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 
 import { AI_MODELS } from '@/ai/providers'
 import { warmForFiles } from '@/ai/sandbox/attachments'
+import { warmSandbox } from '@/ai/sandbox/client'
+import { Skills, useInstalledSkills } from '@/ai/skills/skills'
 import senseiLogo from '@/assets/sensei.svg'
 import { ContextRing } from '@/components/context-ring'
 import { QueuedMessages } from '@/components/queued-messages'
@@ -37,6 +39,7 @@ import { ChatPlanCard, ChatTodoQueue } from '@/features/ask-sensei/components/ch
 import { ChatReasoning } from '@/features/ask-sensei/components/chat-reasoning'
 import { Markdown } from '@/features/ask-sensei/components/markdown'
 import { type ComposerSuggestion, WidgetComposer } from '@/features/note/sensei-widget/WidgetComposer'
+import { skillSuggestions } from '@/features/skills/suggest'
 
 import { chatsRepo } from '../db'
 import { pickFiles, storeFile } from '../files'
@@ -92,7 +95,11 @@ function suggest(trigger: '/' | '@', query: string): { title: string; items: Com
   if (trigger === '/') {
     return {
       title: 'Slash Commands',
-      items: COMMANDS.filter((c) => c.id.startsWith(q)).map((c) => ({ id: c.id, label: `/${c.id}`, hint: c.hint, insert: `/${c.id}` })),
+      // /goal first, then the skills every app shares.
+      items: [
+        ...COMMANDS.filter((c) => c.id.startsWith(q)).map((c) => ({ id: c.id, label: `/${c.id}`, hint: c.hint, insert: `/${c.id}` })),
+        ...skillSuggestions(Skills.snapshot(), query),
+      ],
     }
   }
   const all = elements().filter((e) => squash(e.name).includes(q))
@@ -130,6 +137,8 @@ const SUGGESTIONS = [
  * The run itself lives in `runner.ts` (model calls in a worker), so it carries on while this panel is closed.
  */
 export function AgentPanel() {
+  // Loads the skills the / menu lists, and refreshes the panel when one is added or removed.
+  useInstalledSkills()
   const docId = useS3D((s) => s.doc.id)
   const selection = useS3D((s) => s.selection)
   const nodes = useS3D((s) => s.doc.nodes)
@@ -147,6 +156,8 @@ export function AgentPanel() {
   const chat = (viewedId && live[viewedId]) || (chats.find((c) => c.id === viewedId) ?? null)
   const setViewed = (id: string | null) => useAgentRun.setState({ viewedId: id })
 
+  // The Python environment starts in the background on every load, so it is ready when the agent needs it.
+  useEffect(() => warmSandbox(), [])
   useEffect(() => {
     void chatsRepo.list(docId).then(setChats)
   }, [docId, saved])

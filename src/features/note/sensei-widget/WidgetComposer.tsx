@@ -10,31 +10,14 @@ import {
   ComposerVoice,
   ComposerVoiceButton,
 } from '@/components/assistant-ui/elements/composer'
+import { type ComposerSuggestion, triggerAt } from '@/components/assistant-ui/elements/suggestion-menu'
 import { mono } from '@/components/assistant-ui/elements/surfaces'
 import { Button } from '@/components/ui/button'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { formatElapsed, useVoiceNote } from '@/features/ask-sensei/components/use-voice-note'
 import { cn } from '@/lib/utils'
 
-/** One row of the list that opens above the box when the draft has a `/command` or `@mention` being typed. */
-export interface ComposerSuggestion {
-  id: string
-  label: string
-  hint?: string
-  icon?: ReactNode
-  /** Replaces what was typed, e.g. "/goal" or "@Cow body". A space follows it. */
-  insert: string
-}
-
-/** Where the cursor is inside a `/` or `@` word: the trigger, what follows it, and the range to replace. */
-function triggerAt(draft: string, caret: number) {
-  const before = draft.slice(0, caret)
-  const m = /(^|\s)([/@])([^\s]*)$/.exec(before)
-  if (!m) return null
-  // Slash commands only open at the very start of the message.
-  if (m[2] === '/' && m.index + m[1].length !== 0) return null
-  return { trigger: m[2] as '/' | '@', query: m[3], start: before.length - m[3].length - 1, end: caret }
-}
+export type { ComposerSuggestion }
 
 /**
  * The widget's message box, styled like the Ask Sensei composer: type or dictate (Gemini transcribes the voice note
@@ -91,6 +74,11 @@ export function WidgetComposer({
   const open = items.length > 0
   const pick = (item: ComposerSuggestion) => {
     if (!found) return
+    if (item.run) {
+      setDraft(`${draft.slice(0, found.start)}${draft.slice(found.end)}`)
+      item.run()
+      return
+    }
     const next = `${draft.slice(0, found.start)}${item.insert} ${draft.slice(found.end)}`
     const at = found.start + item.insert.length + 1
     setDraft(next)

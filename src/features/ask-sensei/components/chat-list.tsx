@@ -1,4 +1,4 @@
-import { ArrowLeftIcon, ChevronRightIcon, MoreHorizontalIcon, Pencil, Plus, RefreshCcwIcon, Trash2Icon } from 'lucide-react'
+import { ArrowLeftIcon, ChevronRightIcon, MoreVerticalIcon, Pencil, Plus, RefreshCcwIcon, Trash2Icon } from 'lucide-react'
 import { useState } from 'react'
 import { Link } from 'react-router-dom'
 
@@ -31,7 +31,28 @@ import {
 import type { Chat } from '@/features/note/db/types'
 import { cn } from '@/lib/utils'
 
+import { useAskSenseiStore } from '../ask-sensei.store'
+import { useCommandRunning } from '../terminal/command-activity'
+import { RunningSpinner } from '../terminal/running-spinner'
+
 /** Sensei's own sidebar of saved chats, newest first. Each row has a menu for regenerating the title, renaming, and deleting. */
+/**
+ * The spinner at the dots' place in a chat's row while Sensei is working in it (writing a reply or running a command);
+ * the dots show instead when the row is hovered.
+ */
+function ChatRunning({ chatId }: { chatId: string }) {
+  const commandRunning = useCommandRunning(chatId)
+  const replying = useAskSenseiStore(
+    (state) => state.streamingId !== null && (state.messages[chatId] ?? []).some((m) => m.id === state.streamingId),
+  )
+  if (!commandRunning && !replying) return null
+  return (
+    <span className="pointer-events-none absolute top-1 right-1 flex aspect-square w-5 items-center justify-center text-muted-foreground group-focus-within/menu-item:hidden group-hover/menu-item:hidden">
+      <RunningSpinner />
+    </span>
+  )
+}
+
 export function ChatList({
   chats,
   activeId,
@@ -107,9 +128,11 @@ export function ChatList({
                       >
                         {chat.title}
                       </SidebarMenuButton>
+                      {/* A command running in this chat takes the place of the menu dots until the pointer is over the row. */}
+                      <ChatRunning chatId={chat.id} />
                       <DropdownMenu>
                         <DropdownMenuTrigger render={<SidebarMenuAction showOnHover className="aria-expanded:bg-muted" />}>
-                          <MoreHorizontalIcon />
+                          <MoreVerticalIcon />
                           <span className="sr-only">Chat options</span>
                         </DropdownMenuTrigger>
                         <DropdownMenuContent className="w-44" side="right" align="start">

@@ -6,8 +6,10 @@ import { generateChatTitle, generateFileTitle } from '@/ai/inference/title'
 import { MEMORY_INSTRUCTIONS, createMemoryTool, memoryPrompt, memoryScope } from '@/ai/memory'
 import { AI_MODELS, type Provider } from '@/ai/providers'
 import { isModelMedia, warmForFiles } from '@/ai/sandbox/attachments'
-import { sandboxUnavailable } from '@/ai/sandbox/client'
+import { holdSandbox, sandboxUnavailable } from '@/ai/sandbox/client'
 import { type PendingMessage, demoteSteering, removePending, submitWhileBusy, takeNextPending, useSendQueue } from '@/ai/send-queue'
+import { skillContextFor } from '@/ai/skills/invoke'
+import { SKILLS_INSTRUCTIONS, createSkillTools, skillsPrompt } from '@/ai/skills/tools'
 import { GENERAL_INSTRUCTIONS, createGeneralTools, localTools } from '@/ai/tools/general'
 import { thinkingOnly } from '@/ai/utils/thinking'
 import { type ToolSpec, streamInWorker } from '@/ai/worker/client'
@@ -46,6 +48,7 @@ const TOOLS_ALWAYS = [
   'write_plan',
   'ask_questions',
   'ask_user',
+  'use_skill',
 ]
 /** Independent checks of a /goal run; each one that fails sends the worker back to work. */
 const MAX_VERIFICATIONS = 8
@@ -267,7 +270,7 @@ async function execTool(name: keyof typeof impl, args: unknown, track: RunTrack)
 }
 
 /** Web search, scraping and the sandbox: the same tools the other agents have. They never touch the canvas. */
-const general = localTools({ ...createGeneralTools(), memory: createMemoryTool(), ...createFileTools('') })
+const general = localTools({ ...createGeneralTools(), memory: createMemoryTool(), ...createFileTools(''), ...createSkillTools() })
 /** The sandbox tools read the chat's attached files from the sandbox, so they are put there first. */
 const SANDBOX_TOOLS = ['terminal', 'write_file', 'import_file']
 
@@ -386,6 +389,9 @@ export async function runAgent(
     toast.info('Say what to achieve: /goal build a low-poly cow and export it')
     return
   }
+  // A message that starts with /skill-name carries that skill's instructions to the model, next to the @mention context.
+  const skillContext = await skillContextFor(text)
+  const fullContext = [context, skillContext].filter(Boolean).join('\n\n') || undefined
   if (goal && (mode === 'ask' || mode === 'plan')) {
     toast.info(`/goal builds things, so it needs Edit or Full access mode (now ${mode}).`)
     return
@@ -398,7 +404,7 @@ export async function runAgent(
     text,
     attachments: files,
     createdAt: Date.now(),
-    ...(context && { context }),
+    ...(fullContext && { context: fullContext }),
     ...(goal && { goal }),
   }
   const assistant: AgentMessage = {
@@ -485,14 +491,17 @@ export async function runAgent(
         update({ todos: list })
       },
     }
+    // The run keeps the Python environment alive; it stops a minute after the last use.
+    const releaseSandbox = holdSandbox()
     try {
       warmForFiles(c.messages.flatMap((m) => m.attachments ?? []))
+      const skills = await skillsPrompt().catch(() => '')
       const memory = await memoryPrompt({ chatId: c.id, scope: memoryScope.s3d(docId) }).catch(() => '')
       const instructions =
         SYSTEM_PROMPT +
         modeInstructions(mode) +
         (goal ? goalInstructions(goal) : '') +
-        `\n\n${GENERAL_INSTRUCTIONS}\n\n${FILE_INSTRUCTIONS}\n\n${MEMORY_INSTRUCTIONS}\nThis memory belongs to this 3D/design file only.${memory ? `\n\n${memory}` : ''}` +
+        `\n\n${GENERAL_INSTRUCTIONS}\n\n${FILE_INSTRUCTIONS}\n\n${SKILLS_INSTRUCTIONS}${skills ? `\n${skills}` : ''}\n\n${MEMORY_INSTRUCTIONS}\nThis memory belongs to this 3D/design file only.${memory ? `\n\n${memory}` : ''}` +
         selectionContext()
       const tools = await toolsFor(mode, goal)
       const cut = c.summary ? c.messages.findIndex((m) => m.id === c.summary!.uptoId) + 1 : 0
@@ -856,6 +865,7 @@ export async function runAgent(
       if (!controller.signal.aborted) update({ error: error instanceof Error ? error.message : String(error) })
       else update({ text: (c.messages.find((m) => m.id === assistant.id)?.text ?? '') + '\n\n_Stopped._' })
     } finally {
+      releaseSandbox()
       update({ workedSeconds: Math.max(1, Math.round((Date.now() - assistant.createdAt) / 1000)) })
       // One undo for the whole reply works only while its steps sit together on top of the history.
       if (track.start !== undefined && !track.interleaved) update({ changes: track.start, changesEnd: track.end })

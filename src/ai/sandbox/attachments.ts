@@ -8,8 +8,8 @@ import { warmSandbox } from './client'
 export const isModelMedia = (type: string) => type.startsWith('image/') || type.startsWith('audio/') || type.startsWith('video/')
 
 /** Starts the Python environment in the background when any of these files is one the model reads through it. */
-export function warmForFiles(files: { type: string }[]) {
-  if (files.some((file) => !isModelMedia(file.type))) warmSandbox()
+export function warmForFiles(files: { type: string }[], session?: string) {
+  if (files.some((file) => !isModelMedia(file.type))) warmSandbox(session)
 }
 
 /** The text the model gets in place of a file it reads through the sandbox: a reference, not the contents. */

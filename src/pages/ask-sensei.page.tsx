@@ -1,7 +1,8 @@
-import { ArrowDownIcon } from 'lucide-react'
+import { ArrowDownIcon, SquareTerminalIcon } from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 
+import { warmSandbox } from '@/ai/sandbox/client'
 import { currentTodos } from '@/ai/utils/messages'
 import { QueuedMessages } from '@/components/queued-messages'
 import { Button } from '@/components/ui/button'
@@ -15,6 +16,10 @@ import { ChatQuestionsCard } from '@/features/ask-sensei/components/chat-questio
 import { ContextUsage } from '@/features/ask-sensei/components/context-usage'
 import { CONVERSATION_END_ID, Conversation } from '@/features/ask-sensei/components/conversation'
 import { CALL_LEVEL_VAR } from '@/features/ask-sensei/components/live-call'
+import { useCommandRunning } from '@/features/ask-sensei/terminal/command-activity'
+import { RunningSpinner } from '@/features/ask-sensei/terminal/running-spinner'
+import { TerminalPanel } from '@/features/ask-sensei/terminal/terminal-panel'
+import { useTerminals } from '@/features/ask-sensei/terminal/terminal.store'
 import type { ChatAttachment } from '@/features/note/db/types'
 
 /** The open chat is the URL: /ask-sensei/:chatId. Chats and messages are saved in IndexedDB through the Ask Sensei store. */
@@ -38,6 +43,9 @@ function AskSenseiPage() {
   } = useAskSenseiStore()
   const [atBottom, setAtBottom] = useState(true)
   const [inCall, setInCall] = useState(false)
+  const terminalOpen = useTerminals((state) => state.open)
+  const commandRunning = useCommandRunning(chatId)
+  const setTerminalOpen = useTerminals((state) => state.setOpen)
 
   useEffect(() => {
     void load()
@@ -47,6 +55,13 @@ function AskSenseiPage() {
   const activeChat = chats.find((chat) => chat.id === chatId)
   const activeMessages = activeChat ? (messages[activeChat.id] ?? []) : []
   const newestId = sortedChats[0]?.id
+  const activeChatId = activeChat?.id
+
+  // The open chat's Python environment starts in the background on every load and every chat switch, and brings back
+  // the files and commands the chat had, so it is ready by the time anything needs it.
+  useEffect(() => {
+    if (activeChatId) warmSandbox(activeChatId)
+  }, [activeChatId])
   // The newest to-do list stays pinned above the input until all of its items are done.
   const pinnedTodos = currentTodos(activeMessages)
   // Questions Sensei is waiting on take the to-do list's place above the input until they are answered.
@@ -98,6 +113,17 @@ function AskSenseiPage() {
         <header className="flex h-(--header-height) shrink-0 items-center gap-2 border-b px-4">
           <SidebarTrigger className="-ml-1" />
           <h1 className="truncate text-base font-semibold">{activeChat?.title ?? 'Ask Sensei'}</h1>
+          <Button
+            variant={terminalOpen ? 'secondary' : 'ghost'}
+            size="icon-sm"
+            className="ml-auto"
+            aria-label={terminalOpen ? 'Hide terminal' : 'Show terminal'}
+            aria-pressed={terminalOpen}
+            disabled={!activeChat}
+            onClick={() => setTerminalOpen(!terminalOpen)}
+          >
+            {commandRunning ? <RunningSpinner /> : <SquareTerminalIcon />}
+          </Button>
         </header>
         <main className="relative isolate flex min-h-0 flex-1 flex-col">
           {/* Aurora behind the whole chat while a live call runs. It grows and brightens with the voice on the call. */}
@@ -152,6 +178,7 @@ function AskSenseiPage() {
             />
           </div>
         </main>
+        {terminalOpen && activeChat && <TerminalPanel key={activeChat.id} chatId={activeChat.id} onClose={() => setTerminalOpen(false)} />}
       </SidebarInset>
       <Toaster />
     </SidebarProvider>

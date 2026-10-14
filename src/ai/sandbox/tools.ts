@@ -45,9 +45,9 @@ export function formatExec(result: ExecResult) {
 }
 
 /** Puts the files attached to the chat into the sandbox, once each. */
-async function syncAttachments(attachments: ChatAttachment[], signal?: AbortSignal) {
+async function syncAttachments(attachments: ChatAttachment[], signal?: AbortSignal, session?: string) {
   const files: SandboxFile[] = attachments.map((file) => ({ key: file.src, name: file.name, load: () => readMedia(file.src) }))
-  await mountFiles(files, signal)
+  await mountFiles(files, signal, session)
 }
 
 export interface SandboxToolOptions {
@@ -55,6 +55,8 @@ export interface SandboxToolOptions {
   attachments?: () => ChatAttachment[]
   /** Adds import_media and export_media, for an agent that can place saved files in notes. */
   transfer?: boolean
+  /** The environment these tools work in. Leave out to share the default one. */
+  session?: string
 }
 
 /**
@@ -62,7 +64,7 @@ export interface SandboxToolOptions {
  * scripts run through `python script.py`, all in one shared Pyodide worker, so files carry over from call to call.
  * `load_skill` returns the playbook for working with them.
  */
-export function createSandboxTools({ attachments = () => [], transfer = false }: SandboxToolOptions = {}) {
+export function createSandboxTools({ attachments = () => [], transfer = false, session }: SandboxToolOptions = {}) {
   const terminal = tool({
     description: COMMANDS,
     inputSchema: z.object({
@@ -72,10 +74,10 @@ export function createSandboxTools({ attachments = () => [], transfer = false }:
         .describe('The command line to run, such as `ls -l`, `pdftotext guide.pdf | grep -n "layers"` or `python work/count.py`'),
     }),
     execute: async ({ command }, { abortSignal }) => {
-      const wait = sandboxUnavailable()
+      const wait = sandboxUnavailable(session)
       if (wait) return wait
-      await syncAttachments(attachments(), abortSignal)
-      return formatExec(await runShellCommand(command, abortSignal))
+      await syncAttachments(attachments(), abortSignal, session)
+      return formatExec(await runShellCommand(command, abortSignal, { session, source: 'ai' }))
     },
   })
 
@@ -88,10 +90,10 @@ export function createSandboxTools({ attachments = () => [], transfer = false }:
       append: z.boolean().optional().describe('Add to the end of an existing file instead of replacing it'),
     }),
     execute: async ({ path, content, append }, { abortSignal }) => {
-      const wait = sandboxUnavailable()
+      const wait = sandboxUnavailable(session)
       if (wait) return wait
-      await syncAttachments(attachments(), abortSignal)
-      const saved = await writeSandboxFile(path, content, append, abortSignal)
+      await syncAttachments(attachments(), abortSignal, session)
+      const saved = await writeSandboxFile(path, content, append, abortSignal, { session, source: 'ai' })
       return `Saved ${saved} (${content.length} characters)${path.endsWith('.py') ? `. Run it with: python ${path}` : ''}`
     },
   })
@@ -108,8 +110,8 @@ export function createSandboxTools({ attachments = () => [], transfer = false }:
       'Tells whether the terminal and Python environment can be used now: ready, booting up (it loads in the background and takes a few seconds on first use) or not available. Call this to answer whether you have Python, instead of running a command.',
     inputSchema: z.object({}),
     execute: async () => {
-      const wait = sandboxUnavailable()
-      return wait ?? `ready (${sandboxStatus()})`
+      const wait = sandboxUnavailable(session)
+      return wait ?? `ready (${sandboxStatus(session)})`
     },
   })
 
@@ -118,12 +120,12 @@ export function createSandboxTools({ attachments = () => [], transfer = false }:
       'Shows you an image file from the sandbox (png, jpg, gif or webp) so you can see it. To look at a scanned or picture-based PDF page, first extract it with `pdfimages` in the terminal, then view each image. Images stay in your context, so view only the pages or pictures you need, at the lowest resolution that is readable.',
     inputSchema: z.object({ path: z.string().min(1).describe('The image file in the sandbox, such as "page-3.png"') }),
     execute: async ({ path }: { path: string }, { abortSignal }: { abortSignal?: AbortSignal }) => {
-      const wait = sandboxUnavailable()
+      const wait = sandboxUnavailable(session)
       if (wait) return wait
       const mediaType = IMAGE_TYPES[path.split('.').at(-1)?.toLowerCase() ?? '']
       if (!mediaType)
         throw new Error('That is not a png, jpg, gif or webp image. To see a PDF page, extract its pictures first with pdfimages.')
-      const bytes = await readSandboxFile(path, abortSignal)
+      const bytes = await readSandboxFile(path, abortSignal, session)
       if (bytes.byteLength > VIEW_IMAGE_MAX_BYTES)
         throw new Error(
           'The image is over 4 MB. Make it smaller first, for example extract a PDF page with a lower size, such as pdfimages -s 900.',
@@ -151,12 +153,12 @@ export function createSandboxTools({ attachments = () => [], transfer = false }:
       name: z.string().optional().describe('The file name to use. Leave out to keep its own name'),
     }),
     execute: async ({ src, name }, { abortSignal }) => {
-      const wait = sandboxUnavailable()
+      const wait = sandboxUnavailable(session)
       if (wait) return wait
       const blob = await readMedia(src)
       if (!blob) throw new Error('That file is no longer saved in this browser')
       const fileName = name?.trim() || (await mediaInfo(src))?.name || 'file'
-      return `Copied to ${await importMedia(fileName, blob, abortSignal)}`
+      return `Copied to ${await importMedia(fileName, blob, abortSignal, session)}`
     },
   })
 
@@ -168,9 +170,9 @@ export function createSandboxTools({ attachments = () => [], transfer = false }:
       name: z.string().optional().describe("The name to save it under. Leave out to use the file's own name"),
     }),
     execute: async ({ path, name }, { abortSignal }) => {
-      const wait = sandboxUnavailable()
+      const wait = sandboxUnavailable(session)
       if (wait) return wait
-      const bytes = await readSandboxFile(path, abortSignal)
+      const bytes = await readSandboxFile(path, abortSignal, session)
       const fileName = name?.trim() || path.split('/').at(-1) || 'file'
       const type = MIME[fileName.split('.').at(-1)?.toLowerCase() ?? ''] ?? 'application/octet-stream'
       const id = await putMedia(new Blob([bytes as BlobPart], { type }), fileName)
