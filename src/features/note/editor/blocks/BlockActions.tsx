@@ -1,10 +1,22 @@
 import type { Editor } from '@tiptap/react'
-import { CopyIcon, Heading1Icon, Heading2Icon, Heading3Icon, MessageSquareIcon, QuoteIcon, Trash2Icon, TypeIcon } from 'lucide-react'
+import {
+  ArrowDownToLineIcon,
+  ArrowUpToLineIcon,
+  CopyIcon,
+  Heading1Icon,
+  Heading2Icon,
+  Heading3Icon,
+  MessageSquareIcon,
+  QuoteIcon,
+  Trash2Icon,
+  TypeIcon,
+} from 'lucide-react'
 import { useRef } from 'react'
 
 import { cn } from '@/lib/utils'
 
 import { useCloseOnOutsidePress } from '../nodes/block-utils'
+import { LIST_ITEMS } from './block-dom'
 
 interface BlockActionsProps {
   editor: Editor
@@ -25,6 +37,18 @@ export function BlockActions({ editor, start, size, top, onClose, onComment }: B
   // List rows wrap a paragraph, so their text starts one position deeper.
   const textStart = node?.isTextblock ? start + 1 : start + 2
   const at = () => editor.chain().focus().setTextSelection(textStart)
+
+  // An empty block next to this one: a list row gets a row of the same kind, anything else a text block.
+  const insertEmpty = (pos: number) => {
+    const type = node?.type.name ?? ''
+    const list = LIST_ITEMS.includes(type)
+    editor
+      .chain()
+      .focus()
+      .insertContentAt(pos, list ? { type, content: [{ type: 'paragraph' }] } : { type: 'paragraph' })
+      .setTextSelection(pos + (list ? 2 : 1))
+      .run()
+  }
 
   // Turning only applies to text blocks, so atom blocks such as media skip the list.
   const turnInto = [
@@ -74,6 +98,28 @@ export function BlockActions({ editor, start, size, top, onClose, onComment }: B
           <div className="my-1 border-t" />
         </>
       )}
+      <button
+        type="button"
+        onClick={() => {
+          onClose()
+          insertEmpty(start)
+        }}
+        className={row}
+      >
+        <ArrowUpToLineIcon className="size-4 text-muted-foreground" />
+        Insert above
+      </button>
+      <button
+        type="button"
+        onClick={() => {
+          onClose()
+          insertEmpty(start + size)
+        }}
+        className={row}
+      >
+        <ArrowDownToLineIcon className="size-4 text-muted-foreground" />
+        Insert below
+      </button>
       <button
         type="button"
         onClick={() => {

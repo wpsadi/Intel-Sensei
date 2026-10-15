@@ -30,6 +30,11 @@ export function caretPlaceholder(nested: boolean) {
               const { $from } = selection
               const block = $from.parent
               if (!block.isTextblock || block.content.size > 0) return null
+              // Table cells stay blank.
+              for (let depth = $from.depth - 1; depth > 0; depth--) {
+                const name = $from.node(depth).type.name
+                if (name === 'tableCell' || name === 'tableHeader') return null
+              }
               const hint = hintFor(block, nested)
               return DecorationSet.create(doc, [
                 Decoration.node($from.before(), $from.after(), { class: 'is-empty', 'data-placeholder': hint }),

@@ -1,5 +1,6 @@
 import { WorkflowIcon } from 'lucide-react'
 
+import { lastMermaidView } from '../../../mermaid-view'
 import { type BlockDefinition, chain } from '../../insert'
 
 /** Code - Mermaid block for the "/" and "+" menus. */
@@ -13,7 +14,7 @@ export const MermaidBlock: BlockDefinition = {
     chain(e, r)
       .insertContent({
         type: 'codeBlock',
-        attrs: { language: 'mermaid' },
+        attrs: { language: 'mermaid', view: lastMermaidView() },
         content: [
           {
             type: 'text',

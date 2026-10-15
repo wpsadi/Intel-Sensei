@@ -159,7 +159,9 @@ export function DraftPanel({ draftId, onClose }: { draftId: string; onClose: () 
   const end = useRef<HTMLDivElement>(null)
   const content = draft?.content
   // Follow the newest text, the way the chat follows a reply.
-  useEffect(() => end.current?.scrollIntoView({ block: 'end' }), [content])
+  useEffect(() => {
+    end.current?.scrollIntoView({ block: 'end' })
+  }, [content])
   if (!draft) return null
   return (
     <Frame

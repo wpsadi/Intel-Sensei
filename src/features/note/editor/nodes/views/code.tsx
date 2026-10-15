@@ -23,6 +23,7 @@ import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip
 import { useCopy } from '@/hooks/use-copy'
 import { cn } from '@/lib/utils'
 
+import { type MermaidView, rememberMermaidView } from '../../mermaid-view'
 import { Resizable } from '../helpers'
 import { LANGUAGES, lowlight } from '../lowlight'
 
@@ -91,8 +92,6 @@ function LanguageSelect({ value, detected, onChange }: { value: string; detected
   )
 }
 
-/** How a Mermaid block shows: the diagram only (the default, like an equation), code and diagram, or code only. */
-type MermaidView = 'output' | 'both' | 'code'
 const MERMAID_VIEWS: { view: MermaidView; label: string; icon: typeof CodeXmlIcon }[] = [
   { view: 'code', label: 'Code only', icon: CodeXmlIcon },
   { view: 'both', label: 'Code and diagram', icon: BetweenHorizontalStartIcon },
@@ -166,7 +165,15 @@ export function CodeBlockView({ node, updateAttributes }: NodeViewProps) {
           />
         </span>
         <div className="flex items-center gap-0.5">
-          {mermaid && <ViewSelect value={view} onChange={(v) => updateAttributes({ view: v })} />}
+          {mermaid && (
+            <ViewSelect
+              value={view}
+              onChange={(v) => {
+                updateAttributes({ view: v })
+                rememberMermaidView(v)
+              }}
+            />
+          )}
           <button
             type="button"
             onClick={() => void copy(node.textContent)}

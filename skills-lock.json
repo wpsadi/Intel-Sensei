@@ -13,6 +13,12 @@
       "skillPath": "webmcp-skills/skills/build-webmcp-tools/SKILL.md",
       "computedHash": "0bc7ef62c60b211905c4fa6fcb3285349ff9d0ad919429299dfc16c3c0e514f6"
     },
+    "create-pr": {
+      "source": "ueberdosis/tiptap",
+      "sourceType": "github",
+      "skillPath": ".agents/skills/create-pr/SKILL.md",
+      "computedHash": "db6a40b88838d544e52f892f87ca81d4b03fd76b6835fb7d0f8fe6d01b7ca72c"
+    },
     "elements": {
       "source": "assistant-ui/skills",
       "sourceType": "github",

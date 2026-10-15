@@ -1,8 +1,15 @@
 import 'katex/dist/katex.min.css'
+import '@/components/tiptap-node/table-node/styles/prosemirror-table.scss'
+import '@/components/tiptap-node/table-node/styles/table-node.scss'
 import { type Editor, EditorContent, useEditor } from '@tiptap/react'
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { useDrop } from 'react-dnd'
 
+import { TableCellHandleMenu } from '@/components/tiptap-node/table-node/ui/table-cell-handle-menu'
+import { TableExtendRowColumnButtons } from '@/components/tiptap-node/table-node/ui/table-extend-row-column-button'
+import { TableHandle } from '@/components/tiptap-node/table-node/ui/table-handle/table-handle'
+import { type TableCellMenuProps, TableSelectionOverlay } from '@/components/tiptap-node/table-node/ui/table-selection-overlay'
+import { useIsMobile } from '@/hooks/use-mobile'
 import { cn } from '@/lib/utils'
 
 import { putMedia } from '../db/media'
@@ -14,6 +21,7 @@ import { BlockHandle } from './blocks/BlockHandle'
 import { BlockInsertMenu } from './blocks/BlockInsertMenu'
 import { commentsOf } from './blocks/comments'
 import { FormatMenu } from './blocks/FormatMenu'
+import { EditorToolbar } from './EditorToolbar'
 import { buildExtensions } from './extensions'
 import { registerLiveEditor } from './live-editors'
 import { EditorPageContext } from './nodes/block-utils'
@@ -30,6 +38,11 @@ interface NoteEditorProps {
 }
 
 const SAVE_DELAY = 400
+
+// Module scope so the menu keeps its identity across renders; an inline component remounts it every time.
+const CellMenu = ({ editor, onResizeStart }: TableCellMenuProps) => (
+  <TableCellHandleMenu editor={editor} onMouseDown={(e) => onResizeStart?.('br')(e)} />
+)
 
 const parse = (content: string) => {
   try {
@@ -67,6 +80,7 @@ function hoveredNode(editor: Editor | null, start: number) {
 const RICH_HTML = /<(strong|b|em|i|u|s|del|h[1-6]|ul|ol|li|table|a|code|pre|blockquote|img|hr)\b/i
 
 export function NoteEditor({ content, pageId = '', nested = false, editable = true, onChange }: NoteEditorProps) {
+  const mobile = useIsMobile()
   const onChangeRef = useRef(onChange)
   useLayoutEffect(() => {
     onChangeRef.current = onChange
@@ -308,9 +322,17 @@ export function NoteEditor({ content, pageId = '', nested = false, editable = tr
         {commentsFor && editor && (
           <BlockCommentsPanel key={commentsFor.start} editor={editor} {...commentsFor} onClose={() => setCommentsFor(null)} />
         )}
+        {editable && !nested && mobile && editor && <EditorToolbar editor={editor} />}
         <EditorContent editor={editor} />
       </div>
-      {editor && <FormatMenu editor={editor} />}
+      {editor && !mobile && <FormatMenu editor={editor} />}
+      {editor && editable && (
+        <>
+          <TableHandle editor={editor} />
+          <TableSelectionOverlay editor={editor} showResizeHandles cellMenu={CellMenu} />
+          <TableExtendRowColumnButtons editor={editor} />
+        </>
+      )}
     </EditorPageContext.Provider>
   )
 }

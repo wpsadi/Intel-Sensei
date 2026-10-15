@@ -1,0 +1,54 @@
+// Behaviour styles for prosemirror-tables: scrolling wrapper, selected cells, column resizing.
+.ProseMirror {
+  .tableWrapper {
+    position: relative;
+    margin-block: var(--tt-table-margin-block, 1.25rem);
+    padding-block-end: 2px;
+    overflow-x: auto;
+    // Keep the scrollbar out of the way of the add-row bar
+    scrollbar-width: thin;
+  }
+
+  table {
+    border-collapse: collapse;
+    table-layout: fixed;
+    width: 100%;
+    margin: 0;
+    overflow: hidden;
+  }
+
+  td,
+  th {
+    position: relative;
+    box-sizing: border-box;
+    min-width: 1em;
+    vertical-align: top;
+  }
+
+  .selectedCell {
+    // Tint only; the outline comes from the selection overlay.
+    &::after {
+      content: '';
+      position: absolute;
+      inset: 0;
+      z-index: 2;
+      background: var(--tt-table-selected-bg);
+      pointer-events: none;
+    }
+  }
+
+  .column-resize-handle {
+    position: absolute;
+    top: -1px;
+    right: -2px;
+    bottom: -1px;
+    z-index: 3;
+    width: 4px;
+    background-color: var(--tt-table-column-resize-handle-bg);
+    pointer-events: none;
+  }
+
+  &.resize-cursor {
+    cursor: col-resize;
+  }
+}

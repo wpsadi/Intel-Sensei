@@ -3,9 +3,16 @@ import { Details, DetailsContent, DetailsSummary } from '@tiptap/extension-detai
 import { Highlight } from '@tiptap/extension-highlight'
 import { TaskItem, TaskList } from '@tiptap/extension-list'
 import { Mathematics } from '@tiptap/extension-mathematics'
-import { TableCell, TableHeader, TableRow } from '@tiptap/extension-table'
+import { Subscript } from '@tiptap/extension-subscript'
+import { Superscript } from '@tiptap/extension-superscript'
+import { TextAlign } from '@tiptap/extension-text-align'
 import { Color, TextStyle } from '@tiptap/extension-text-style'
 import StarterKit from '@tiptap/starter-kit'
+
+import { NodeAlignment } from '@/components/tiptap-extension/node-alignment-extension'
+import { NodeBackground } from '@/components/tiptap-extension/node-background-extension'
+import { TableHandleExtension } from '@/components/tiptap-node/table-node/extensions/table-handle'
+import { TableKit } from '@/components/tiptap-node/table-node/extensions/table-node-extension'
 
 import { DatabaseBlock } from './blocks/catalog/database/DatabaseBlock'
 import { BlockComments } from './blocks/comments'
@@ -19,7 +26,6 @@ import { EmojiNode, MentionNode } from './nodes/inline'
 import { Callout, Column, Columns, TabPanel, Tabs } from './nodes/layout'
 import { Media } from './nodes/media'
 import { Breadcrumb, PageBlock, TableOfContents } from './nodes/pages'
-import { Table } from './nodes/table'
 import { SlashCommands } from './slash-commands'
 
 /** Toggle list (level 0) and toggle headings 1–3 share one node; the level styles the summary. */
@@ -69,10 +75,10 @@ export function buildExtensions({ pageId, nested }: { pageId: string; nested: bo
     caretPlaceholder(nested),
     TaskList,
     TaskItem.configure({ nested: true }),
-    Table.configure({ resizable: true }),
-    TableCell,
-    TableHeader,
-    TableRow,
+    TableKit.configure({ table: { resizable: true } }),
+    TableHandleExtension,
+    NodeAlignment,
+    NodeBackground.configure({ types: ['tableCell', 'tableHeader'] }),
     ToggleBlock,
     DetailsSummary,
     DetailsContent,
@@ -88,6 +94,9 @@ export function buildExtensions({ pageId, nested }: { pageId: string; nested: bo
     Highlight.configure({ multicolor: true }),
     TextStyle,
     Color,
+    Subscript,
+    Superscript,
+    TextAlign.configure({ types: ['heading', 'paragraph'] }),
     CodeBlock,
     Callout,
     Column,

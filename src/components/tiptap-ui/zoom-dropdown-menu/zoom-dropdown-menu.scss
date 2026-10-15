@@ -1,0 +1,21 @@
+:root {
+  --zoom-input-bg-color: var(--white);
+  --zoom-input-border-color: var(--tt-gray-light-a-100);
+  --zoom-input-focus: var(--tt-brand-color-500);
+}
+
+.dark {
+  --zoom-input-border-color: var(--tt-gray-dark-a-50);
+  --zoom-input-bg-color: var(--tt-gray-dark-50);
+  --zoom-input-focus: var(--tt-brand-color-500);
+}
+
+.tiptap-input.zoom-input {
+  border: 1px solid var(--zoom-input-border-color);
+  border-radius: var(--tt-radius-lg);
+  background-color: var(--zoom-input-bg-color);
+
+  &:focus {
+    border-color: var(--zoom-input-focus);
+  }
+}

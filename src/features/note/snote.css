@@ -190,44 +190,7 @@
   color: #ffa657;
 }
 
-/* Tables */
-.snote-editor table {
-  border-collapse: collapse;
-  table-layout: fixed;
-  width: 100%;
-}
-.snote-editor td,
-.snote-editor th {
-  border: 1px solid var(--border);
-  padding: 4px 8px;
-  vertical-align: top;
-  position: relative;
-  min-width: 80px;
-}
-.snote-editor th {
-  background: var(--muted);
-  font-weight: 600;
-  text-align: left;
-}
-.snote-editor .selectedCell::after {
-  content: '';
-  position: absolute;
-  inset: 0;
-  background: rgb(35 131 226 / 0.14);
-  pointer-events: none;
-}
-.snote-editor .column-resize-handle {
-  position: absolute;
-  right: -2px;
-  top: 0;
-  bottom: 0;
-  width: 4px;
-  background: #2383e2;
-  pointer-events: none;
-}
-.snote-editor.resize-cursor {
-  cursor: col-resize;
-}
+/* Tables: see components/tiptap-node/table-node/styles */
 
 /* Toggle list & toggle headings (Details) */
 .snote-editor .snote-toggle {

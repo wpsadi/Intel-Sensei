@@ -145,7 +145,9 @@ describe('S-Note block tools', () => {
 
   it('explains bad settings and addresses instead of failing silently', async () => {
     listBlocks({ page: 1 }, ctx)
-    await expect(updateBlock({ block: '0', attrs: { color: 'red' } }, ctx)).rejects.toThrow(/no setting color. Its settings: level/)
+    await expect(updateBlock({ block: '0', attrs: { color: 'red' } }, ctx)).rejects.toThrow(
+      /no setting color. Its settings: textAlign, level/,
+    )
     await expect(updateBlock({ block: '9', text: 'x' }, ctx)).rejects.toThrow(/There is no block 9/)
     await expect(updateBlock({ block: '1', checked: true }, ctx)).rejects.toThrow(/not a to-do item/)
   })
