@@ -19,7 +19,7 @@ function open() {
       : new PGliteWorker(new Worker(new URL('./pglite.worker.ts', import.meta.url), { type: 'module' }), {
           id: 'sensei-db',
           dataDir: DATA_DIR,
-          extensions: { vector },
+          // No `extensions` here: the worker loads pgvector (see pglite.worker.ts); a client cannot load a bundle.
         })
   return { client, db: drizzle({ client: client as PGlite }) }
 }
