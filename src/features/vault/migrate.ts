@@ -4,6 +4,7 @@ import { vectorIndex } from '@/ai/memory/vector/vector-client'
 import { skillsStore } from '@/ai/skills/db'
 import { usageStore } from '@/ai/usage/db'
 import { getDb } from '@/db/client'
+import type { Executor } from '@/db/client'
 import { memoryVectors } from '@/db/schema'
 import type { RecordStore } from '@/db/store'
 import { terminalStore } from '@/features/ask-sensei/terminal/terminal-db'
@@ -33,17 +34,17 @@ export interface Collection {
   name: string
   /** Every record, as the app sees it. */
   list(): Promise<unknown[]>
-  put(record: never): Promise<void>
+  put(record: never, ex?: Executor): Promise<void>
   /** Saves a record whose body arrived already encrypted. Absent for data that is never encrypted. */
-  putSealed?(record: never, ciphertext: Uint8Array): Promise<void>
+  putSealed?(record: never, ciphertext: Uint8Array, ex?: Executor): Promise<void>
 }
 
 const of = <T extends object>(database: string, name: string, store: RecordStore<T>): Collection => ({
   database,
   name,
   list: () => store.list(),
-  put: (record) => store.put(record as T),
-  putSealed: (record, ciphertext) => store.putSealed(record as T, ciphertext),
+  put: (record, ex) => store.put(record as T, ex),
+  putSealed: (record, ciphertext, ex) => store.putSealed(record as T, ciphertext, ex),
 })
 
 /** Embeddings are plain rows of `memory_vectors`: pgvector cannot search encrypted ones. */
@@ -54,9 +55,9 @@ const vectors: Collection = {
     const rows = await (await getDb()).select().from(memoryVectors)
     return rows.map((row) => ({ key: row.key, kind: row.kind, refId: row.refId, vector: row.embedding }))
   },
-  async put(record) {
+  async put(record, ex) {
     const { kind, refId, vector } = record as { kind: VectorKind; refId: string; vector: Float32Array }
-    await vectorIndex.upsert(kind, refId, vector)
+    await vectorIndex.upsert(kind, refId, vector, ex)
   },
 }
 

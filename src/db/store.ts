@@ -69,6 +69,11 @@ export function recordStore<T extends object>(table: PgTable, options: StoreOpti
         [options.key]: (value as Record<string, unknown>)[options.key],
         ...options.columns?.(value),
       }
+      // Fields the old database never indexed are not readable beside the ciphertext: a number column gets 0 until the
+      // vault is unlocked and `reseal` rewrites the row with the real values.
+      for (const [name, field] of Object.entries(columns)) {
+        if (field === undefined) columns[name] = cols[name]?.dataType.startsWith('number') ? 0 : null
+      }
       const row = { [options.key]: key, ...columns, data: { __enc: toBase64(ciphertext) } }
       await (
         await run(ex)

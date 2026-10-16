@@ -44,7 +44,7 @@ function start() {
     await migrate(opened.client)
     // The old IndexedDB databases are copied in once, the first time the new one is empty.
     const { importLegacyData } = await import('./legacy-import')
-    await importLegacyData(opened.db)
+    await importLegacyData(opened.client, opened.db)
     return opened
   })()
   return ready

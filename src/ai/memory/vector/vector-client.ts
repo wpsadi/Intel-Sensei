@@ -1,6 +1,6 @@
 import { and, eq, sql } from 'drizzle-orm'
 
-import { getDb } from '@/db/client'
+import { type Executor, getDb } from '@/db/client'
 import { memoryVectors } from '@/db/schema'
 
 import type { VectorKind } from '../types'
@@ -12,8 +12,8 @@ const literal = (vector: Float32Array) => `[${Array.from(vector).join(',')}]`
 /** Search over the saved embeddings, in pgvector: each kind has its own HNSW index, queried by cosine distance. */
 export const vectorIndex = {
   /** Saves a vector, replacing the one the item had. */
-  async upsert(kind: Kind, refId: string, vector: Float32Array) {
-    const db = await getDb()
+  async upsert(kind: Kind, refId: string, vector: Float32Array, ex?: Executor) {
+    const db = ex ?? (await getDb())
     const row = { key: `${kind}:${refId}`, kind, refId, embedding: vector }
     await db
       .insert(memoryVectors)
