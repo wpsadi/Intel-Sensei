@@ -26,6 +26,20 @@ export function recordStore<T extends object>(table: PgTable, options: StoreOpti
     ...options.columns?.(value),
     data: options.plain ? JSON.parse(JSON.stringify(value)) : await seal(value),
   })
+  /** The row for a record that arrived already encrypted (copied from the old database while the vault was locked). */
+  const sealedRowOf = (value: T, ciphertext: Uint8Array): Columns => {
+    const { [options.key]: key, ...columns } = {
+      [options.key]: (value as Record<string, unknown>)[options.key],
+      ...options.columns?.(value),
+    }
+    // Fields the old database never indexed are not readable beside the ciphertext: a number column gets 0 until the
+    // vault is unlocked and `reseal` rewrites the row with the real values.
+    for (const [name, field] of Object.entries(columns)) {
+      if (field === undefined || (typeof field === 'number' && !Number.isFinite(field)))
+        columns[name] = cols[name]?.dataType.startsWith('number') ? 0 : null
+    }
+    return { [options.key]: key, ...columns, data: { __enc: toBase64(ciphertext) } }
+  }
   const read = async (rows: { data: unknown }[]) => Promise.all(rows.map((row) => (options.plain ? (row.data as T) : open<T>(row.data))))
   const run = async (ex?: Executor) => ex ?? (await getDb())
 
@@ -65,22 +79,19 @@ export function recordStore<T extends object>(table: PgTable, options: StoreOpti
      * only what stayed readable beside the ciphertext: the key and the plain columns.
      */
     async putSealed(value: T, ciphertext: Uint8Array, ex?: Executor) {
-      const { [options.key]: key, ...columns } = {
-        [options.key]: (value as Record<string, unknown>)[options.key],
-        ...options.columns?.(value),
-      }
-      // Fields the old database never indexed are not readable beside the ciphertext: a number column gets 0 until the
-      // vault is unlocked and `reseal` rewrites the row with the real values.
-      for (const [name, field] of Object.entries(columns)) {
-        if (field === undefined) columns[name] = cols[name]?.dataType.startsWith('number') ? 0 : null
-      }
-      const row = { [options.key]: key, ...columns, data: { __enc: toBase64(ciphertext) } }
-      await (
-        await run(ex)
-      )
-        .insert(table)
-        .values(row)
-        .onConflictDoUpdate({ target: keyColumn, set: { ...columns, data: row.data } })
+      const row = sealedRowOf(value, ciphertext)
+      const { [options.key]: _key, ...changes } = row
+      await (await run(ex)).insert(table).values(row).onConflictDoUpdate({ target: keyColumn, set: changes })
+    },
+
+    /**
+     * Adds many records in one statement, keeping any record that is already there: this is how the old IndexedDB data
+     * comes in, and it must never overwrite what the new database has since saved. `cipher` marks an already-encrypted body.
+     */
+    async addMany(items: { value: T; cipher?: Uint8Array }[], ex?: Executor) {
+      if (!items.length) return
+      const rows = await Promise.all(items.map(({ value, cipher }) => (cipher ? sealedRowOf(value, cipher) : rowOf(value))))
+      await (await run(ex)).insert(table).values(rows).onConflictDoNothing({ target: keyColumn })
     },
 
     async remove(key: string, ex?: Executor) {

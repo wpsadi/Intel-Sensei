@@ -12,7 +12,8 @@ const ENC = '__enc'
  */
 export async function seal(value: unknown): Promise<unknown> {
   const json = serialize(value)
-  if (!vault.encrypting) return JSON.parse(json)
+  // jsonb rejects \u0000, which a pasted or scraped text can carry; it means nothing in a document.
+  if (!vault.encrypting) return JSON.parse(json.replace(/(?<!\\)((?:\\\\)*)\\u0000/g, '$1'))
   return { [ENC]: toBase64(await vault.encrypt(utf8(json))) }
 }
 

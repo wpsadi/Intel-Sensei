@@ -36,18 +36,40 @@ async function migrate(client: PGliteInterface) {
 }
 
 let ready: Promise<{ client: PGliteInterface; db: Db }> | null = null
+let legacy: Promise<number> = Promise.resolve(0)
 
 function start() {
   ready ??= (async () => {
+    const t0 = performance.now()
     const opened = open()
     await opened.client.waitReady
+    const t1 = performance.now()
     await migrate(opened.client)
-    // The old IndexedDB databases are copied in once, the first time the new one is empty.
-    const { importLegacyData } = await import('./legacy-import')
-    await importLegacyData(opened.client, opened.db)
+    const t2 = performance.now()
+    // The password profile of the old database comes in before the app starts (the lock screen needs it); the rest of the
+    // old data is copied in the background below, so a slow or broken import can never keep the app from opening.
+    const { importLegacyData, importLegacyProfile } = await import('./legacy-import')
+    await importLegacyProfile(opened.client, opened.db)
+    console.info(
+      `[sensei-db] ready in ${Math.round(performance.now() - t0)}ms (PGlite start ${Math.round(t1 - t0)}ms, schema ${Math.round(t2 - t1)}ms)`,
+    )
+    legacy = importLegacyData(opened.client, opened.db).then((copied) => {
+      // The app has already read its data (empty): show what just arrived.
+      if (copied && typeof Worker !== 'undefined') {
+        console.info('[sensei-db] reloading to show the imported data')
+        window.location.reload()
+      }
+      return copied
+    })
     return opened
   })()
   return ready
+}
+
+/** Resolves once the old IndexedDB data has been copied in (and with how many records). For tests. */
+export async function whenLegacyImported() {
+  await start()
+  return legacy
 }
 
 /** The Drizzle database. Every read and write in the app goes through this. */

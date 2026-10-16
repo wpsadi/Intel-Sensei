@@ -37,6 +37,10 @@ export interface Collection {
   put(record: never, ex?: Executor): Promise<void>
   /** Saves a record whose body arrived already encrypted. Absent for data that is never encrypted. */
   putSealed?(record: never, ciphertext: Uint8Array, ex?: Executor): Promise<void>
+  /** The ids already saved, to see which old records are still missing. */
+  keys(ex?: Executor): Promise<string[]>
+  /** Adds records that are not there yet, many at a time. Used to bring in the old IndexedDB data. */
+  addMany(items: { record: never; cipher?: Uint8Array }[], ex?: Executor): Promise<void>
 }
 
 const of = <T extends object>(database: string, name: string, store: RecordStore<T>): Collection => ({
@@ -45,6 +49,12 @@ const of = <T extends object>(database: string, name: string, store: RecordStore
   list: () => store.list(),
   put: (record, ex) => store.put(record as T, ex),
   putSealed: (record, ciphertext, ex) => store.putSealed(record as T, ciphertext, ex),
+  keys: (ex) => store.keys(undefined, ex),
+  addMany: (items, ex) =>
+    store.addMany(
+      items.map(({ record, cipher }) => ({ value: record as T, cipher })),
+      ex,
+    ),
 })
 
 /** Embeddings are plain rows of `memory_vectors`: pgvector cannot search encrypted ones. */
@@ -58,6 +68,16 @@ const vectors: Collection = {
   async put(record, ex) {
     const { kind, refId, vector } = record as { kind: VectorKind; refId: string; vector: Float32Array }
     await vectorIndex.upsert(kind, refId, vector, ex)
+  },
+  async keys(ex) {
+    return (await (ex ?? (await getDb())).select({ key: memoryVectors.key }).from(memoryVectors)).map((row) => row.key)
+  },
+  async addMany(items, ex) {
+    const rows = items.map(({ record }) => {
+      const { kind, refId, vector } = record as { kind: VectorKind; refId: string; vector: Float32Array }
+      return { key: `${kind}:${refId}`, kind, refId, embedding: vector }
+    })
+    if (rows.length) await (ex ?? (await getDb())).insert(memoryVectors).values(rows).onConflictDoNothing({ target: memoryVectors.key })
   },
 }
 
