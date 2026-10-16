@@ -34,6 +34,8 @@ interface NoteEditorProps {
   nested?: boolean
   /** Locked pages keep their content but cannot be edited. */
   editable?: boolean
+  /** False for a document outside the page tree: no sub-page block in the "/" and "+" menus. */
+  pages?: boolean
   onChange: (json: string) => void
 }
 
@@ -79,13 +81,13 @@ function hoveredNode(editor: Editor | null, start: number) {
 /** Pasted HTML that carries real formatting, which Tiptap's own paste keeps. */
 const RICH_HTML = /<(strong|b|em|i|u|s|del|h[1-6]|ul|ol|li|table|a|code|pre|blockquote|img|hr)\b/i
 
-export function NoteEditor({ content, pageId = '', nested = false, editable = true, onChange }: NoteEditorProps) {
+export function NoteEditor({ content, pageId = '', nested = false, editable = true, pages = true, onChange }: NoteEditorProps) {
   const mobile = useIsMobile()
   const onChangeRef = useRef(onChange)
   useLayoutEffect(() => {
     onChangeRef.current = onChange
   })
-  const extensions = useMemo(() => buildExtensions({ pageId, nested }), [pageId, nested])
+  const extensions = useMemo(() => buildExtensions({ pageId, nested, pages }), [pageId, nested, pages])
 
   const editor = useEditor(
     {

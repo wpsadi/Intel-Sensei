@@ -15,6 +15,7 @@ import {
   AudioPlayerTimeRange,
   AudioPlayerVolumeRange,
 } from '@/components/ai-elements/audio-player'
+import { useMediaUrl } from '@/features/note/db/hooks'
 import { cn } from '@/lib/utils'
 
 export type MediaKind = 'image' | 'video' | 'audio'
@@ -34,7 +35,8 @@ export function mediaKindOf(url: string | undefined): MediaKind | null {
 export type MediaItem = { kind: MediaKind; src: string; alt?: string }
 
 /** Video.js 10 player with the default skin. */
-export function ChatVideo({ src, title }: { src: string; title?: string }) {
+export function ChatVideo({ src: ref, title }: { src: string; title?: string }) {
+  const src = useMediaUrl(ref)
   return (
     <VideoPlayer>
       <VideoSkin className="overflow-hidden rounded-lg border" style={{ width: '100%', aspectRatio: '16 / 9' }}>
@@ -45,7 +47,8 @@ export function ChatVideo({ src, title }: { src: string; title?: string }) {
 }
 
 /** AI Elements audio player: play/pause, seek, time, volume. */
-export function ChatAudio({ src, title }: { src: string; title?: string }) {
+export function ChatAudio({ src: ref, title }: { src: string; title?: string }) {
+  const src = useMediaUrl(ref)
   return (
     <div className="rounded-lg border bg-card p-1.5">
       {title ? <div className="truncate px-2 pt-1 text-xs text-muted-foreground">{title}</div> : null}
@@ -66,7 +69,10 @@ export function ChatAudio({ src, title }: { src: string; title?: string }) {
   )
 }
 
-function ChatImage({ src, alt, className }: { src: string; alt?: string; className?: string }) {
+function ChatImage({ src: ref, alt, className }: { src: string; alt?: string; className?: string }) {
+  // A stored file (`snote-media:<id>`) becomes an object URL once it is read from the cache.
+  const src = useMediaUrl(ref)
+  if (!src) return <div className={cn('min-h-16 min-w-16 rounded-lg border bg-muted', className)} />
   return (
     <a href={src} target="_blank" rel="noreferrer" className={cn('block overflow-hidden rounded-lg border bg-muted', className)}>
       <img src={src} alt={alt ?? ''} loading="lazy" className="size-full object-cover transition-transform hover:scale-[1.02]" />

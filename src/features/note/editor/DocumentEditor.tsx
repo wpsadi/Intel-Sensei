@@ -1,5 +1,4 @@
 import '@/features/note/snote.css'
-
 import { useMemo } from 'react'
 
 import { docToMarkdown } from '../lib/markdown'
@@ -23,7 +22,7 @@ export function DocumentEditor({
   const html = useMemo(() => documentHtml(markdown), [markdown])
   return (
     <div className="snote-font-default px-4 pt-6 pb-24 sm:pr-8 sm:pl-16">
-      <NoteEditor content={html} editable={editable} onChange={(json) => onChange(docToMarkdown(json))} />
+      <NoteEditor content={html} editable={editable} pages={false} onChange={(json) => onChange(docToMarkdown(json))} />
     </div>
   )
 }

@@ -53,7 +53,7 @@ const SNoteStorage = Extension.create<{ pageId: string }, { pageId: string }>({
   },
 })
 
-export function buildExtensions({ pageId, nested }: { pageId: string; nested: boolean }): Extensions {
+export function buildExtensions({ pageId, nested, pages = true }: { pageId: string; nested: boolean; pages?: boolean }): Extensions {
   // Math click handlers only receive (node, pos), so capture the owning editor here.
   let owner: Editor | null = null
   const MathOwner = Extension.create({
@@ -115,7 +115,8 @@ export function buildExtensions({ pageId, nested }: { pageId: string; nested: bo
     ...(nested ? [] : [SyncedBlock]),
     MentionNode,
     EmojiNode,
-    SlashCommands,
+    // A document outside the page tree has nowhere to put a sub-page.
+    SlashCommands.configure({ exclude: pages ? [] : ['page'] }),
     BlockComments,
   ]
 }

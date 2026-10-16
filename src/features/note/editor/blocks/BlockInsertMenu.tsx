@@ -4,7 +4,7 @@ import { useMemo, useRef, useState } from 'react'
 import { type MenuItem, rankMatches, useMenuKeys } from '../menu-items'
 import { MenuList } from '../MenuList'
 import { useCloseOnOutsidePress } from '../nodes/block-utils'
-import { COMMANDS } from '../slash-commands'
+import { commandsFor } from '../slash-commands'
 
 interface BlockInsertMenuProps {
   editor: Editor
@@ -19,7 +19,7 @@ export function BlockInsertMenu({ editor, at, top, onClose }: BlockInsertMenuPro
   const [query, setQuery] = useState('')
   const ref = useRef<HTMLDivElement>(null)
   useCloseOnOutsidePress(ref, onClose)
-  const items = useMemo(() => rankMatches(COMMANDS, query), [query])
+  const items = useMemo(() => rankMatches(commandsFor(editor), query), [editor, query])
 
   const select = (item: MenuItem) => {
     onClose()

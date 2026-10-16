@@ -10,6 +10,9 @@ const subscribe = (onChange: () => void) => {
 
 const getSnapshot = () => window.innerWidth < MOBILE_BREAKPOINT
 
+/** The same check as `useIsMobile`, for code that runs outside React (editor extensions, event handlers). */
+export const isMobileViewport = getSnapshot
+
 const getServerSnapshot = () => false
 
 export function useIsMobile() {

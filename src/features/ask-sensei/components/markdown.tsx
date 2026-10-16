@@ -2,7 +2,8 @@ import { cjk } from '@streamdown/cjk'
 import { math } from '@streamdown/math'
 import { mermaid } from '@streamdown/mermaid'
 import type { BundledLanguage } from 'shiki'
-import { type Components, Streamdown } from 'streamdown'
+import { type Components, Streamdown, defaultRehypePlugins } from 'streamdown'
+import type { Pluggable, Plugin } from 'unified'
 
 import { CodeBlock, CodeBlockActions, CodeBlockCopyButton, CodeBlockHeader, CodeBlockTitle } from '@/components/ai-elements/code-block'
 import { Snippet, SnippetAddon, SnippetCopyButton, SnippetInput } from '@/components/ai-elements/snippet'
@@ -10,6 +11,23 @@ import { ScrollArea } from '@/components/ui/scroll-area'
 import { MarkdownImage, MarkdownLink, MediaGallery, paragraphMedia } from '@/features/ask-sensei/components/chat-media'
 
 const plugins = { cjk, math, mermaid }
+
+type Schema = { protocols?: Record<string, string[] | undefined> } & Record<string, unknown>
+
+/**
+ * Streamdown's sanitizer only lets http(s) through for `src` and `href`, so a stored file (`snote-media:<id>`) loses its
+ * source and shows as "Image blocked". Allow that scheme; ChatImage resolves it to an object URL at render time.
+ */
+const [sanitize, sanitizeSchema] = defaultRehypePlugins.sanitize as unknown as [Plugin, Schema]
+const mediaSchema: Schema = {
+  ...sanitizeSchema,
+  protocols: {
+    ...sanitizeSchema.protocols,
+    src: [...(sanitizeSchema.protocols?.src ?? []), 'snote-media'],
+    href: [...(sanitizeSchema.protocols?.href ?? []), 'snote-media'],
+  },
+}
+const rehypePlugins: Pluggable[] = [defaultRehypePlugins.raw, [sanitize, mediaSchema], defaultRehypePlugins.harden]
 
 /** Languages whose one-line blocks are commands to copy, shown as a snippet. */
 const SHELL_LANGUAGES = new Set(['', 'bash', 'sh', 'shell', 'zsh', 'console', 'powershell', 'cmd'])
@@ -77,7 +95,7 @@ const components: Components = {
 /** Renders chat text as markdown: headings, lists, to-dos, quotes, tables, images, video and audio, code blocks, snippets, math and mermaid diagrams. */
 export function Markdown({ children }: { children: string }) {
   return (
-    <Streamdown plugins={plugins} components={components}>
+    <Streamdown plugins={plugins} components={components} rehypePlugins={rehypePlugins}>
       {children}
     </Streamdown>
   )
