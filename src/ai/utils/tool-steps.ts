@@ -92,6 +92,10 @@ export function describeToolCall(name: string, args: Record<string, unknown>): {
       return { label: 'Loading a skill', detail: text(args.name) }
     case 'create_skill':
       return { label: 'Saving a skill', detail: text(args.name) }
+    case 'askUser': {
+      const questions = Array.isArray(args.questions) ? args.questions.length : 0
+      return { label: questions === 1 ? 'Asking you a question' : 'Asking you some questions' }
+    }
     case 'request_tools':
       return { label: 'Turning on tools' }
     default:
@@ -99,8 +103,8 @@ export function describeToolCall(name: string, args: Record<string, unknown>): {
   }
 }
 
-/** Tools with their own place in the reply (searches, the plan card, to-dos, questions): they are not repeated as steps. */
-const OWN_UI = new Set(['webSearch', 'createPlan', 'createTodoList', 'seeTodoList', 'updateTodoList', 'deleteTodoList', 'askUser'])
+/** Tools with their own place in the reply (searches, the plan card, to-dos): they are not repeated as steps. */
+const OWN_UI = new Set(['webSearch', 'createPlan', 'createTodoList', 'seeTodoList', 'updateTodoList', 'deleteTodoList'])
 export const hasOwnUi = (name: string) => OWN_UI.has(name)
 
 /** Whether a finished call did not work: a command that exited with an error. */

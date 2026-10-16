@@ -22,27 +22,10 @@ import type { ChatAnswers, ChatMessage, ChatQuestion } from '@/features/note/db/
 /** A multiple-choice question; one without choices falls back to a typed answer. */
 const isChoice = (question: ChatQuestion) => (question.kind === 'single' || question.kind === 'multiple') && !!question.choices?.length
 
-/** Sensei's questions inside its reply. While it waits they are a form; once answered they show the answers. */
-export function ChatQuestionsCard({ message, isStreaming }: { message: ChatMessage; isStreaming: boolean }) {
+/** The form for the questions Sensei is waiting on, pinned above the input. Once answered they read inside its thinking. */
+export function ChatQuestionsCard({ message }: { message: ChatMessage }) {
   const answerQuestions = useAskSenseiStore((state) => state.answerQuestions)
-  const { questions, answers } = message.questions!
-
-  if (answers || !isStreaming) {
-    return (
-      <div className="my-2 flex flex-col gap-2 rounded-lg border bg-muted/30 px-4 py-3 text-sm">
-        {questions.map((question) => {
-          const answer = answers?.[question.id]
-          const text = Array.isArray(answer) ? answer.join(', ') : answer
-          return (
-            <div key={question.id}>
-              <div className="font-medium">{question.title}</div>
-              <div className="text-muted-foreground">{text || (answers ? 'Skipped' : 'Not answered')}</div>
-            </div>
-          )
-        })}
-      </div>
-    )
-  }
+  const { questions } = message.questions!
 
   const submit = (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault()

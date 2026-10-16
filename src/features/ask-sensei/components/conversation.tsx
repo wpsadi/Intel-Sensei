@@ -11,7 +11,6 @@ import { ScrollArea } from '@/components/ui/scroll-area'
 import { Separator } from '@/components/ui/separator'
 import { ArtifactCards, isArtifact } from '@/features/ask-sensei/artifact/artifact-cards'
 import { ChatPlanCard } from '@/features/ask-sensei/components/chat-plan'
-import { ChatQuestionsCard } from '@/features/ask-sensei/components/chat-questions'
 import { ChatReasoning } from '@/features/ask-sensei/components/chat-reasoning'
 import { ChatSearches } from '@/features/ask-sensei/components/chat-searches'
 import { Markdown } from '@/features/ask-sensei/components/markdown'
@@ -200,7 +199,6 @@ export function Conversation({
                           isStreaming={isStreaming && !message.content}
                           duration={message.reasoningSeconds ?? message.workedSeconds}
                           toolCount={!message.steps?.length}
-                          defaultOpen={false}
                           className="mb-3"
                         />
                         {/* The documents Sensei made sit between the thinking and the final answer. */}
@@ -231,10 +229,6 @@ export function Conversation({
                         {isReply && message.searches?.length ? <ChatSearches searches={message.searches} /> : null}
                         {isReply && message.plan && <ChatPlanCard plan={message.plan} isStreaming={isStreaming && !message.content} />}
                         <Markdown>{message.content}</Markdown>
-                        {/* Unanswered questions are pinned above the input instead. */}
-                        {isReply && message.questions && (message.questions.answers || !isStreaming) && (
-                          <ChatQuestionsCard message={message} isStreaming={isStreaming} />
-                        )}
                       </>
                     )}
                   </Bubble>

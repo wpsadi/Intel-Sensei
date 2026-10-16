@@ -1,5 +1,4 @@
 import { CheckIcon, CopyIcon, DownloadIcon, ExternalLinkIcon, LoaderCircleIcon, XIcon } from 'lucide-react'
-import { useTheme } from 'next-themes'
 import { type ReactNode, Suspense, lazy, useEffect, useMemo, useRef, useState } from 'react'
 
 import { Button } from '@/components/ui/button'
@@ -103,25 +102,26 @@ function Body({
   const url = useMediaUrl(
     kind === 'pdf' || kind === 'image' || kind === 'docx' || kind === 'xlsx' || kind === 'pptx' ? file.src : undefined,
   )
-  const { resolvedTheme } = useTheme()
-  const [dark, setDark] = useState(resolvedTheme === 'dark')
   if (!kind) return <Note>This kind of file cannot be previewed here. Download it to open it.</Note>
   // The viewers have their own toolbars; upload and download are the panel's job (the file is already here).
   const viewer = { fileName: file.name, src: url, showUpload: false, showDownload: false, className: 'size-full' }
+  // These viewers are built for the light theme, so they stay on it whatever the app's theme is, with no night mode.
   if (kind === 'pdf' || kind === 'docx' || kind === 'xlsx' || kind === 'pptx') {
     if (!url) return null
     return (
-      <Suspense fallback={null}>
-        {kind === 'pdf' ? (
-          <PdfViewer {...viewer} />
-        ) : kind === 'docx' ? (
-          <DocxViewer {...viewer} isDark={dark} onIsDarkChange={setDark} />
-        ) : kind === 'xlsx' ? (
-          <XlsxViewer {...viewer} isDark={dark} onIsDarkChange={setDark} />
-        ) : (
-          <PptxViewer {...viewer} />
-        )}
-      </Suspense>
+      <div className="light size-full bg-background text-foreground">
+        <Suspense fallback={null}>
+          {kind === 'pdf' ? (
+            <PdfViewer {...viewer} />
+          ) : kind === 'docx' ? (
+            <DocxViewer {...viewer} isDark={false} onIsDarkChange={() => {}} />
+          ) : kind === 'xlsx' ? (
+            <XlsxViewer {...viewer} isDark={false} onIsDarkChange={() => {}} />
+          ) : (
+            <PptxViewer {...viewer} />
+          )}
+        </Suspense>
+      </div>
     )
   }
   if (kind === 'google') return text === null ? <Note>This file is no longer saved in the browser.</Note> : <GoogleFile text={text} />
@@ -129,9 +129,11 @@ function Body({
     return text === null ? (
       <Note>This file is no longer saved in the browser.</Note>
     ) : (
-      <Suspense fallback={null}>
-        <CsvViewer data={text} search className="size-full" />
-      </Suspense>
+      <div className="light size-full bg-background text-foreground">
+        <Suspense fallback={null}>
+          <CsvViewer data={text} search className="size-full" />
+        </Suspense>
+      </div>
     )
   if (kind === 'image')
     return url ? (

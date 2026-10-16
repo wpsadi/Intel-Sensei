@@ -166,7 +166,7 @@ function AskSenseiPage() {
                     <ArrowDownIcon />
                   </Button>
                 )}
-                {pendingQuestions && <ChatQuestionsCard message={pendingQuestions} isStreaming />}
+                {pendingQuestions && <ChatQuestionsCard message={pendingQuestions} />}
                 {showTodos && pinnedTodos && activeChat && (
                   <ChatTodoQueue
                     todos={pinnedTodos}

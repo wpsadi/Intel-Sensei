@@ -7,9 +7,12 @@
 @import '@fontsource-variable/inter';
 @import '@fontsource-variable/roboto';
 
-@custom-variant dark (&:is(.dark *));
+/* A `.light` wrapper keeps its content on the light theme inside a dark app, for components built for light only. */
+@custom-variant dark (&:is(.dark *):not(:is(.light *)));
 
-:root {
+:root,
+.light {
+  color-scheme: light;
   --background: oklch(1 0 0);
   --foreground: oklch(0.145 0 0);
   --foreground: oklch(0.145 0 0);

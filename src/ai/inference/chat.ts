@@ -265,7 +265,9 @@ export async function chatWithSensei(
             { name: part.toolName, ...describeToolCall(part.toolName, (part.input ?? {}) as Record<string, unknown>) },
           )
       } else if (part.type === 'tool-result') {
-        setStep(part.toolCallId, { status: resultFailed(part.toolName, part.output) ? 'failed' : 'done' })
+        // The answers the user gave are the result of the questions step, so they read inside the thinking.
+        const answered = part.toolName === 'askUser' && typeof part.output === 'string' ? part.output.replace(/^The user answered:\n/, '') : undefined
+        setStep(part.toolCallId, { status: resultFailed(part.toolName, part.output) ? 'failed' : 'done', ...(answered && { detail: answered }) })
       } else if (part.type === 'tool-error') {
         const draft = documents.get(part.toolCallId)
         if (draft) scope?.onArtifactDraft?.({ id: part.toolCallId, name: '', content: '', format: 'markdown', done: true })

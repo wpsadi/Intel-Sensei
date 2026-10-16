@@ -1052,7 +1052,7 @@ export function XlsxViewerPreview({
       effectiveIsDark={isDark}
       fileName={fileName}
       setNightRenderEnabled={onIsDarkChange}
-      shouldRenderNightMode
+      shouldRenderNightMode={false}
       showDownload={showDownload}
       showToolbar={showToolbar}
       showUpload={showUpload}
