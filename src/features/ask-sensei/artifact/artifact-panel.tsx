@@ -1,18 +1,26 @@
 import { CheckIcon, CopyIcon, DownloadIcon, ExternalLinkIcon, LoaderCircleIcon, XIcon } from 'lucide-react'
+import { useTheme } from 'next-themes'
 import { type ReactNode, Suspense, lazy, useEffect, useMemo, useRef, useState } from 'react'
 
 import { Button } from '@/components/ui/button'
 import { ScrollArea } from '@/components/ui/scroll-area'
+import { Markdown } from '@/features/ask-sensei/components/markdown'
 import { useMediaUrl } from '@/features/note/db/hooks'
 import { onMediaUpdated, readMedia, updateMedia } from '@/features/note/db/media'
 import type { ChatAttachment } from '@/features/note/db/types'
-import { Markdown } from '@/features/ask-sensei/components/markdown'
 import { useCopy } from '@/hooks/use-copy'
 import { useIsMobile } from '@/hooks/use-mobile'
 import { connectFrame, withFrameBridge } from '@/lib/sandbox-frame'
 import { cn } from '@/lib/utils'
 
 import { ARTIFACT_MIN_WIDTH, type ArtifactKind, artifactKind, useArtifacts } from './artifact.store'
+
+// The viewers are large (PDF engine, spreadsheet grid, slide renderer), so each loads when its first file opens.
+const PdfViewer = lazy(() => import('@/components/extend/pdf-viewer').then((module) => ({ default: module.PDFViewer })))
+const DocxViewer = lazy(() => import('@/components/extend/docx-viewer').then((module) => ({ default: module.DocxViewerPreview })))
+const XlsxViewer = lazy(() => import('@/components/extend/xlsx-viewer').then((module) => ({ default: module.XlsxViewerPreview })))
+const PptxViewer = lazy(() => import('@/components/extend/pptx-viewer').then((module) => ({ default: module.PptxViewerPreview })))
+const CsvViewer = lazy(() => import('@/components/extend/csv-viewer').then((module) => ({ default: module.CsvViewer })))
 
 // S-Note's editor is large, so it loads when the first document opens.
 const DocumentEditor = lazy(() => import('@/features/note/editor/DocumentEditor').then((module) => ({ default: module.DocumentEditor })))
@@ -43,10 +51,42 @@ function HtmlFrame({ title, html }: { title: string; html: string }) {
     const connection = connectFrame(frame.current)
     // A page that removed the bridge never answers, which is fine: it just stays unconnected.
     connection.catch(() => {})
-    return () => void connection.then((child) => child.destroy(), () => {})
+    return () =>
+      void connection.then(
+        (child) => child.destroy(),
+        () => {},
+      )
   }, [srcDoc])
   // No same-origin: the page can run its own scripts but cannot reach this app or its data. Postmate is the only way in.
   return <iframe ref={frame} title={title} srcDoc={srcDoc} sandbox="allow-scripts allow-popups" className="size-full border-0 bg-white" />
+}
+
+/** The first link in a Google Drive shortcut file (`.gdoc` and the like hold JSON with a `url`), or null. */
+function googleLink(text: string) {
+  try {
+    const url = (JSON.parse(text) as { url?: unknown }).url
+    return typeof url === 'string' && /^https:\/\/(docs|drive|sites|script)\.google\.com\//.test(url) ? url : null
+  } catch {
+    return null
+  }
+}
+
+/** A Google Docs, Sheets or Slides file: Drive only gives a link to it, so show the link and say how to get the real file. */
+function GoogleFile({ text }: { text: string }) {
+  const link = googleLink(text)
+  return (
+    <div className="flex flex-col items-start gap-3 p-6 text-sm text-muted-foreground">
+      <p>
+        This is a Google Drive shortcut, not the document itself, so there is nothing to preview here. In Google, choose File → Download as
+        Word (.docx), Excel (.xlsx), PowerPoint (.pptx) or PDF, then attach that file.
+      </p>
+      {link && (
+        <Button variant="outline" size="sm" render={<a href={link} target="_blank" rel="noreferrer" />}>
+          <ExternalLinkIcon /> Open in Google
+        </Button>
+      )}
+    </div>
+  )
 }
 
 function Body({
@@ -60,9 +100,39 @@ function Body({
   text: string | null
   onEdit: (markdown: string) => void
 }) {
-  const url = useMediaUrl(kind === 'pdf' || kind === 'image' ? file.src : undefined)
+  const url = useMediaUrl(
+    kind === 'pdf' || kind === 'image' || kind === 'docx' || kind === 'xlsx' || kind === 'pptx' ? file.src : undefined,
+  )
+  const { resolvedTheme } = useTheme()
+  const [dark, setDark] = useState(resolvedTheme === 'dark')
   if (!kind) return <Note>This kind of file cannot be previewed here. Download it to open it.</Note>
-  if (kind === 'pdf') return url ? <iframe title={file.name} src={url} className="size-full border-0" /> : null
+  // The viewers have their own toolbars; upload and download are the panel's job (the file is already here).
+  const viewer = { fileName: file.name, src: url, showUpload: false, showDownload: false, className: 'size-full' }
+  if (kind === 'pdf' || kind === 'docx' || kind === 'xlsx' || kind === 'pptx') {
+    if (!url) return null
+    return (
+      <Suspense fallback={null}>
+        {kind === 'pdf' ? (
+          <PdfViewer {...viewer} />
+        ) : kind === 'docx' ? (
+          <DocxViewer {...viewer} isDark={dark} onIsDarkChange={setDark} />
+        ) : kind === 'xlsx' ? (
+          <XlsxViewer {...viewer} isDark={dark} onIsDarkChange={setDark} />
+        ) : (
+          <PptxViewer {...viewer} />
+        )}
+      </Suspense>
+    )
+  }
+  if (kind === 'google') return text === null ? <Note>This file is no longer saved in the browser.</Note> : <GoogleFile text={text} />
+  if (kind === 'csv')
+    return text === null ? (
+      <Note>This file is no longer saved in the browser.</Note>
+    ) : (
+      <Suspense fallback={null}>
+        <CsvViewer data={text} search className="size-full" />
+      </Suspense>
+    )
   if (kind === 'image')
     return url ? (
       <ScrollArea className="size-full">
@@ -196,7 +266,11 @@ export function DraftPanel({ draftId, onClose }: { draftId: string; onClose: () 
 export function ArtifactPanel({ file, onClose }: { file: ChatAttachment; onClose: () => void }) {
   const kind = artifactKind(file)
   const [reload, setReload] = useState(0)
-  const stored = useFileText(file.src, kind === 'markdown' || kind === 'html' || kind === 'text', reload)
+  const stored = useFileText(
+    file.src,
+    kind === 'markdown' || kind === 'html' || kind === 'text' || kind === 'csv' || kind === 'google',
+    reload,
+  )
   // The newest text, including edits the editor has made since the file was read.
   const edited = useRef<string | null>(null)
   const { copied, copy } = useCopy()

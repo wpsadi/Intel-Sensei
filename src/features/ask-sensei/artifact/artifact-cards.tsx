@@ -1,4 +1,4 @@
-import { FileCodeIcon, FileIcon, FileTextIcon, ImageIcon, LoaderCircleIcon } from 'lucide-react'
+import { FileCodeIcon, FileIcon, FileSpreadsheetIcon, FileTextIcon, ImageIcon, LoaderCircleIcon, PresentationIcon } from 'lucide-react'
 
 import { Badge } from '@/components/ui/badge'
 import type { ChatAttachment } from '@/features/note/db/types'
@@ -12,6 +12,11 @@ const ICON: Record<ArtifactKind | 'file', typeof FileIcon> = {
   html: FileCodeIcon,
   image: ImageIcon,
   pdf: FileIcon,
+  docx: FileTextIcon,
+  xlsx: FileSpreadsheetIcon,
+  csv: FileSpreadsheetIcon,
+  pptx: PresentationIcon,
+  google: FileIcon,
   file: FileIcon,
 }
 const LABEL: Record<ArtifactKind | 'file', string> = {
@@ -20,6 +25,11 @@ const LABEL: Record<ArtifactKind | 'file', string> = {
   html: 'Web page',
   image: 'Image',
   pdf: 'PDF',
+  docx: 'Word document',
+  xlsx: 'Spreadsheet',
+  csv: 'Spreadsheet',
+  pptx: 'Presentation',
+  google: 'Google file',
   file: 'File',
 }
 
@@ -91,7 +101,9 @@ export function ArtifactCards({ files, messageId, chatId }: { files: ChatAttachm
           meta={formatSize(file.size)}
           active={!closing && current?.file?.src === file.src}
           // The open one closes; any other one takes the panel.
-          onClick={() => (!closing && current?.file?.src === file.src ? useArtifacts.getState().close() : useArtifacts.getState().show(file, chatId))}
+          onClick={() =>
+            !closing && current?.file?.src === file.src ? useArtifacts.getState().close() : useArtifacts.getState().show(file, chatId)
+          }
         />
       ))}
       {writing.map((draft) => (

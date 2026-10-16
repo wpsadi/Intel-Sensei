@@ -2,13 +2,28 @@ import { create } from 'zustand'
 
 import type { ChatAttachment } from '@/features/note/db/types'
 
-export type ArtifactKind = 'markdown' | 'html' | 'pdf' | 'image' | 'text'
+export type ArtifactKind = 'markdown' | 'html' | 'pdf' | 'image' | 'text' | 'docx' | 'xlsx' | 'pptx' | 'csv' | 'google'
 
-const TEXT_EXTENSIONS = new Set(['txt', 'csv', 'json', 'xml', 'yaml', 'yml', 'log', 'py', 'js', 'ts', 'tsx', 'css', 'sql', 'sh'])
+const TEXT_EXTENSIONS = new Set(['txt', 'json', 'xml', 'yaml', 'yml', 'log', 'py', 'js', 'ts', 'tsx', 'css', 'sql', 'sh'])
 
-/** How a file can be shown in the artifact panel, or null when it can only be downloaded (a docx, a zip). */
+const OFFICE_TYPES = {
+  docx: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+  xlsx: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+  pptx: 'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+} as const
+
+/**
+ * Google Docs, Sheets and Slides do not exist as files: Drive downloads them as small `.gdoc`, `.gsheet` and `.gslides`
+ * links, and its own MIME types name them. Only the link can be shown; "File > Download" in Google gives the Office file.
+ */
+const GOOGLE_EXTENSIONS = new Set(['gdoc', 'gsheet', 'gslides', 'gdraw', 'gform', 'gsite', 'gmap', 'gjam'])
+
+/** How a file can be shown in the artifact panel, or null when it can only be downloaded (an old .doc, a zip). */
 export function artifactKind(file: Pick<ChatAttachment, 'name' | 'type'>): ArtifactKind | null {
   const extension = file.name.split('.').at(-1)?.toLowerCase() ?? ''
+  if (file.type.startsWith('application/vnd.google-apps.') || GOOGLE_EXTENSIONS.has(extension)) return 'google'
+  for (const kind of ['docx', 'xlsx', 'pptx'] as const) if (extension === kind || file.type === OFFICE_TYPES[kind]) return kind
+  if (file.type === 'text/csv' || extension === 'csv') return 'csv'
   if (file.type === 'text/markdown' || extension === 'md') return 'markdown'
   if (file.type === 'text/html' || extension === 'html') return 'html'
   if (file.type === 'application/pdf') return 'pdf'
