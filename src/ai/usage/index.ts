@@ -1,4 +1,8 @@
-import { type UsageLog, getUsageDb } from './db'
+import { asc } from 'drizzle-orm'
+
+import * as t from '@/db/schema'
+
+import { type UsageLog, usageStore } from './db'
 
 export { costOf, loadPrices } from './pricing'
 export type { UsageLog, UsageProvider } from './db'
@@ -17,8 +21,7 @@ export type UsageEntry = Omit<UsageLog, 'id' | 'at'>
 export async function recordUsage(entry: UsageEntry) {
   if (!entry.inputTokens && !entry.outputTokens) return
   try {
-    const db = await getUsageDb()
-    await db.put('logs', { ...entry, id: crypto.randomUUID(), at: Date.now() })
+    await usageStore.put({ ...entry, id: crypto.randomUUID(), at: Date.now() })
     window.dispatchEvent(new Event('sensei-usage'))
   } catch {
     // The log is best-effort.
@@ -39,10 +42,10 @@ export function recordSdkUsage(base: Pick<UsageEntry, 'provider' | 'model'>, usa
 }
 
 export async function listUsage(): Promise<UsageLog[]> {
-  return (await getUsageDb()).getAllFromIndex('logs', 'byAt')
+  return usageStore.list({ orderBy: [asc(t.usageLogs.at)] })
 }
 
 export async function clearUsage() {
-  await (await getUsageDb()).clear('logs')
+  await usageStore.clear()
   window.dispatchEvent(new Event('sensei-usage'))
 }

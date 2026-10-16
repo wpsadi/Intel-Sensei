@@ -1,6 +1,6 @@
 import { useEffect, useSyncExternalStore } from 'react'
 
-import { type Skill, type SkillSource, getSkillsDb } from './db'
+import { type Skill, type SkillSource, skillsStore } from './db'
 import { nameProblem, parseSkillMarkdown, slugify } from './format'
 import { fetchSkillMarkdown } from './skills-sh'
 
@@ -18,12 +18,10 @@ const notify = () => listeners.forEach((listener) => listener())
 export class Skills {
   /** Every skill, by name. */
   static async list(): Promise<Skill[]> {
-    loaded ??= getSkillsDb()
-      .then((db) => db.getAll('skills'))
-      .then((all) => {
-        cache = all.sort((a, b) => a.name.localeCompare(b.name))
-        notify()
-      })
+    loaded ??= skillsStore.list().then((all) => {
+      cache = all.sort((a, b) => a.name.localeCompare(b.name))
+      notify()
+    })
     await loaded
     // The cache, not what the first read returned: skills saved or removed since are in it.
     return cache
@@ -81,7 +79,7 @@ export class Skills {
       installedAt: existing?.installedAt ?? now,
       updatedAt: now,
     }
-    await (await getSkillsDb()).put('skills', skill)
+    await skillsStore.put(skill)
     cache = [...cache.filter((s) => s.name !== name), skill].sort((a, b) => a.name.localeCompare(b.name))
     notify()
     return skill
@@ -96,7 +94,7 @@ export class Skills {
   }
 
   static async remove(name: string) {
-    await (await getSkillsDb()).delete('skills', name)
+    await skillsStore.remove(name)
     cache = cache.filter((skill) => skill.name !== name)
     notify()
   }

@@ -4,7 +4,7 @@ import { SECRET_STORAGE_KEYS } from '@/constants/ai'
 
 import { BLOB_BUCKETS, putBlob, readBlob } from './blob'
 import { fromUtf8, utf8 } from './bytes'
-import { DATABASES, openDatabase } from './migrate'
+import { COLLECTIONS, collectionOf } from './migrate'
 import { secretGet, secretSet } from './secrets'
 import { deserialize, serialize } from './serialize'
 
@@ -52,11 +52,8 @@ export async function exportBackup({ includeApiKeys }: { includeApiKeys: boolean
   files['manifest.json'] = utf8(JSON.stringify(manifest, null, 2))
   files['README.txt'] = utf8(README)
 
-  for (const { name } of DATABASES) {
-    const db = await openDatabase(name)
-    for (const store of Array.from(db.objectStoreNames)) {
-      files[`data/${name}/${store}.json`] = utf8(serialize(await db.getAll(store)))
-    }
+  for (const collection of COLLECTIONS) {
+    files[`data/${collection.database}/${collection.name}.json`] = utf8(serialize(await collection.list()))
   }
 
   for (const bucket of BLOB_BUCKETS) {
@@ -102,16 +99,13 @@ export async function importBackup(file: File): Promise<ImportSummary> {
 
   const summary: ImportSummary = { records: 0, files: 0, apiKeys: false }
 
-  for (const { name } of DATABASES) {
-    const db = await openDatabase(name)
-    const stores = new Set(Array.from(db.objectStoreNames))
-    for (const [path, bytes] of Object.entries(entries)) {
-      const match = path.match(/^data\/([^/]+)\/([^/]+)\.json$/)
-      if (!match || match[1] !== name || !stores.has(match[2])) continue
-      for (const record of deserialize<unknown[]>(fromUtf8(bytes))) {
-        await db.put(match[2], record)
-        summary.records++
-      }
+  for (const [path, bytes] of Object.entries(entries)) {
+    const match = path.match(/^data\/([^/]+)\/([^/]+)\.json$/)
+    const collection = match && collectionOf(match[1], match[2])
+    if (!collection) continue
+    for (const record of deserialize<unknown[]>(fromUtf8(bytes))) {
+      await collection.put(record as never)
+      summary.records++
     }
   }
 

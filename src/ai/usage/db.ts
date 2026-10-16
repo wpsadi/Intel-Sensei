@@ -1,6 +1,5 @@
-import { type DBSchema, type IDBPDatabase, openDB } from 'idb'
-
-import { secureDb } from '@/features/vault/secure-db'
+import * as t from '@/db/schema'
+import { recordStore } from '@/db/store'
 
 export type UsageProvider = 'google' | 'anthropic' | 'openai'
 
@@ -19,17 +18,4 @@ export interface UsageLog {
   cacheWriteTokens?: number
 }
 
-interface IUsageDB extends DBSchema {
-  logs: { key: string; value: UsageLog; indexes: { byAt: number } }
-}
-
-let dbPromise: Promise<IDBPDatabase<IUsageDB>> | null = null
-
-export function getUsageDb() {
-  dbPromise ??= openDB<IUsageDB>('sensei-usage', 1, {
-    upgrade(db) {
-      db.createObjectStore('logs', { keyPath: 'id' }).createIndex('byAt', 'at')
-    },
-  }).then((db) => secureDb(db, 'sensei-usage'))
-  return dbPromise
-}
+export const usageStore = recordStore<UsageLog>(t.usageLogs, { key: 'id', columns: (log) => ({ at: log.at }) })

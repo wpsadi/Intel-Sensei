@@ -1,5 +1,8 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
+// These tests are about timing; the saved skills (a database read) are not part of it.
+vi.mock('@/ai/skills/skills', () => ({ Skills: { list: async () => [] } }))
+
 /** A worker that answers every request at once, so the client's own timing can be tested without Pyodide. */
 class FakeWorker {
   static alive = 0

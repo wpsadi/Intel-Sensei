@@ -1,7 +1,7 @@
 import { create } from 'zustand'
 import { immer } from 'zustand/middleware/immer'
 
-import { type StoreName, subscribe } from './db/idb'
+import { type StoreName, subscribe } from './db/changes'
 import { databasesRepo, pagesRepo, peopleRepo, settingsRepo, syncedRepo, viewsRepo } from './db/repo'
 import type { Database, Page, ParentType, Person, PropertyValue, View, ViewType } from './db/types'
 

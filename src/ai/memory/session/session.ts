@@ -1,4 +1,8 @@
-import { getMemoryDb } from '../db'
+import { eq } from 'drizzle-orm'
+
+import * as t from '@/db/schema'
+
+import { sessionStore } from '../db'
 import type { SessionNote } from '../types'
 
 /** Every call needs a chat id: session memory never reads or writes across chats. */
@@ -14,29 +18,29 @@ function requireChat(chatId: string) {
 export const sessionMemory = {
   async list(chatId: string) {
     requireChat(chatId)
-    const notes = await (await getMemoryDb()).getAllFromIndex('session', 'byChat', chatId)
+    const notes = await sessionStore.list({ where: eq(t.memorySession.chatId, chatId) })
     return notes.sort((a, b) => a.createdAt - b.createdAt)
   },
 
   async add(chatId: string, text: string) {
     requireChat(chatId)
     const note: SessionNote = { id: crypto.randomUUID(), chatId, text: text.trim(), createdAt: Date.now() }
-    await (await getMemoryDb()).put('session', note)
+    await sessionStore.put(note)
     return note
   },
 
   /** Removes a note of this chat. Returns false when the id is unknown or belongs to another chat. */
   async remove(chatId: string, id: string) {
     requireChat(chatId)
-    const db = await getMemoryDb()
-    const note = await db.get('session', id)
+    const note = await sessionStore.get(id)
     if (!note || note.chatId !== chatId) return false
-    await db.delete('session', id)
+    await sessionStore.remove(id)
     return true
   },
 
   async clear(chatId: string) {
-    for (const note of await sessionMemory.list(chatId)) await (await getMemoryDb()).delete('session', note.id)
+    requireChat(chatId)
+    await sessionStore.removeWhere(eq(t.memorySession.chatId, chatId))
   },
 
   /** This chat's notes as a block for the system prompt, or '' when there are none. */

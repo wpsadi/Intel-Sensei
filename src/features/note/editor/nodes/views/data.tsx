@@ -4,7 +4,7 @@ import { useEffect, useRef, useState } from 'react'
 
 import { useCopy } from '@/hooks/use-copy'
 
-import { subscribe } from '../../../db/idb'
+import { subscribe } from '../../../db/changes'
 import { EMPTY_DOC, syncedRepo } from '../../../db/repo'
 import { useNoteStore } from '../../../note.store'
 import { NoteEditor } from '../../NoteEditor'

@@ -1,6 +1,6 @@
 import { BLOB_BUCKETS, blobMeta, putBlob, readBlob } from '@/features/vault/blob'
 
-import { uid } from './idb'
+import { uid } from './changes'
 
 /**
  * Media binaries live in the Cache Storage bucket, not IndexedDB.

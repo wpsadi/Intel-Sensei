@@ -1,4 +1,20 @@
-import { getDb, notify, uid } from './idb'
+import { desc, eq } from 'drizzle-orm'
+
+import { getDb } from '@/db/client'
+import * as t from '@/db/schema'
+
+import { notify, uid } from './changes'
+import {
+  chatMessagesStore,
+  chatsStore,
+  databasesStore,
+  pagesStore,
+  peopleStore,
+  settingsStore,
+  syncedStore,
+  viewsStore,
+  widgetChatsStore,
+} from './stores'
 import type {
   Chat,
   ChatMessage,
@@ -20,20 +36,20 @@ export const EMPTY_DOC = JSON.stringify({ type: 'doc', content: [{ type: 'paragr
 
 export const pagesRepo = {
   async get(id: string) {
-    return (await getDb()).get('pages', id)
+    return pagesStore.get(id)
   },
 
   async all() {
-    return (await getDb()).getAll('pages')
+    return pagesStore.list()
   },
 
   async children(parentId: string) {
-    const rows = await (await getDb()).getAllFromIndex('pages', 'byParent', parentId)
+    const rows = await pagesStore.list({ where: eq(t.notePages.parentId, parentId) })
     return rows.filter((p) => !p.trashed).sort((a, b) => a.order - b.order)
   },
 
   async roots() {
-    const rows = await (await getDb()).getAll('pages')
+    const rows = await pagesStore.list()
     return rows.filter((p) => p.parentType === 'workspace' && !p.trashed).sort((a, b) => a.order - b.order)
   },
 
@@ -58,20 +74,22 @@ export const pagesRepo = {
       updatedAt: now,
       ...input,
     }
-    await (await getDb()).put('pages', page)
+    await pagesStore.put(page)
     notify('pages', page.id)
     return page
   },
 
   async update(id: string, patch: Partial<Omit<Page, 'id'>>) {
-    const db = await getDb()
-    const tx = db.transaction('pages', 'readwrite')
-    const current = await tx.store.get(id)
-    if (!current) return
-    const next = { ...current, ...patch, updatedAt: Date.now() }
-    await tx.store.put(next)
-    await tx.done
-    notify('pages', id)
+    const next = await (
+      await getDb()
+    ).transaction(async (tx) => {
+      const current = await pagesStore.get(id, tx)
+      if (!current) return
+      const updated = { ...current, ...patch, updatedAt: Date.now() }
+      await pagesStore.put(updated, tx)
+      return updated
+    })
+    if (next) notify('pages', id)
     return next
   },
 
@@ -107,40 +125,39 @@ export const pagesRepo = {
 
   /** Moves a page and all of its descendants to (or out of) the trash. */
   async setTrashed(id: string, trashed: boolean) {
-    const db = await getDb()
-    const tx = db.transaction('pages', 'readwrite')
-    const queue = [id]
-    while (queue.length) {
-      const current = queue.pop()!
-      const page = await tx.store.get(current)
-      if (!page) continue
-      await tx.store.put({ ...page, trashed, updatedAt: Date.now() })
-      const kids = await tx.store.index('byParent').getAllKeys(current)
-      queue.push(...kids)
-      if (page.databaseId) queue.push(...(await tx.store.index('byParent').getAllKeys(page.databaseId)))
-    }
-    await tx.done
+    await (
+      await getDb()
+    ).transaction(async (tx) => {
+      const queue = [id]
+      while (queue.length) {
+        const current = queue.pop()!
+        const page = await pagesStore.get(current, tx)
+        if (!page) continue
+        await pagesStore.put({ ...page, trashed, updatedAt: Date.now() }, tx)
+        queue.push(...(await pagesStore.keys(eq(t.notePages.parentId, current), tx)))
+        if (page.databaseId) queue.push(...(await pagesStore.keys(eq(t.notePages.parentId, page.databaseId), tx)))
+      }
+    })
     notify('pages', id)
   },
 
   async destroy(id: string) {
-    const db = await getDb()
-    const tx = db.transaction(['pages', 'databases', 'views'], 'readwrite')
-    const pages = tx.objectStore('pages')
-    const queue = [id]
-    while (queue.length) {
-      const current = queue.pop()!
-      const page = await pages.get(current)
-      queue.push(...(await pages.index('byParent').getAllKeys(current)))
-      if (page?.databaseId) {
-        queue.push(...(await pages.index('byParent').getAllKeys(page.databaseId)))
-        await tx.objectStore('databases').delete(page.databaseId)
-        const views = await tx.objectStore('views').index('byDatabase').getAllKeys(page.databaseId)
-        await Promise.all(views.map((v) => tx.objectStore('views').delete(v)))
+    await (
+      await getDb()
+    ).transaction(async (tx) => {
+      const queue = [id]
+      while (queue.length) {
+        const current = queue.pop()!
+        const page = await pagesStore.get(current, tx)
+        queue.push(...(await pagesStore.keys(eq(t.notePages.parentId, current), tx)))
+        if (page?.databaseId) {
+          queue.push(...(await pagesStore.keys(eq(t.notePages.parentId, page.databaseId), tx)))
+          await databasesStore.remove(page.databaseId, tx)
+          await viewsStore.removeWhere(eq(t.noteViews.databaseId, page.databaseId), tx)
+        }
+        await pagesStore.remove(current, tx)
       }
-      await pages.delete(current)
-    }
-    await tx.done
+    })
     notify('pages', id)
   },
 
@@ -181,17 +198,17 @@ const DEFAULT_PROPERTIES = (): PropertyDef[] => [
 
 export const databasesRepo = {
   async get(id: string) {
-    return (await getDb()).get('databases', id)
+    return databasesStore.get(id)
   },
 
   async all() {
-    return (await getDb()).getAll('databases')
+    return databasesStore.list()
   },
 
   async create(pageId: string, title = '', viewType: ViewType = 'table') {
     const now = Date.now()
     const database: Database = { id: uid(), pageId, title, properties: DEFAULT_PROPERTIES(), createdAt: now, updatedAt: now }
-    await (await getDb()).put('databases', database)
+    await databasesStore.put(database)
     await viewsRepo.create(database.id, database.id, viewType)
     notify('databases', database.id)
     return database
@@ -206,10 +223,9 @@ export const databasesRepo = {
   },
 
   async update(id: string, patch: Partial<Omit<Database, 'id'>>) {
-    const db = await getDb()
-    const current = await db.get('databases', id)
+    const current = await databasesStore.get(id)
     if (!current) return
-    await db.put('databases', { ...current, ...patch, updatedAt: Date.now() })
+    await databasesStore.put({ ...current, ...patch, updatedAt: Date.now() })
     notify('databases', id)
   },
 
@@ -244,31 +260,30 @@ export const VIEW_LABELS: Record<ViewType, string> = {
 
 export const viewsRepo = {
   async all() {
-    return (await getDb()).getAll('views')
+    return viewsStore.list()
   },
 
   async byOwner(ownerId: string) {
-    const rows = await (await getDb()).getAllFromIndex('views', 'byOwner', ownerId)
+    const rows = await viewsStore.list({ where: eq(t.noteViews.ownerId, ownerId) })
     return rows.sort((a, b) => a.order - b.order)
   },
 
   async create(databaseId: string, ownerId: string, type: ViewType) {
     const view: View = { id: uid(), databaseId, ownerId, type, name: VIEW_LABELS[type], order: Date.now() }
-    await (await getDb()).put('views', view)
+    await viewsStore.put(view)
     notify('views', ownerId)
     return view
   },
 
   async update(id: string, patch: Partial<Omit<View, 'id'>>) {
-    const db = await getDb()
-    const current = await db.get('views', id)
+    const current = await viewsStore.get(id)
     if (!current) return
-    await db.put('views', { ...current, ...patch })
+    await viewsStore.put({ ...current, ...patch })
     notify('views', current.ownerId)
   },
 
   async remove(view: View) {
-    await (await getDb()).delete('views', view.id)
+    await viewsStore.remove(view.id)
     notify('views', view.ownerId)
   },
 }
@@ -277,11 +292,11 @@ export const viewsRepo = {
 
 export const syncedRepo = {
   async get(id: string) {
-    return (await getDb()).get('synced', id)
+    return syncedStore.get(id)
   },
 
   async put(block: Omit<SyncedBlock, 'updatedAt'>) {
-    await (await getDb()).put('synced', { ...block, updatedAt: Date.now() })
+    await syncedStore.put({ ...block, updatedAt: Date.now() })
     notify('synced', block.id)
   },
 }
@@ -292,12 +307,12 @@ const PERSON_COLORS = ['blue', 'green', 'orange', 'purple', 'pink', 'red', 'yell
 
 export const peopleRepo = {
   async all() {
-    return (await getDb()).getAll('people')
+    return peopleStore.list()
   },
 
   async create(name: string) {
     const person: Person = { id: uid(), name, color: PERSON_COLORS[Math.floor(Math.random() * PERSON_COLORS.length)] }
-    await (await getDb()).put('people', person)
+    await peopleStore.put(person)
     notify('people', person.id)
     return person
   },
@@ -307,16 +322,16 @@ export const peopleRepo = {
 
 export const settingsRepo = {
   async all() {
-    const rows = await (await getDb()).getAll('settings')
+    const rows = await settingsStore.list()
     return Object.fromEntries(rows.map((row) => [row.key, row.value]))
   },
 
   async get(key: string) {
-    return (await (await getDb()).get('settings', key))?.value ?? ''
+    return (await settingsStore.get(key))?.value ?? ''
   },
 
   async set(key: string, value: string) {
-    await (await getDb()).put('settings', { key, value })
+    await settingsStore.put({ key, value })
     notify('settings', key)
   },
 }
@@ -325,54 +340,51 @@ export const settingsRepo = {
 
 export const chatsRepo = {
   async all() {
-    return (await getDb()).getAll('chats')
+    return chatsStore.list()
   },
 
   async put(chat: Chat) {
-    await (await getDb()).put('chats', chat)
+    await chatsStore.put(chat)
   },
 
   async remove(id: string) {
-    await (await getDb()).delete('chats', id)
+    await chatsStore.remove(id)
   },
 }
 
 export const chatMessagesRepo = {
   async all() {
-    return (await getDb()).getAll('chatMessages')
+    return chatMessagesStore.list()
   },
 
   async put(message: ChatMessage) {
-    await (await getDb()).put('chatMessages', message)
+    await chatMessagesStore.put(message)
   },
 
   async removeByChat(chatId: string) {
-    const tx = (await getDb()).transaction('chatMessages', 'readwrite')
-    const keys = await tx.store.index('byChat').getAllKeys(chatId)
-    await Promise.all(keys.map((key) => tx.store.delete(key)))
-    await tx.done
+    await chatMessagesStore.removeWhere(eq(t.noteChatMessages.chatId, chatId))
   },
 
   async remove(id: string) {
-    await (await getDb()).delete('chatMessages', id)
+    await chatMessagesStore.remove(id)
   },
 }
 
 /** Chats from the floating Sensei widget, newest first. */
 export const widgetChatsRepo = {
   async all() {
-    return (await (await getDb()).getAll('widgetChats')).sort((a, b) => b.updatedAt - a.updatedAt)
+    return widgetChatsStore.list({ orderBy: [desc(t.noteWidgetChats.updatedAt)] })
   },
 
   async get(id: string) {
-    return (await getDb()).get('widgetChats', id)
+    return widgetChatsStore.get(id)
   },
 
   async put(chat: WidgetChat) {
-    await (await getDb()).put('widgetChats', chat)
+    await widgetChatsStore.put(chat)
   },
 
   async remove(id: string) {
-    await (await getDb()).delete('widgetChats', id)
+    await widgetChatsStore.remove(id)
   },
 }

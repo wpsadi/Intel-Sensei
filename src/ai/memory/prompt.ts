@@ -1,4 +1,8 @@
-import { getMemoryDb } from './db'
+import { count, eq } from 'drizzle-orm'
+
+import { getDb } from '@/db/client'
+import * as t from '@/db/schema'
+
 import { PROCEDURE_PROMPT_LIMIT, proceduralMemory } from './procedural/procedural'
 import type { Scratchpad } from './scratchpad/scratchpad'
 import { semanticMemory } from './semantic/semantic'
@@ -20,11 +24,12 @@ Never call it for greetings, general knowledge, questions about this chat, or an
 
 /** What is saved beyond what is shown in the prompt, so the model knows when a search could find anything. */
 async function memoryOverview(scope: MemoryScope, chatId?: string) {
-  const db = await getMemoryDb()
+  const db = await getDb()
+  const total = async (where: ReturnType<typeof eq>) => (await db.select({ n: count() }).from(t.memoryEpisodes).where(where))[0]?.n ?? 0
   const [facts, episodes, thisChat, procedures] = await Promise.all([
     semanticMemory.list(scope),
-    db.countFromIndex('episodes', 'byScope', scope),
-    chatId ? db.countFromIndex('episodes', 'byChat', chatId) : 0,
+    total(eq(t.memoryEpisodes.scope, scope)),
+    chatId ? total(eq(t.memoryEpisodes.chatId, chatId)) : 0,
     proceduralMemory.list(scope).then((list) => list.length),
   ])
   const hiddenFacts = facts.filter((fact) => !fact.pinned).length

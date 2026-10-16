@@ -1,88 +1,77 @@
-import { type DBSchema, type IDBPDatabase, openDB } from 'idb'
+import { desc, eq } from 'drizzle-orm'
 
-import { secureDb } from '@/features/vault/secure-db'
+import { getDb } from '@/db/client'
+import * as t from '@/db/schema'
+import { recordStore } from '@/db/store'
 
 import type { AgentChat, Doc, FileMeta, Version } from './types'
 
-interface S3DSchema extends DBSchema {
-  docs: { key: string; value: Doc; indexes: { byUpdated: number } }
-  versions: { key: string; value: Version; indexes: { byDoc: string } }
-  /** Metadata only; the bytes live in the `s3d-files` Cache Storage bucket. */
-  files: { key: string; value: FileMeta; indexes: { byOpened: number; byDoc: string } }
-  chats: { key: string; value: AgentChat; indexes: { byDoc: string } }
-  settings: { key: string; value: { key: string; value: unknown } }
-}
-
-let dbPromise: Promise<IDBPDatabase<S3DSchema>> | null = null
-
-export function getDb() {
-  dbPromise ??= openDB<S3DSchema>('s3d', 1, {
-    upgrade(db) {
-      db.createObjectStore('docs', { keyPath: 'id' }).createIndex('byUpdated', 'updatedAt')
-      db.createObjectStore('versions', { keyPath: 'id' }).createIndex('byDoc', 'docId')
-      const files = db.createObjectStore('files', { keyPath: 'id' })
-      files.createIndex('byOpened', 'lastOpenedAt')
-      files.createIndex('byDoc', 'docId')
-      db.createObjectStore('chats', { keyPath: 'id' }).createIndex('byDoc', 'docId')
-      db.createObjectStore('settings', { keyPath: 'key' })
-    },
-  }).then((db) => secureDb(db, 's3d'))
-  return dbPromise
-}
+export const s3dDocsStore = recordStore<Doc>(t.s3dDocs, { key: 'id', columns: (d) => ({ updatedAt: d.updatedAt }) })
+export const s3dVersionsStore = recordStore<Version>(t.s3dVersions, { key: 'id', columns: (v) => ({ docId: v.docId }) })
+/** Metadata only; the bytes live in the `s3d-files` Cache Storage bucket. */
+export const filesStore = recordStore<FileMeta>(t.s3dFiles, {
+  key: 'id',
+  columns: (f) => ({ docId: f.docId ?? null, lastOpenedAt: f.lastOpenedAt }),
+})
+export const s3dChatsStore = recordStore<AgentChat>(t.s3dChats, { key: 'id', columns: (c) => ({ docId: c.docId }) })
+export const s3dSettingsStore = recordStore<{ key: string; value: unknown }>(t.s3dSettings, { key: 'key' })
 
 export const uid = () => crypto.randomUUID()
 
 export const docsRepo = {
   async list() {
-    return (await (await getDb()).getAllFromIndex('docs', 'byUpdated')).reverse()
+    return s3dDocsStore.list({ orderBy: [desc(t.s3dDocs.updatedAt)] })
   },
   async get(id: string) {
-    return (await getDb()).get('docs', id)
+    return s3dDocsStore.get(id)
   },
   async put(doc: Doc) {
-    await (await getDb()).put('docs', doc)
+    await s3dDocsStore.put(doc)
   },
   async remove(id: string) {
-    const db = await getDb()
-    await db.delete('docs', id)
-    for (const v of await db.getAllFromIndex('versions', 'byDoc', id)) await db.delete('versions', v.id)
+    await (
+      await getDb()
+    ).transaction(async (tx) => {
+      await s3dVersionsStore.removeWhere(eq(t.s3dVersions.docId, id), tx)
+      await s3dDocsStore.remove(id, tx)
+    })
   },
 }
 
 export const versionsRepo = {
   async list(docId: string) {
-    return (await (await getDb()).getAllFromIndex('versions', 'byDoc', docId)).sort((a, b) => b.createdAt - a.createdAt)
+    return (await s3dVersionsStore.list({ where: eq(t.s3dVersions.docId, docId) })).sort((a, b) => b.createdAt - a.createdAt)
   },
   async add(doc: Doc, label: string) {
     const version: Version = { id: uid(), docId: doc.id, label, createdAt: Date.now(), doc: structuredClone(doc) }
-    await (await getDb()).put('versions', version)
+    await s3dVersionsStore.put(version)
     return version
   },
   async remove(id: string) {
-    await (await getDb()).delete('versions', id)
+    await s3dVersionsStore.remove(id)
   },
 }
 
 export const chatsRepo = {
   async list(docId: string) {
-    return (await (await getDb()).getAllFromIndex('chats', 'byDoc', docId)).sort((a, b) => b.updatedAt - a.updatedAt)
+    return (await s3dChatsStore.list({ where: eq(t.s3dChats.docId, docId) })).sort((a, b) => b.updatedAt - a.updatedAt)
   },
   async get(id: string) {
-    return (await getDb()).get('chats', id)
+    return s3dChatsStore.get(id)
   },
   async put(chat: AgentChat) {
-    await (await getDb()).put('chats', chat)
+    await s3dChatsStore.put(chat)
   },
   async remove(id: string) {
-    await (await getDb()).delete('chats', id)
+    await s3dChatsStore.remove(id)
   },
 }
 
 export const settingsRepo = {
   async get<T>(key: string, fallback: T): Promise<T> {
-    return ((await (await getDb()).get('settings', key))?.value as T) ?? fallback
+    return ((await s3dSettingsStore.get(key))?.value as T) ?? fallback
   },
   async set(key: string, value: unknown) {
-    await (await getDb()).put('settings', { key, value })
+    await s3dSettingsStore.put({ key, value })
   },
 }

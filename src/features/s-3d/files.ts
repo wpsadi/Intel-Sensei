@@ -1,11 +1,14 @@
+import { desc } from 'drizzle-orm'
+
+import * as t from '@/db/schema'
 import { BLOB_BUCKETS, putBlob, readBlob } from '@/features/vault/blob'
 
-import { getDb, uid } from './db'
+import { filesStore, uid } from './db'
 import type { FileMeta } from './types'
 
 /**
- * Opened and imported files: bytes go into the `s3d-files` Cache Storage bucket, metadata into the IndexedDB
- * `files` store. Nodes reference a file with a `s3d-file:<id>` src that is resolved to an object URL at render time.
+ * Opened and imported files: bytes go into the `s3d-files` Cache Storage bucket, metadata into the PGlite
+ * `s3d_files` table. Nodes reference a file with a `s3d-file:<id>` src that is resolved to an object URL at render time.
  */
 const BUCKET = BLOB_BUCKETS[1]
 const SCHEME = 's3d-file:'
@@ -25,7 +28,7 @@ export function kindOf(file: { name: string; type: string }): FileMeta['kind'] {
   return 'other'
 }
 
-/** Stores the bytes in the cache bucket and the metadata in IndexedDB. Resolves with the `s3d-file:` ref. */
+/** Stores the bytes in the cache bucket and the metadata in PGlite. Resolves with the `s3d-file:` ref. */
 export async function storeFile(file: Blob, name = (file as File).name ?? 'file', docId?: string) {
   const id = uid()
   await putBlob(BUCKET, keyFor(id), file, name)
@@ -39,7 +42,7 @@ export async function storeFile(file: Blob, name = (file as File).name ?? 'file'
     addedAt: Date.now(),
     lastOpenedAt: Date.now(),
   }
-  await (await getDb()).put('files', meta)
+  await filesStore.put(meta)
   return `${SCHEME}${id}`
 }
 
@@ -74,22 +77,21 @@ export async function fileDataUrl(src: string) {
 }
 
 export async function listFiles() {
-  return (await (await getDb()).getAllFromIndex('files', 'byOpened')).reverse()
+  return filesStore.list({ orderBy: [desc(t.s3dFiles.lastOpenedAt)] })
 }
 
 export async function getFileMeta(src: string) {
-  return isFileRef(src) ? (await getDb()).get('files', fileIdOf(src)) : undefined
+  return isFileRef(src) ? filesStore.get(fileIdOf(src)) : undefined
 }
 
 export async function touchFile(id: string) {
-  const db = await getDb()
-  const meta = await db.get('files', id)
-  if (meta) await db.put('files', { ...meta, lastOpenedAt: Date.now() })
+  const meta = await filesStore.get(id)
+  if (meta) await filesStore.put({ ...meta, lastOpenedAt: Date.now() })
 }
 
 export async function deleteFile(id: string) {
   await (await caches.open(BUCKET)).delete(keyFor(id))
-  await (await getDb()).delete('files', id)
+  await filesStore.remove(id)
   objectUrls.delete(`${SCHEME}${id}`)
 }
 

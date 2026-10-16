@@ -1,62 +1,51 @@
-import { vault } from '@/features/vault/vault'
+import { and, eq, sql } from 'drizzle-orm'
+
+import { getDb } from '@/db/client'
+import { memoryVectors } from '@/db/schema'
 
 import type { VectorKind } from '../types'
-import type { VaultMessage, VectorRequest, VectorResponse } from './vector.worker'
 
 type Kind = VectorKind
-type Pending = { resolve: (value: unknown) => void; reject: (error: Error) => void }
 
-let worker: Worker | null = null
-let nextId = 1
-const pending = new Map<number, Pending>()
+const literal = (vector: Float32Array) => `[${Array.from(vector).join(',')}]`
 
-/** Gives the worker the data key (a CryptoKey can be passed to a worker as is) and the write mode. */
-function sendVault(target: Worker) {
-  const { key, encrypting } = vault.snapshot()
-  target.postMessage({ type: 'vault', key, encrypting } satisfies VaultMessage)
-}
-
-vault.subscribe(() => {
-  if (worker) sendVault(worker)
-})
-
-function getWorker() {
-  if (worker) return worker
-  worker = new Worker(new URL('./vector.worker.ts', import.meta.url), { type: 'module' })
-  sendVault(worker)
-  worker.onmessage = (event: MessageEvent<VectorResponse>) => {
-    const reply = event.data
-    const waiting = pending.get(reply.id)
-    if (!waiting) return
-    pending.delete(reply.id)
-    if (reply.ok) waiting.resolve(reply.result)
-    else waiting.reject(new Error(reply.error))
-  }
-  worker.onerror = () => {
-    // The worker died: fail what is waiting and start a new one on the next call.
-    for (const waiting of pending.values()) waiting.reject(new Error('Vector worker stopped'))
-    pending.clear()
-    worker = null
-  }
-  return worker
-}
-
-type Distribute<T> = T extends unknown ? Omit<T, 'id'> : never
-
-function call<T>(request: Distribute<VectorRequest>) {
-  return new Promise<T>((resolve, reject) => {
-    const id = nextId++
-    pending.set(id, { resolve: resolve as (value: unknown) => void, reject })
-    getWorker().postMessage({ ...request, id })
-  })
-}
-
-/** Search over the saved embeddings. The index is built and queried in a Web Worker, so the page never waits on it. */
+/** Search over the saved embeddings, in pgvector: each kind has its own HNSW index, queried by cosine distance. */
 export const vectorIndex = {
-  /** Saves a vector in IndexedDB and adds it to the index. */
-  upsert: (kind: Kind, refId: string, vector: Float32Array) => call<null>({ type: 'upsert', kind, refId, vector }),
-  remove: (kind: Kind, refId: string) => call<null>({ type: 'remove', kind, refId }),
-  /** The `k` nearest ids to the vector, best first. */
-  search: (kind: Kind, vector: Float32Array, k = 10) => call<{ refId: string; score: number }[]>({ type: 'search', kind, vector, k }),
-  size: (kind: Kind) => call<number>({ type: 'size', kind }),
+  /** Saves a vector, replacing the one the item had. */
+  async upsert(kind: Kind, refId: string, vector: Float32Array) {
+    const db = await getDb()
+    const row = { key: `${kind}:${refId}`, kind, refId, embedding: vector }
+    await db
+      .insert(memoryVectors)
+      .values(row)
+      .onConflictDoUpdate({ target: memoryVectors.key, set: { embedding: vector } })
+  },
+
+  async remove(kind: Kind, refId: string) {
+    await (await getDb()).delete(memoryVectors).where(eq(memoryVectors.key, `${kind}:${refId}`))
+  },
+
+  /** The `k` nearest ids to the vector, best first. `score` is cosine similarity: 1 is identical. */
+  async search(kind: Kind, vector: Float32Array, k = 10): Promise<{ refId: string; score: number }[]> {
+    const distance = sql<number>`${memoryVectors.embedding} <=> ${literal(vector)}::vector`
+    const rows = await (
+      await getDb()
+    )
+      .select({ refId: memoryVectors.refId, distance })
+      .from(memoryVectors)
+      .where(and(eq(memoryVectors.kind, kind)))
+      .orderBy(distance)
+      .limit(k)
+    return rows.map((row) => ({ refId: row.refId, score: 1 - Number(row.distance) }))
+  },
+
+  async size(kind: Kind) {
+    const rows = await (
+      await getDb()
+    )
+      .select({ count: sql<number>`count(*)::int` })
+      .from(memoryVectors)
+      .where(eq(memoryVectors.kind, kind))
+    return rows[0]?.count ?? 0
+  },
 }

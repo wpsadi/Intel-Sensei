@@ -1,6 +1,5 @@
-import { type DBSchema, type IDBPDatabase, openDB } from 'idb'
-
-import { secureDb } from '@/features/vault/secure-db'
+import * as t from '@/db/schema'
+import { recordStore } from '@/db/store'
 
 /** What the user decided for a site: 'full' lets it use its own cookies and storage, 'restricted' keeps it sandboxed. */
 export type Access = 'full' | 'restricted'
@@ -14,30 +13,17 @@ export interface SessionGrants {
   permissions: string[]
 }
 
-interface ISBrowseDB extends DBSchema {
-  grants: { key: string; value: SessionGrants }
-}
-
-let dbPromise: Promise<IDBPDatabase<ISBrowseDB>> | null = null
-
-function getDb() {
-  dbPromise ??= openDB<ISBrowseDB>('sensei-sbrowse', 1, {
-    upgrade(db) {
-      db.createObjectStore('grants', { keyPath: 'id' })
-    },
-  }).then((db) => secureDb(db, 'sensei-sbrowse'))
-  return dbPromise
-}
+export const grantsStore = recordStore<SessionGrants>(t.sbrowseGrants, { key: 'id' })
 
 export async function loadGrants(): Promise<Record<string, SessionGrants>> {
-  const all = await (await getDb()).getAll('grants')
+  const all = await grantsStore.list()
   return Object.fromEntries(all.map((grants) => [grants.id, grants]))
 }
 
 export async function saveGrants(grants: SessionGrants) {
-  await (await getDb()).put('grants', grants)
+  await grantsStore.put(grants)
 }
 
 export async function deleteGrants(id: string) {
-  await (await getDb()).delete('grants', id)
+  await grantsStore.remove(id)
 }

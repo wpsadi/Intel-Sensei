@@ -22,7 +22,7 @@ import { TODO_INSTRUCTIONS, createTodoTools } from '@/ai/tools/todo'
 import { currentTodos, messageText } from '@/ai/utils/messages'
 import { describeToolCall } from '@/ai/utils/tool-steps'
 import { useAskSenseiStore } from '@/features/ask-sensei/ask-sensei.store'
-import { uid } from '@/features/note/db/idb'
+import { uid } from '@/features/note/db/changes'
 import type { ChatPart, ChatTodoList } from '@/features/note/db/types'
 
 /** Replaces the item with the same id, or adds it at the end. */

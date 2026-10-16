@@ -1,5 +1,5 @@
-import { type DBSchema, type IDBPDatabase, openDB } from 'idb'
-
+import * as t from '@/db/schema'
+import { recordStore } from '@/db/store'
 import { fromBase64, toBase64 } from '@/features/vault/bytes'
 
 /** The data key, locked by a key made from the password. Without the password there is no way to open it. */
@@ -32,23 +32,11 @@ export interface Profile {
 
 export type LockMode = 'none' | 'lock' | 'encrypted'
 
-interface ProfileSchema extends DBSchema {
-  profiles: { key: string; value: Profile }
-}
-
 const PROFILE_ID = 'default'
 const ITERATIONS = 310_000
 
-let dbPromise: Promise<IDBPDatabase<ProfileSchema>> | null = null
-
-function getDb() {
-  dbPromise ??= openDB<ProfileSchema>('sensei-profile', 1, {
-    upgrade(db) {
-      db.createObjectStore('profiles', { keyPath: 'id' })
-    },
-  })
-  return dbPromise
-}
+/** Never encrypted: it holds what unlocks the vault. */
+export const profileStore = recordStore<Profile>(t.profiles, { key: 'id', plain: true })
 
 async function derive(password: string, salt: Uint8Array<ArrayBuffer>, iterations: number) {
   const key = await crypto.subtle.importKey('raw', new TextEncoder().encode(password), 'PBKDF2', false, ['deriveBits'])
@@ -66,7 +54,7 @@ function sameBytes(a: Uint8Array, b: Uint8Array) {
 
 export const profileRepo = {
   async get(): Promise<Profile | undefined> {
-    return (await getDb()).get('profiles', PROFILE_ID)
+    return profileStore.get(PROFILE_ID)
   },
 
   async mode(): Promise<LockMode> {
@@ -82,9 +70,7 @@ export const profileRepo = {
   async setPassword(password: string) {
     const salt = crypto.getRandomValues(new Uint8Array(16))
     const hash = await derive(password, salt, ITERATIONS)
-    await (
-      await getDb()
-    ).put('profiles', {
+    await profileStore.put({
       id: PROFILE_ID,
       passwordHash: toBase64(hash),
       salt: toBase64(salt),
@@ -95,12 +81,12 @@ export const profileRepo = {
 
   /** Encryption mode: saves the wrapped data key, replacing any lock-only hash. */
   async saveEncryption(encryption: EncryptionRecord) {
-    await (await getDb()).put('profiles', { id: PROFILE_ID, encryption, updatedAt: Date.now() })
+    await profileStore.put({ id: PROFILE_ID, encryption, updatedAt: Date.now() })
   },
 
   /** Removes the password, whichever mode it was for. */
   async clearPassword() {
-    await (await getDb()).put('profiles', { id: PROFILE_ID, updatedAt: Date.now() })
+    await profileStore.put({ id: PROFILE_ID, updatedAt: Date.now() })
   },
 
   /** Lock-only check: true when the password matches the stored hash. With no hash saved, anything matches. */
