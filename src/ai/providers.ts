@@ -85,7 +85,7 @@ export const thinkingSummary = (
     ? { anthropic: { thinking: { type: 'adaptive', display: 'summarized' }, effort } }
     : provider === 'google'
       ? { google: { thinkingConfig: { thinkingLevel: effort, includeThoughts: true } } satisfies GoogleLanguageModelOptions }
-      : { openai: { reasoningSummary: 'auto', store: true } }
+      : { openai: { reasoningSummary: 'auto', store: true, systemMessageMode: 'system' } }
 
 /** A provider and one of its models. */
 export interface ModelChoice {
