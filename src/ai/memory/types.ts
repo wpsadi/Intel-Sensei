@@ -22,8 +22,12 @@ export const memoryScope = {
 /** Memory saved before scopes existed has none; it belongs to Ask Sensei. */
 export const inScope = (item: { scope?: MemoryScope }, scope: MemoryScope) => (item.scope ?? ASK_SCOPE) === scope
 
-/** The kinds that are searched by meaning, each with its own HNSW index. */
-export type VectorKind = 'semantic' | 'episodic' | 'procedural'
+/**
+ * The buckets in the pgvector index, each with its own HNSW index. Capabilities
+ * are installed skills and playbooks, kept separate from user memory so a
+ * capability lookup cannot accidentally return a personal fact or conversation.
+ */
+export type VectorKind = 'semantic' | 'episodic' | 'procedural' | 'capability'
 
 /** A fact or piece of knowledge. Pinned facts are short and always relevant, such as the user's name. */
 export interface SemanticFact {

@@ -662,6 +662,42 @@ async def c_pip(args, stdin):
     return f"Installed {', '.join(names)}\n"
 
 
+def c_latex(args, stdin):
+    """A small LaTeX-aware terminal command for the Pyodide runtime.
+
+    Pyodide does not ship a native TeX engine.  Keep the command useful and
+    explicit: validate a .tex source and point the agent at the supported
+    Python/PyLaTeX workflow instead of pretending that a PDF was compiled.
+    """
+    if not args or args[0] in ("--help", "-h"):
+        return (
+            "LaTeX is available as a source workflow in this browser terminal.\n"
+            "Usage: latex --check file.tex\n"
+            "Generate .tex with Python (or pip install pylatex); a native TeX/PDF compiler is not bundled in Pyodide.\n"
+        )
+    check = args[0] in ("--check", "-c")
+    path = args[1] if check and len(args) > 1 else (args[0] if not check else None)
+    if not path:
+        raise Fail("usage: latex --check file.tex")
+    text = read_text(path)
+    if not path.lower().endswith((".tex", ".latex")):
+        raise Fail(f"{path}: expected a .tex or .latex source file")
+    # These checks catch the common malformed source cases without claiming
+    # to implement TeX parsing.
+    if text.count("{") != text.count("}"):
+        raise Fail(f"{path}: unmatched braces")
+    stack = []
+    for match in re.finditer(r"\\(begin|end)\s*\{([^}]+)\}", text):
+        kind, environment = match.groups()
+        if kind == "begin":
+            stack.append(environment)
+        elif not stack or stack.pop() != environment:
+            raise Fail(f"{path}: \\begin/\\end environments do not match")
+    if stack:
+        raise Fail(f"{path}: \\begin/\\end environments do not match")
+    return f"{path}: LaTeX source looks balanced ({len(text)} characters). Use a TeX engine outside Pyodide to compile it.\n"
+
+
 async def run_code(code, namespace):
     """Runs Python, returns (what it printed plus the value of a last expression, exit code). Errors come back as text."""
     out = io.StringIO()
@@ -717,7 +753,7 @@ COMMANDS = {
     "grep": c_grep, "find": c_find, "mkdir": c_mkdir, "rm": c_rm, "cp": c_cp, "mv": c_mv, "touch": c_touch,
     "sort": c_sort, "uniq": c_uniq, "stat": c_stat, "du": c_du, "tree": c_tree, "file": c_file, "unzip": c_unzip,
     "pdftotext": c_pdftotext, "pdfinfo": c_pdfinfo, "pdfimages": c_pdfimages, "curl": c_curl, "wget": c_wget, "pip": c_pip, "pip3": c_pip,
-    "python": c_python, "python3": c_python, "help": c_help,
+    "python": c_python, "python3": c_python, "latex": c_latex, "tex": c_latex, "help": c_help,
 }
 
 

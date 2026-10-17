@@ -70,7 +70,17 @@ describe('PGlite database', () => {
     expect(hits.map((hit) => hit.refId)).toEqual(['near', 'far'])
     expect(hits[0].score).toBeCloseTo(1)
     expect(await vectorIndex.size('semantic')).toBe(2)
+    expect(await vectorIndex.has('semantic', 'near')).toBe(true)
+    expect(await vectorIndex.has('semantic', 'missing')).toBe(false)
     await vectorIndex.remove('semantic', 'far')
     expect(await vectorIndex.size('semantic')).toBe(1)
+  })
+
+  it('rejects vectors that cannot produce a cosine similarity', async () => {
+    await expect(vectorIndex.upsert('semantic', 'wrong-size', new Float32Array(3))).rejects.toThrow('dimensions')
+    await expect(vectorIndex.upsert('semantic', 'zero', new Float32Array(768))).rejects.toThrow('zero vector')
+    const invalid = unit(0)
+    invalid[1] = Number.NaN
+    await expect(vectorIndex.search('semantic', invalid)).rejects.toThrow('non-finite')
   })
 })

@@ -37,7 +37,6 @@ export const MIGRATIONS: string[] = [
   CREATE INDEX IF NOT EXISTS memory_vectors_semantic ON memory_vectors USING hnsw (embedding vector_cosine_ops) WHERE kind = 'semantic';
   CREATE INDEX IF NOT EXISTS memory_vectors_episodic ON memory_vectors USING hnsw (embedding vector_cosine_ops) WHERE kind = 'episodic';
   CREATE INDEX IF NOT EXISTS memory_vectors_procedural ON memory_vectors USING hnsw (embedding vector_cosine_ops) WHERE kind = 'procedural';
-
   CREATE TABLE IF NOT EXISTS profiles (id text PRIMARY KEY, data jsonb NOT NULL);
   CREATE TABLE IF NOT EXISTS sbrowse_grants (id text PRIMARY KEY, data jsonb NOT NULL);
 
@@ -51,4 +50,7 @@ export const MIGRATIONS: string[] = [
   CREATE INDEX IF NOT EXISTS s3d_chats_doc ON s3d_chats (doc_id);
   CREATE TABLE IF NOT EXISTS s3d_settings (key text PRIMARY KEY, data jsonb NOT NULL);
   `,
+  // Capabilities were added after the initial schema. Keeping this as a separate
+  // migration makes existing PGlite databases pick up their HNSW index too.
+  `CREATE INDEX IF NOT EXISTS memory_vectors_capability ON memory_vectors USING hnsw (embedding vector_cosine_ops) WHERE kind = 'capability';`,
 ]

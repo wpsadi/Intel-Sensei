@@ -61,6 +61,25 @@ describe('the skill tools', () => {
     expect(await run(tools, 'use_skill', { name: '/standup' })).toContain('Yesterday, today, blockers')
   })
 
+  it('lookup_capability returns matching instructions and strips the wiu marker', async () => {
+    await Skills.save({
+      name: 'excel-workbook',
+      description: 'Create and edit Excel workbooks',
+      body: 'Use pandas and openpyxl.',
+      source: 'user',
+    })
+    const out = await run(createSkillTools(), 'lookup_capability', { query: 'wiu Excel workbook' })
+    expect(out).toContain('excel-workbook')
+    expect(out).toContain('Use pandas and openpyxl.')
+  })
+
+  it('lookup_capability exposes the built-in LaTeX workflow', async () => {
+    const out = await run(createSkillTools(), 'lookup_capability', { query: 'wiu SwiftLaTeX terminal' })
+    expect(out).toContain('terminal-latex')
+    expect(out).toContain('latex --check')
+    expect(out).toContain('SwiftLaTeX compiler')
+  })
+
   it('find_skill lists skills.sh results', async () => {
     vi.stubGlobal(
       'fetch',

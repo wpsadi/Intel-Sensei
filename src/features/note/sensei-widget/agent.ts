@@ -360,7 +360,7 @@ async function runSensei({
       tools,
       // Notes, blocks, databases, files and web: the model picks the tools the request needs.
       toolSelect: {
-        alwaysInclude: ['webSearch', 'search_notes', 'read_note', 'open_note', 'list_blocks', 'read_block', 'use_skill'],
+        alwaysInclude: ['webSearch', 'search_notes', 'read_note', 'open_note', 'list_blocks', 'read_block', 'lookup_capability', 'use_skill'],
         max: 10,
       },
       messages: modelMessages,

@@ -22,10 +22,10 @@ interface AskSenseiState {
   ready: boolean
   chats: Chat[]
   messages: Record<string, ChatMessage[]>
-  /** Id of the Sensei reply that is still streaming, if any. */
-  streamingId: string | null
-  /** Stops the streaming reply. What arrived so far is kept and marked as interrupted. */
-  stopReply(): void
+  /** Id of the Sensei reply still streaming in each chat, by chat id. Chats reply independently of each other. */
+  streaming: Record<string, string>
+  /** Stops the streaming reply of a chat. What arrived so far is kept and marked as interrupted. */
+  stopReply(chatId: string | null | undefined): void
   /** Sends the user's answers to the questions Sensei is waiting on, so the reply carries on. */
   answerQuestions(chatId: string, messageId: string, answers: ChatAnswers): void
 
@@ -83,14 +83,13 @@ export const useAskSenseiStore = create<AskSenseiState>()((set, get) => {
     set((state) => ({ chats: state.chats.map((item) => (item.id === chatId ? updated : item)) }))
   }
 
-  /** Aborts the reply that is streaming now. */
-  let abort: AbortController | null = null
-  /** The chat the streaming reply belongs to. */
-  let runChatId: string | null = null
-  /** Messages sent to steer the streaming reply that it has not taken yet. */
-  let steerBox: PendingMessage[] = []
-  /** Resolves the questions the streaming reply is waiting on. */
-  let pendingAnswers: ((answers: ChatAnswers) => void) | null = null
+  /** What each chat's streaming reply needs: a way to stop it, the steering messages it has not taken yet, and its pending questions. */
+  interface Run {
+    abort: AbortController
+    steerBox: PendingMessage[]
+    pendingAnswers: ((answers: ChatAnswers) => void) | null
+  }
+  const runs = new Map<string, Run>()
 
   /** Streams Sensei's reply to the conversation so far, then saves it. */
   const chatProfiles = new Map<string, ChatProfile>()
@@ -99,14 +98,13 @@ export const useAskSenseiStore = create<AskSenseiState>()((set, get) => {
     const todos = currentTodos(get().messages[chatId] ?? [])
     const reply: ChatMessage = { id: uid(), chatId, role: 'assistant', content: '', createdAt: Date.now() }
     set((state) => ({
-      streamingId: reply.id,
+      streaming: { ...state.streaming, [chatId]: reply.id },
       messages: { ...state.messages, [chatId]: [...(state.messages[chatId] ?? []), reply] },
     }))
 
     const controller = new AbortController()
-    abort = controller
-    runChatId = chatId
-    steerBox = []
+    const run: Run = { abort: controller, steerBox: [], pendingAnswers: null }
+    runs.set(chatId, run)
     const current = () => get().messages[chatId]?.find((message) => message.id === reply.id)
     // Thinking runs from the request until the first words of the reply.
     const startedAt = Date.now()
@@ -140,7 +138,7 @@ export const useAskSenseiStore = create<AskSenseiState>()((set, get) => {
             todos,
             profile: chatProfiles.get(chatId),
             takeSteers: async () => {
-              const taken = steerBox.splice(0)
+              const taken = run.steerBox.splice(0)
               const turns: ChatTurn[] = []
               for (const pending of taken) {
                 removePending(chatId, pending.id)
@@ -181,7 +179,7 @@ export const useAskSenseiStore = create<AskSenseiState>()((set, get) => {
             onAsk: (questions) =>
               new Promise<ChatAnswers>((resolve, reject) => {
                 patchMessage(chatId, reply.id, { questions: { questions } })
-                pendingAnswers = resolve
+                run.pendingAnswers = resolve
                 // Stopping the reply while it waits gives up on the questions.
                 controller.signal.addEventListener('abort', () => reject(new Error('Stopped')), { once: true })
               }),
@@ -210,11 +208,14 @@ export const useAskSenseiStore = create<AskSenseiState>()((set, get) => {
       step.status === 'running' ? { ...step, status: 'failed' as const, detail: 'Stopped' } : step,
     )
     const workedSeconds = steps?.length ? Math.max(1, Math.round((Date.now() - startedAt) / 1000)) : undefined
-    pendingAnswers = null
+    run.pendingAnswers = null
     const interrupted = controller.signal.aborted || undefined
-    if (abort === controller) abort = null
     patchMessage(chatId, reply.id, { content: finalText, reasoning: thoughts, reasoningSeconds, interrupted, workedSeconds, steps })
-    set({ streamingId: null })
+    runs.delete(chatId)
+    set((state) => {
+      const { [chatId]: _done, ...rest } = state.streaming
+      return { streaming: rest }
+    })
     await chatMessagesRepo.put({
       ...reply,
       content: finalText,
@@ -233,14 +234,9 @@ export const useAskSenseiStore = create<AskSenseiState>()((set, get) => {
     await touchChat(chatId)
     if (!interrupted) void episodicMemory.append({ id: reply.id, chatId, role: 'assistant', content: finalText })
 
-    // The next message sent meanwhile goes now; steering messages the reply never took are sent like queued ones.
-    runChatId = null
-    steerBox = []
-    demoteSteering()
-    const next = takeNextPending(
-      chatId,
-      get().chats.map((item) => item.id),
-    )
+    // The next message sent to this chat meanwhile goes now; steering messages the reply never took are sent like queued ones.
+    demoteSteering(chatId)
+    const next = takeNextPending(chatId)
     if (next) void get().sendMessage(next.chatId, next.message.text, next.message.attachments)
   }
 
@@ -262,18 +258,19 @@ export const useAskSenseiStore = create<AskSenseiState>()((set, get) => {
     ready: false,
     chats: [],
     messages: {},
-    streamingId: null,
+    streaming: {},
 
-    stopReply() {
-      abort?.abort()
+    stopReply(chatId) {
+      if (chatId) runs.get(chatId)?.abort.abort()
     },
 
     answerQuestions(chatId, messageId, answers) {
       const message = get().messages[chatId]?.find((item) => item.id === messageId)
-      if (!message?.questions || !pendingAnswers) return
+      const run = runs.get(chatId)
+      if (!message?.questions || !run?.pendingAnswers) return
       patchMessage(chatId, messageId, { questions: { ...message.questions, answers } })
-      pendingAnswers(answers)
-      pendingAnswers = null
+      run.pendingAnswers(answers)
+      run.pendingAnswers = null
     },
 
     async load() {
@@ -300,8 +297,10 @@ export const useAskSenseiStore = create<AskSenseiState>()((set, get) => {
       // An app that limits Sensei to its own tools sets that on every message; replies, retries and queued messages reuse it.
       if (profile) chatProfiles.set(chat.id, profile)
       // A reply is running: the message waits for it, or steers it when it belongs to this chat.
-      if (get().streamingId) {
-        submitWhileBusy(chat.id, { text, attachments }, chat.id === runChatId ? (pending) => steerBox.push(pending) : undefined)
+      // Only a reply in this same chat makes it wait; other chats may be replying at the same time.
+      const busy = runs.get(chat.id)
+      if (busy) {
+        submitWhileBusy(chat.id, { text, attachments }, (pending) => busy.steerBox.push(pending))
         return chat.id
       }
       const isFirstMessage = (get().messages[chat.id] ?? []).length === 0
@@ -317,7 +316,7 @@ export const useAskSenseiStore = create<AskSenseiState>()((set, get) => {
     },
 
     async retryReply(chatId) {
-      if (get().streamingId) return
+      if (runs.has(chatId)) return
       const messages = get().messages[chatId] ?? []
       const last = messages.at(-1)
       if (last?.role === 'assistant') {
@@ -369,6 +368,7 @@ export const useAskSenseiStore = create<AskSenseiState>()((set, get) => {
     },
 
     async deleteChat(id) {
+      runs.get(id)?.abort.abort()
       // Attachments live in Cache Storage, outside IndexedDB, so they are removed separately.
       const files = (get().messages[id] ?? []).flatMap((message) => message.attachments ?? [])
       await Promise.all(files.map((file) => deleteMedia(file.src)))

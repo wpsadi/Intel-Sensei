@@ -52,9 +52,11 @@ export function takeNextPending(chatId: string, others: string[] = []): { chatId
   return { chatId: from, message }
 }
 
-/** A reply ended without taking some steering messages, so they wait like queued ones from now on. */
-export function demoteSteering() {
+/** A reply ended without taking some steering messages, so they wait like queued ones from now on. Only `chatId`'s when given. */
+export function demoteSteering(chatId?: string) {
   useSendQueue.setState((state) => ({
-    items: Object.fromEntries(Object.entries(state.items).map(([id, list]) => [id, list.map((item) => ({ ...item, steer: false }))])),
+    items: Object.fromEntries(
+      Object.entries(state.items).map(([id, list]) => [id, chatId && id !== chatId ? list : list.map((item) => ({ ...item, steer: false }))]),
+    ),
   }))
 }

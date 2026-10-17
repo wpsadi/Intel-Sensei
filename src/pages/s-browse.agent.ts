@@ -46,7 +46,7 @@ export async function ensureBrowserSkill() {
 /** The agent in SBrowse: web search, the terminal and skills, plus the computer tool for the page. No scraping. */
 export function createBrowserProfile(host: ComputerHost): ChatProfile {
   return {
-    allow: ['webSearch', 'terminal', 'write_file', 'load_skill', 'sandbox_status', 'view_image', 'find_skill', 'use_skill', 'create_skill'],
+    allow: ['webSearch', 'terminal', 'write_file', 'load_skill', 'sandbox_status', 'view_image', 'lookup_capability', 'find_skill', 'use_skill', 'create_skill'],
     tools: { computer: createComputerTool(host) },
     // Read on every step, so the agent always knows the page that is open without the user's message having to say so.
     get instructions() {

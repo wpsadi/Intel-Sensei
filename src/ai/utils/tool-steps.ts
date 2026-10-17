@@ -88,6 +88,8 @@ export function describeToolCall(name: string, args: Record<string, unknown>): {
       return { label: 'Checking the environment' }
     case 'find_skill':
       return { label: 'Looking for a skill', detail: text(args.query) }
+    case 'lookup_capability':
+      return { label: 'Looking up a capability', detail: text(args.query) }
     case 'use_skill':
       return { label: 'Loading a skill', detail: text(args.name) }
     case 'create_skill':

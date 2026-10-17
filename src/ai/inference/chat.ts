@@ -139,7 +139,7 @@ export async function chatWithSensei(
   const selector = createToolSelector({
     model: AI_MODELS.chatModel,
     catalog: catalogOf(tools),
-    alwaysInclude: ['memory', 'scratchpad', 'askUser', 'use_skill'],
+    alwaysInclude: ['memory', 'scratchpad', 'askUser', 'use_skill', 'lookup_capability'],
     max: 8,
     signal: abortSignal,
     onUsage: (usage) => void recordSdkUsage({ provider, model }, usage),

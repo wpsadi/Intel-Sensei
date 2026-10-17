@@ -127,6 +127,15 @@ describe('shell', () => {
     expect(out.length).toBeLessThan(31_000)
     expect(out).toContain('characters left out')
   })
+
+  it('validates LaTeX source and reports malformed environments', async () => {
+    writeTextFile(py, 'equation.tex', '\\documentclass{article}\n\\begin{document}\n$x^2$\n\\end{document}\n')
+    expect(await sh('latex --check equation.tex')).toContain('source looks balanced')
+    writeTextFile(py, 'broken.tex', '\\begin{document}\nmissing end\n')
+    const result = await runShell(py, 'tex --check broken.tex')
+    expect(result.output).toContain('environments do not match')
+    expect(result.code).toBe(1)
+  })
 })
 
 describe('PDFs', () => {

@@ -32,7 +32,7 @@ function AskSenseiPage() {
     ready,
     chats,
     messages,
-    streamingId,
+    streaming,
     stopReply,
     load,
     createChat,
@@ -58,6 +58,7 @@ function AskSenseiPage() {
   const sortedChats = useMemo(() => [...chats].sort((a, b) => b.updatedAt - a.updatedAt), [chats])
   const activeChat = chats.find((chat) => chat.id === chatId)
   const activeMessages = activeChat ? (messages[activeChat.id] ?? []) : []
+  const streamingId = activeChat ? (streaming[activeChat.id] ?? null) : null
   const newestId = sortedChats[0]?.id
   const activeChatId = activeChat?.id
 
@@ -182,7 +183,7 @@ function AskSenseiPage() {
                   onCallChange={setInCall}
                   context={<ContextUsage messages={activeMessages} />}
                   streaming={!!streamingId}
-                  onStop={stopReply}
+                  onStop={() => stopReply(activeChat?.id)}
                 />
               </div>
             </main>

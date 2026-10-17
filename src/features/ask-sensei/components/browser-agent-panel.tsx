@@ -18,7 +18,7 @@ import { WorkedFor } from '@/features/s-3d/agent/worked-for'
 export function BrowserAgentPanel({ page, profile }: { page: string | null; profile?: ChatProfile }) {
   const ready = useAskSenseiStore((state) => state.ready)
   const messagesByChat = useAskSenseiStore((state) => state.messages)
-  const streamingId = useAskSenseiStore((state) => state.streamingId)
+  const streamingByChat = useAskSenseiStore((state) => state.streaming)
   const load = useAskSenseiStore((state) => state.load)
   const sendMessage = useAskSenseiStore((state) => state.sendMessage)
   const stopReply = useAskSenseiStore((state) => state.stopReply)
@@ -27,7 +27,8 @@ export function BrowserAgentPanel({ page, profile }: { page: string | null; prof
   const chatId = searchParams.get('chatId')
   const endRef = React.useRef<HTMLDivElement>(null)
   const messages = chatId ? (messagesByChat[chatId] ?? []) : []
-  const streaming = !!streamingId && messages.some((message) => message.id === streamingId)
+  const streamingId = chatId ? streamingByChat[chatId] : undefined
+  const streaming = !!streamingId
 
   const selectChat = React.useCallback(
     (id: string | null) =>
@@ -138,7 +139,7 @@ export function BrowserAgentPanel({ page, profile }: { page: string | null; prof
         <WidgetComposer
           onSend={(text) => void send(text)}
           streaming={streaming}
-          onStop={stopReply}
+          onStop={() => stopReply(chatId)}
           placeholder="Ask Sensei about this page…"
           history={messages.filter((message) => message.role === 'user').map((message) => message.content)}
         />

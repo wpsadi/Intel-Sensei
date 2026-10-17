@@ -38,6 +38,7 @@ const READ = [
   'load_skill',
   'sandbox_status',
   'view_image',
+  'lookup_capability',
   'find_skill',
   'use_skill',
   'create_skill',

@@ -48,6 +48,7 @@ const TOOLS_ALWAYS = [
   'write_plan',
   'ask_questions',
   'ask_user',
+  'lookup_capability',
   'use_skill',
 ]
 /** Independent checks of a /goal run; each one that fails sends the worker back to work. */

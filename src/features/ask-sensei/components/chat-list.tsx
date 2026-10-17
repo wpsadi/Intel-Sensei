@@ -42,9 +42,7 @@ import { RunningSpinner } from '../terminal/running-spinner'
  */
 function ChatRunning({ chatId }: { chatId: string }) {
   const commandRunning = useCommandRunning(chatId)
-  const replying = useAskSenseiStore(
-    (state) => state.streamingId !== null && (state.messages[chatId] ?? []).some((m) => m.id === state.streamingId),
-  )
+  const replying = useAskSenseiStore((state) => chatId in state.streaming)
   if (!commandRunning && !replying) return null
   return (
     <span className="pointer-events-none absolute top-1 right-1 flex aspect-square w-5 items-center justify-center text-muted-foreground group-focus-within/menu-item:hidden group-hover/menu-item:hidden">
