@@ -1,7 +1,7 @@
 import { tool } from 'ai'
 import { z } from 'zod'
 
-import { FIRECRAWL_KEY } from '@/ai/utils/firecrawl-key'
+import { callFirecrawlMcp, firecrawlMcpConfigured, firecrawlMcpData } from '@/ai/mcp/firecrawl'
 import type { ChatSearch } from '@/features/note/db/types'
 
 export interface WebSearchResult {
@@ -22,16 +22,23 @@ interface FirecrawlResult {
  * search tool below.
  */
 export async function searchWeb(query: string, abortSignal?: AbortSignal): Promise<WebSearchResult> {
-  const apiKey = FIRECRAWL_KEY.value
-  const response = await fetch('https://api.firecrawl.dev/v2/search', {
-    method: 'POST',
-    headers: { 'content-type': 'application/json', ...(apiKey ? { authorization: `Bearer ${apiKey}` } : {}) },
-    body: JSON.stringify({ query, limit: 5 }),
-    signal: abortSignal,
-  })
-  const body = await response.json().catch(() => null)
-  if (!response.ok || !body?.success) throw new Error(body?.error ?? `Web search failed (${response.status})`)
-  const data = body.data as { web?: FirecrawlResult[]; news?: FirecrawlResult[] }
+  let data: { web?: FirecrawlResult[]; news?: FirecrawlResult[] }
+  if (firecrawlMcpConfigured()) {
+    const result = firecrawlMcpData(await callFirecrawlMcp('firecrawl_search', { query, limit: 5 }, abortSignal))
+    const item = z.object({ url: z.string().optional(), title: z.string().optional(), description: z.string().optional() })
+    const parsed = z.union([z.array(item), z.object({ web: z.array(item).optional(), news: z.array(item).optional() })]).parse(result)
+    data = Array.isArray(parsed) ? { web: parsed } : parsed
+  } else {
+    const response = await fetch('https://api.firecrawl.dev/v2/search', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ query, limit: 5 }),
+      signal: abortSignal,
+    })
+    const body = await response.json().catch(() => null)
+    if (!response.ok || !body?.success) throw new Error(body?.error ?? `Web search failed (${response.status})`)
+    data = body.data as { web?: FirecrawlResult[]; news?: FirecrawlResult[] }
+  }
   const results = [...(data.web ?? []), ...(data.news ?? [])].filter((result): result is FirecrawlResult & { url: string } => !!result.url)
   const sources = results.map((result) => ({ url: result.url, title: result.title }))
   const text = results.length

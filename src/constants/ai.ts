@@ -2,6 +2,7 @@
 export const GEMINI_KEY_STORAGE = 'sensei.gemini_api_key'
 /** localStorage key for the Firecrawl API key that web search uses. Stays in this browser only. */
 export const FIRECRAWL_KEY_STORAGE = 'sensei.firecrawl_api_key'
+export const FIRECRAWL_MCP_AUTH_STORAGE = 'sensei.firecrawl_mcp_auth'
 /** localStorage key for the OpenAI API key, used only by the S3D agent. Stays in this browser only. */
 export const OPENAI_KEY_STORAGE = 'sensei.openai_api_key'
 /** localStorage key for an optional OpenAI-compatible base URL (proxy, Azure, OpenRouter…). Stays in this browser only. */
@@ -55,6 +56,7 @@ export const SNOTE_AGENT_CONTEXT_LIMIT = 250_000
 export const SECRET_STORAGE_KEYS = [
   GEMINI_KEY_STORAGE,
   FIRECRAWL_KEY_STORAGE,
+  FIRECRAWL_MCP_AUTH_STORAGE,
   OPENAI_KEY_STORAGE,
   OPENAI_BASE_URL_STORAGE,
   ANTHROPIC_KEY_STORAGE,

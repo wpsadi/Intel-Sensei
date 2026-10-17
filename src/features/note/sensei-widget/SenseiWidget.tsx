@@ -4,7 +4,6 @@ import { matchPath, useLocation, useNavigate } from 'react-router-dom'
 
 import { AI_MODELS } from '@/ai/providers'
 import { warmSandbox } from '@/ai/sandbox/client'
-import { useInstalledSkills } from '@/ai/skills/skills'
 import senseiLogo from '@/assets/sensei.svg'
 import { ContextRing } from '@/components/context-ring'
 import { QueuedMessages } from '@/components/queued-messages'
@@ -25,7 +24,6 @@ import { SNOTE_AGENT_CONTEXT_LIMIT } from '@/constants/ai'
 import { ChatReasoning } from '@/features/ask-sensei/components/chat-reasoning'
 import { ChatSearches } from '@/features/ask-sensei/components/chat-searches'
 import { Markdown } from '@/features/ask-sensei/components/markdown'
-import { skillSuggestions } from '@/features/skills/suggest'
 
 import { widgetChatsRepo } from '../db/repo'
 import type { WidgetChat } from '../db/types'
@@ -47,14 +45,6 @@ export function SenseiWidget() {
   const currentPageId = matchPath('/s-note/:pageId', pathname)?.params.pageId
   // The Python environment starts in the background on every load, so it is ready when Sensei needs it.
   useEffect(() => warmSandbox(), [])
-  // Typing / lists the skills every app shares.
-  const skills = useInstalledSkills()
-  const openSkillSettings = () => {
-    const params = new URLSearchParams(window.location.search)
-    params.set('settings', 'open')
-    params.set('section', 'skills')
-    navigate({ search: `?${params}` })
-  }
   const noteTitle = useNoteStore((s) => (currentPageId && s.pages[currentPageId] ? pageTitle(s.pages[currentPageId].title) : undefined))
 
   const [open, setOpen] = useState(false)
@@ -196,10 +186,8 @@ export function SenseiWidget() {
             <QueuedMessages chatId={chat?.id ?? null} />
             <WidgetComposer
               onSend={send}
-              suggest={(trigger, query) => ({
-                title: 'Skills',
-                items: trigger === '/' ? skillSuggestions(skills, query, openSkillSettings) : [],
-              })}
+              chatId={chat?.id}
+              history={messages.filter((message) => message.role === 'user').map((message) => message.content)}
               streaming={busy}
               onStop={() => chat && stopSensei(chat.id)}
               autoFocus={open}

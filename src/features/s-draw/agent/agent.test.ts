@@ -13,7 +13,20 @@ vi.mock('../s-draw.store', () => ({ useDrawStore: { getState: () => ({ fileId: m
 vi.mock('./chats', () => ({ drawChats: { put: mocks.put } }))
 vi.mock('@/ai/providers', () => ({ AI_MODELS: { chat: { provider: 'google', key: 'test', model: 'test' } }, thinkingSummary: () => ({}) }))
 vi.mock('@/ai/sandbox/client', () => ({ holdSandbox: () => mocks.release }))
-vi.mock('@/ai/sandbox/tools', () => ({ SANDBOX_INSTRUCTIONS: 'sandbox', createSandboxTools: mocks.sandbox }))
+vi.mock('@/ai/tools/general', () => ({ GENERAL_INSTRUCTIONS: 'general tools', createGeneralTools: mocks.sandbox }))
+vi.mock('@/ai/send-mode', () => ({ SEND_MODE: { value: 'queue' } }))
+vi.mock('@/ai/skills/invoke', () => ({
+  applySkillCommand: async (text: string) => (text.startsWith('/diagram') ? `Diagram skill: ${text}` : text),
+}))
+vi.mock('@/ai/skills/tools', () => ({
+  SKILLS_INSTRUCTIONS: 'Skills instructions',
+  createSkillTools: () => ({}),
+  skillsPrompt: async () => 'Installed skills: diagram',
+}))
+vi.mock('./skills', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('./skills')>()),
+  createDrawSkillTools: () => ({}),
+}))
 vi.mock('@/ai/worker/client', () => ({ streamInWorker: mocks.stream }))
 vi.mock('./webmcp', () => ({
   loadDrawTools: async () => [
@@ -22,10 +35,15 @@ vi.mock('./webmcp', () => ({
   ],
 }))
 
+import { SEND_MODE } from '@/ai/send-mode'
+import { useSendQueue } from '@/ai/send-queue'
+
 import { drawSandboxSession, disposeDrawSensei, sendDrawSensei, useDrawRuns } from './agent'
 
 beforeEach(() => {
   vi.clearAllMocks()
+  SEND_MODE.value = 'queue'
+  useSendQueue.setState({ items: {} })
   mocks.fileId = 'file-a'
   useDrawRuns.setState({ live: {}, recent: {}, saved: 0 })
 })
@@ -82,5 +100,89 @@ describe('drawing agent', () => {
     expect(Object.values(state.recent)[0].messages.at(-1)?.error).toBe('Provider unavailable')
     expect(state.live).toEqual({})
     expect(mocks.release).toHaveBeenCalledOnce()
+  })
+})
+
+describe('drawing skills and pending input', () => {
+  it('expands installed skill commands while keeping the user message unchanged', async () => {
+    mocks.stream.mockImplementation(async (start) => {
+      expect(start.messages[0].content).toBe('Diagram skill: /diagram draw a flow')
+      expect(start.instructions).toContain('Installed skills: diagram')
+      return { messages: [], aborted: false }
+    })
+    await sendDrawSensei('/diagram draw a flow', null, () => 'sheet', 'file-a')
+    expect(Object.values(useDrawRuns.getState().recent)[0].messages[0].content).toBe('/diagram draw a flow')
+  })
+
+  it('loads the bundled diagram skill without installing it and applies its defaults', async () => {
+    mocks.stream.mockImplementation(async (start) => {
+      expect(start.instructions).toContain('Default SDraw skill /excalidraw-diagram')
+      expect(start.instructions).toContain('Default SDraw skill /sdraw-large-drawing')
+      expect(start.messages[0].content).toContain('The user ran /excalidraw-diagram')
+      expect(start.messages[0].content).toContain('User request: map the checkout flow')
+      return { messages: [], aborted: false }
+    })
+    await sendDrawSensei('/excalidraw-diagram map the checkout flow', null, () => 'sheet', 'file-a')
+    expect(Object.values(useDrawRuns.getState().recent)[0].messages[0].content).toBe('/excalidraw-diagram map the checkout flow')
+  })
+
+  it('runs queued messages in order after the active reply', async () => {
+    mocks.stream
+      .mockImplementationOnce(async () => {
+        const chat = Object.values(useDrawRuns.getState().live)[0]
+        await sendDrawSensei('Second input', chat, () => 'sheet', 'file-a')
+        expect(useSendQueue.getState().items[chat.id]?.[0].text).toBe('Second input')
+        return { messages: [], aborted: false }
+      })
+      .mockResolvedValue({ messages: [], aborted: false })
+    await sendDrawSensei('First input', null, () => 'sheet', 'file-a')
+    expect(mocks.stream).toHaveBeenCalledTimes(2)
+    const chat = Object.values(useDrawRuns.getState().recent)[0]
+    expect(chat.messages.filter((message) => message.role === 'user').map((message) => message.content)).toEqual([
+      'First input',
+      'Second input',
+    ])
+    expect(useSendQueue.getState().items).toEqual({})
+  })
+
+  it('expands a steering skill and saves it when the worker accepts it', async () => {
+    SEND_MODE.value = 'steer'
+    mocks.stream.mockImplementation(async (_start, handlers) => {
+      let accept!: () => void
+      const accepted = new Promise<void>((resolve) => {
+        accept = resolve
+      })
+      handlers.onRun({
+        steer: (id: string, text: string) => {
+          expect(text).toBe('Diagram skill: /diagram update')
+          handlers.onPart({ type: 'steered', id })
+          accept()
+        },
+      })
+      const chat = Object.values(useDrawRuns.getState().live)[0]
+      await sendDrawSensei('/diagram update', chat, () => 'sheet', 'file-a')
+      await accepted
+      return { messages: [], aborted: false }
+    })
+    await sendDrawSensei('First input', null, () => 'sheet', 'file-a')
+    expect(mocks.stream).toHaveBeenCalledOnce()
+    expect(
+      Object.values(useDrawRuns.getState().recent)[0]
+        .messages.filter((message) => message.role === 'user')
+        .map((message) => message.content),
+    ).toEqual(['First input', '/diagram update'])
+    expect(useSendQueue.getState().items).toEqual({})
+  })
+
+  it('clears pending input when the drawing file is disposed', async () => {
+    mocks.stream.mockImplementation(async () => {
+      const chat = Object.values(useDrawRuns.getState().live)[0]
+      await sendDrawSensei('Do not run', chat, () => 'sheet', 'file-a')
+      disposeDrawSensei('file-a')
+      return { messages: [], aborted: true }
+    })
+    await sendDrawSensei('First input', null, () => 'sheet', 'file-a')
+    expect(mocks.stream).toHaveBeenCalledOnce()
+    expect(useSendQueue.getState().items).toEqual({})
   })
 })

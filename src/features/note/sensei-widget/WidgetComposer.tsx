@@ -1,6 +1,8 @@
 import { X } from 'lucide-react'
 import { type KeyboardEvent, type ReactNode, useEffect, useRef, useState } from 'react'
+import { useSearchParams } from 'react-router-dom'
 
+import { useInstalledSkills } from '@/ai/skills/skills'
 import {
   Composer,
   ComposerActions,
@@ -15,6 +17,8 @@ import { mono } from '@/components/assistant-ui/elements/surfaces'
 import { Button } from '@/components/ui/button'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { formatElapsed, useVoiceNote } from '@/features/ask-sensei/components/use-voice-note'
+import { skillSuggestions } from '@/features/skills/suggest'
+import { useInputHistory } from '@/hooks/use-input-history'
 import { cn } from '@/lib/utils'
 
 export type { ComposerSuggestion }
@@ -32,7 +36,9 @@ export function WidgetComposer({
   toolbarStart,
   disabled,
   suggest,
-  history,
+  history = [],
+  chatId,
+  historyScope,
 }: {
   onSend: (text: string) => void
   streaming: boolean
@@ -42,17 +48,27 @@ export function WidgetComposer({
   /** Extra controls at the left of the toolbar, such as an attach button. */
   toolbarStart?: ReactNode
   disabled?: boolean
-  /** Rows for the list above the box while a `/command` or `@mention` is typed; empty or missing keeps it closed. */
+  /** Additional commands or mentions, combined with the installed skills. */
   suggest?: (trigger: '/' | '@', query: string) => { title: string; items: ComposerSuggestion[] }
   /** Earlier messages, oldest first. Up and Down in the box step through them like a shell. */
   history?: string[]
+  chatId?: string | null
+  historyScope?: string
 }) {
   const [draft, setDraft] = useState('')
   const [caret, setCaret] = useState(0)
   const [active, setActive] = useState(0)
   const [dismissed, setDismissed] = useState(false)
-  // Position in `history` while stepping through it, and the draft that was in the box before.
-  const [recall, setRecall] = useState<{ index: number; stash: string } | null>(null)
+  const recall = useInputHistory({ history, chatId, scope: historyScope ?? chatId, draft, setDraft })
+  const skills = useInstalledSkills()
+  const [, setParams] = useSearchParams()
+  const openSkills = () =>
+    setParams((previous) => {
+      const next = new URLSearchParams(previous)
+      next.set('settings', 'open')
+      next.set('section', 'skills')
+      return next
+    })
   const { mode, seconds, levels, startVoice, finishVoice, cancelVoice } = useVoiceNote(draft, setDraft)
   const inputRef = useRef<HTMLTextAreaElement>(null)
 
@@ -65,11 +81,19 @@ export function WidgetComposer({
     if (!text || disabled) return
     onSend(text)
     setDraft('')
-    setRecall(null)
+    recall.reset()
   }
 
-  const found = suggest ? triggerAt(draft, caret) : null
-  const list = found && suggest && !dismissed ? suggest(found.trigger, found.query) : null
+  const found = triggerAt(draft, caret)
+  const custom = found && suggest ? suggest(found.trigger, found.query) : null
+  const skillItems = found?.trigger === '/' ? skillSuggestions(skills, found.query, custom?.items.length ? undefined : openSkills) : []
+  const list =
+    found && !dismissed && !recall.active
+      ? {
+          title: custom?.title ?? 'Skills',
+          items: [...(custom?.items ?? []), ...skillItems.filter((item) => !custom?.items.some((other) => other.id === item.id))],
+        }
+      : null
   const items = list?.items ?? []
   const open = items.length > 0
   const pick = (item: ComposerSuggestion) => {
@@ -108,41 +132,7 @@ export function WidgetComposer({
         return
       }
     }
-    if (
-      history?.length &&
-      !open &&
-      !event.nativeEvent.isComposing &&
-      !event.shiftKey &&
-      !event.altKey &&
-      !event.metaKey &&
-      !event.ctrlKey
-    ) {
-      const el = event.currentTarget
-      const atStart = el.selectionStart === 0 && el.selectionEnd === 0
-      const atEnd = el.selectionStart === draft.length
-      const show = (text: string) => {
-        setDraft(text)
-        requestAnimationFrame(() => el.setSelectionRange(text.length, text.length))
-      }
-      if (event.key === 'ArrowUp' && (atStart || recall)) {
-        event.preventDefault()
-        const index = recall ? Math.max(0, recall.index - 1) : history.length - 1
-        setRecall({ index, stash: recall?.stash ?? draft })
-        show(history[index])
-        return
-      }
-      if (event.key === 'ArrowDown' && recall && atEnd) {
-        event.preventDefault()
-        if (recall.index >= history.length - 1) {
-          show(recall.stash)
-          setRecall(null)
-        } else {
-          setRecall({ ...recall, index: recall.index + 1 })
-          show(history[recall.index + 1])
-        }
-        return
-      }
-    }
+    if (recall.onKeyDown(event)) return
     if (event.key === 'Enter' && !event.shiftKey && !event.nativeEvent.isComposing) {
       event.preventDefault()
       send()
@@ -224,7 +214,7 @@ export function WidgetComposer({
               setCaret(event.target.selectionStart)
               setActive(0)
               setDismissed(false)
-              setRecall(null)
+              recall.reset()
             }}
             onSelect={(event) => setCaret(event.currentTarget.selectionStart)}
             onKeyDown={onKeyDown}

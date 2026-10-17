@@ -7,7 +7,11 @@ const HINT_MAX = 70
  * The skills a `/` can pick, for the menu above a message box: names that start with what is typed first, then names
  * or descriptions that contain it. `onEmpty` makes the row shown when no skill is installed yet (opens the settings).
  */
-export function skillSuggestions(skills: readonly Skill[], query: string, onEmpty?: () => void): ComposerSuggestion[] {
+export function skillSuggestions(
+  skills: readonly Pick<Skill, 'name' | 'description'>[],
+  query: string,
+  onEmpty?: () => void,
+): ComposerSuggestion[] {
   const q = query.toLowerCase()
   if (!skills.length)
     return onEmpty && !q

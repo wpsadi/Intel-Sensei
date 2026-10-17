@@ -1,7 +1,7 @@
 import { FIRECRAWL_KEY_STORAGE } from '@/constants/ai'
 import { secretGet, secretSet } from '@/features/vault/secrets'
 
-/** The Firecrawl API key for web search, kept in localStorage so it stays in this browser. `FIRECRAWL_KEY.value` is '' when none is saved or storage is blocked. */
+/** The Firecrawl key for shared MCP, search and scraping, stored through the vault-aware secret store. */
 export class FIRECRAWL_KEY {
   static get value(): string {
     return secretGet(FIRECRAWL_KEY_STORAGE)
@@ -10,5 +10,6 @@ export class FIRECRAWL_KEY {
   /** An empty value removes the key. */
   static set value(key: string) {
     secretSet(FIRECRAWL_KEY_STORAGE, key)
+    if (typeof window !== 'undefined') window.dispatchEvent(new Event('sensei:firecrawl-auth'))
   }
 }

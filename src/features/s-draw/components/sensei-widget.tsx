@@ -3,6 +3,7 @@ import { type HTMLAttributes, useEffect, useRef, useState } from 'react'
 
 import senseiLogo from '@/assets/sensei.svg'
 import { ContextRing } from '@/components/context-ring'
+import { QueuedMessages } from '@/components/queued-messages'
 import { TypingDots } from '@/components/typing-dots'
 import { Button } from '@/components/ui/button'
 import { ScrollArea } from '@/components/ui/scroll-area'
@@ -11,9 +12,11 @@ import { ChatReasoning } from '@/features/ask-sensei/components/chat-reasoning'
 import { Markdown } from '@/features/ask-sensei/components/markdown'
 import { TerminalPanel } from '@/features/ask-sensei/terminal/terminal-panel'
 import { WidgetComposer } from '@/features/note/sensei-widget/WidgetComposer'
+import { skillSuggestions } from '@/features/skills/suggest'
 
 import { DRAW_CONTEXT_LIMIT, disposeDrawSensei, drawSandboxSession, sendDrawSensei, stopDrawSensei, useDrawRuns } from '../agent/agent'
 import { drawChats } from '../agent/chats'
+import { DEFAULT_DRAW_SKILLS } from '../agent/default-skills'
 import { DRAW_WEBMCP_HELP, hasDrawWebMCP } from '../agent/webmcp'
 import { useDrawStore } from '../s-draw.store'
 import type { IDrawChat } from '../s-draw.types'
@@ -118,7 +121,9 @@ export function SenseiWidget({ fileId, chatId, onChatChange, title = 'SDraw', co
     if (chatId && !chat) return
     const sheetId = useDrawStore.getState().activeId
     void sendDrawSensei(text, chat, context, fileId, onChatChange)
-      .then(() => titleDrawSheet(fileId, sheetId, text, true))
+      .then(() => {
+        if (!busy) return titleDrawSheet(fileId, sheetId, text, true)
+      })
       .catch(() => {})
   }
 
@@ -308,11 +313,21 @@ export function SenseiWidget({ fileId, chatId, onChatChange, title = 'SDraw', co
               </div>
             </ScrollArea>
             <div className="border-t p-2">
+              <QueuedMessages chatId={chatId} />
               <WidgetComposer
-                placeholder="Ask Sensei to draw…"
+                placeholder="Ask Sensei to draw… (/ for skills)"
+                chatId={chatId}
+                history={messages.filter((message) => message.role === 'user').map((message) => message.content)}
                 onSend={send}
+                suggest={(trigger, query) => ({
+                  title: 'SDraw skills',
+                  items:
+                    trigger === '/'
+                      ? skillSuggestions(DEFAULT_DRAW_SKILLS, query).map((item) => ({ ...item, hint: `SDraw default · ${item.hint}` }))
+                      : [],
+                })}
                 streaming={busy}
-                disabled={!supported || busy || (!!chatId && !chat)}
+                disabled={!supported || (!!chatId && !chat)}
                 onStop={() => chat && stopDrawSensei(chat.id)}
                 autoFocus
                 toolbarStart={

@@ -1,6 +1,7 @@
 import { type LanguageModelUsage, type Tool, ToolLoopAgent, parsePartialJson } from 'ai'
 
 import type { ChatProfile } from '@/ai/inference/chat-profile'
+import { FIRECRAWL_INSTRUCTIONS, createFirecrawlMcpTools } from '@/ai/mcp/firecrawl'
 import {
   MEMORY_INSTRUCTIONS,
   SCRATCHPAD_INSTRUCTIONS,
@@ -112,6 +113,7 @@ export async function chatWithSensei(
   const allTools = {
     ...(scope?.onProgress && { reportProgress: createProgressTool(scope.onProgress) }),
     webSearch,
+    ...createFirecrawlMcpTools(),
     scrape: createScrapeTool(scope?.chatId),
     // terminal and python: files attached to this conversation are in the sandbox's home folder.
     ...createSandboxTools({ attachments: () => messages.flatMap((turn) => turn.attachments ?? []), session: scope?.chatId }),
@@ -178,6 +180,7 @@ export async function chatWithSensei(
               SENSEI_SYSTEM_PROMPT,
               currentTimePrompt(),
               SANDBOX_INSTRUCTIONS,
+              FIRECRAWL_INSTRUCTIONS,
               SKILLS_INSTRUCTIONS,
               await skillsPrompt(),
               profile.instructions,
@@ -192,6 +195,7 @@ export async function chatWithSensei(
               TODO_INSTRUCTIONS,
               ASK_INSTRUCTIONS,
               SANDBOX_INSTRUCTIONS,
+              FIRECRAWL_INSTRUCTIONS,
               EXPORT_INSTRUCTIONS,
               SKILLS_INSTRUCTIONS,
               await skillsPrompt(),

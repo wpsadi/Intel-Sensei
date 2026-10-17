@@ -1,8 +1,8 @@
 import { tool } from 'ai'
 import { z } from 'zod'
 
+import { callFirecrawlMcp, firecrawlMcpConfigured, firecrawlMcpData } from '@/ai/mcp/firecrawl'
 import { writeSandboxFile } from '@/ai/sandbox/client'
-import { FIRECRAWL_KEY } from '@/ai/utils/firecrawl-key'
 
 /** Most characters one scrape reply returns, about 8k tokens. A longer page is read in pieces with `offset`. */
 const REPLY_CHARS = 30_000
@@ -21,16 +21,28 @@ export interface ScrapedPage {
  * features is sent when saved.
  */
 export async function scrapePage(url: string, abortSignal?: AbortSignal): Promise<ScrapedPage> {
-  const apiKey = FIRECRAWL_KEY.value
-  const response = await fetch('https://api.firecrawl.dev/v2/scrape', {
-    method: 'POST',
-    headers: { 'content-type': 'application/json', ...(apiKey ? { authorization: `Bearer ${apiKey}` } : {}) },
-    body: JSON.stringify({ url, formats: ['markdown'], onlyMainContent: true }),
-    signal: abortSignal,
-  })
-  const body = await response.json().catch(() => null)
-  if (!response.ok || !body?.success) throw new Error(body?.error ?? `Scrape failed (${response.status})`)
-  const data = body.data as { markdown?: string; metadata?: { title?: string; statusCode?: number } }
+  let data: { markdown?: string; metadata?: { title?: string; statusCode?: number } }
+  if (firecrawlMcpConfigured()) {
+    const result = firecrawlMcpData(
+      await callFirecrawlMcp('firecrawl_scrape', { url, formats: ['markdown'], onlyMainContent: true }, abortSignal),
+    )
+    data = z
+      .object({
+        markdown: z.string().optional(),
+        metadata: z.object({ title: z.string().optional(), statusCode: z.number().optional() }).optional(),
+      })
+      .parse(result)
+  } else {
+    const response = await fetch('https://api.firecrawl.dev/v2/scrape', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ url, formats: ['markdown'], onlyMainContent: true }),
+      signal: abortSignal,
+    })
+    const body = await response.json().catch(() => null)
+    if (!response.ok || !body?.success) throw new Error(body?.error ?? `Scrape failed (${response.status})`)
+    data = body.data as typeof data
+  }
   return { markdown: (data.markdown ?? '').slice(0, PAGE_MAX_CHARS), title: data.metadata?.title, status: data.metadata?.statusCode }
 }
 

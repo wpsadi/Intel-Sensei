@@ -10,6 +10,12 @@ Each file has a stable URL such as `/s-draw?fileId=<file-id>&chatId=<chat-id>`. 
 
 Use **Name sheet with Gemini** (sparkles beside Rename) to name the current sheet from its contents. Default sheet names are also named automatically after a drawing request completes. This uses the Gemini key in Settings; manual names are preserved, including renames made while a response is pending. Generated names persist with their file in PGlite.
 
+## Default drawing skills
+
+SDraw bundles `/excalidraw-diagram` for diagram composition and interface wireframes, plus `/sdraw-large-drawing` for large scenes. Type `/` in the chat to select either; there is no Skills button. The drawing agent receives both playbooks by default and can load them with `use_skill`. They work without installation, stay specific to SDraw, and coexist with skills installed in Settings. Explicit commands work in new requests, queued messages, and steering inputs.
+
+The diagram skill is an original SDraw adaptation informed by [coleam00/excalidraw-diagram-skill](https://github.com/coleam00/excalidraw-diagram-skill), reviewed at commit `8646fcc9f74f38539c6cdb4c969723336a96ddcd`. It covers visual relationships, typography, spacing, theme-aware color choices, native editable shapes and bindings, and a capture–inspect–fix workflow. It uses live WebMCP operations and native snapshots rather than the upstream filesystem/Python renderer workflow. Source instructions are bundled at `src/features/s-draw/agent/skills/excalidraw-diagram/SKILL.md`.
+
 ## Agent access
 
 Drawing tools register on `document.modelContext` through `use-webmcp-tool`. Sensei discovers and executes those registered tools through the native browser consumer or Chrome's WebMCP testing API. It has no direct drawing-handler fallback. Use a browser exposing WebMCP; for Chrome builds requiring it, enable `chrome://flags/#enable-webmcp-testing` and restart. Configure the chat provider key in Sensei Settings.

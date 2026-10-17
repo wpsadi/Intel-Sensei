@@ -17,6 +17,7 @@ import SDesignPage from '@/pages/s-design.page'
 
 // The editor pulls in Tiptap, KaTeX, Mermaid and Leaflet; load it only on /s-note.
 const SNotePage = lazy(() => import('@/pages/s-note.page'))
+const FirecrawlOAuthPage = lazy(() => import('@/pages/firecrawl-oauth.page'))
 const SDrawPage = lazy(() => import('@/pages/s-draw.page'))
 // Published S3D files open full-screen, outside the app shell.
 const S3DEmbedPage = lazy(() => import('@/pages/s-3d-embed.page'))
@@ -27,6 +28,15 @@ const router = createBrowserRouter([
     errorElement: <ErrorPage />,
     children: [
       { path: '/', element: <HomePage /> },
+      {
+        path: '/mcp/firecrawl/callback',
+        element: (
+          <Suspense fallback={<div role="status">Connecting Firecrawl…</div>}>
+            <FirecrawlOAuthPage />
+          </Suspense>
+        ),
+      },
+
       {
         path: '/ask-sensei',
         element: <AskSenseiPage />,

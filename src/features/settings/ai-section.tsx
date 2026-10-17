@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { type ReactNode, useState } from 'react'
 
 import { testChat } from '@/ai/inference/test-chat'
 import { PROVIDER_NAMES, type Provider } from '@/ai/providers'
@@ -10,6 +10,7 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { TITLE_MODELS } from '@/constants/ai'
 
+import { FirecrawlMcpSettings } from './firecrawl-mcp-settings'
 import { ProviderTestDialog } from './provider-test-dialog'
 
 interface Store {
@@ -29,6 +30,7 @@ interface ProviderProps {
   urlHelp?: string
   /** Shows a Test button that receives the key and base URL being typed. */
   onTest?: (key: string, baseURL: string) => void
+  children?: ReactNode
 }
 
 /** One provider: its API key and, where it makes sense, a base URL. Keys stay in this browser's localStorage. */
@@ -43,6 +45,7 @@ function ProviderCard({
   urlPlaceholder,
   urlHelp,
   onTest,
+  children,
 }: ProviderProps) {
   const [savedKey, setSavedKey] = useState(() => keyStore.value)
   const [savedUrl, setSavedUrl] = useState(() => urlStore?.value ?? '')
@@ -147,6 +150,7 @@ function ProviderCard({
         )}
         {justSaved && <span className="text-xs text-green-600 dark:text-green-500">Saved.</span>}
       </div>
+      {children}
     </section>
   )
 }
@@ -185,11 +189,13 @@ export function AiSection() {
       />
       <ProviderCard
         name="Firecrawl"
-        powers="Web search and page reading for Sensei."
+        powers="Shared web search, page reading and Firecrawl MCP tools for all Sensei apps."
         keyStore={FIRECRAWL_KEY}
         keyPlaceholder="fc-…"
-        keyHelp="Search works without a key on Firecrawl's free tier, which is limited per IP. Add a key from firecrawl.dev for higher limits."
-      />
+        keyHelp="A saved key connects Firecrawl MCP using Bearer authentication. Without a key, sign in below through OAuth. Basic keyless search has service limits."
+      >
+        <FirecrawlMcpSettings />
+      </ProviderCard>
       <ProviderCard
         name="OpenAI"
         powers="Chat, titles, text to speech and speech to text when picked in AI models, and any OpenAI-compatible endpoint."

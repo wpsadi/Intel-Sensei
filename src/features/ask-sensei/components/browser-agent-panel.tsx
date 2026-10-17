@@ -5,6 +5,7 @@ import { useSearchParams } from 'react-router-dom'
 import type { ChatProfile } from '@/ai/inference/chat-profile'
 import senseiLogo from '@/assets/sensei.svg'
 import { Shimmer } from '@/components/ai-elements/shimmer'
+import { QueuedMessages } from '@/components/queued-messages'
 import { Button } from '@/components/ui/button'
 import { Bubble, Message, MessageContent } from '@/components/ui/chat'
 import { ScrollArea } from '@/components/ui/scroll-area'
@@ -136,11 +137,13 @@ export function BrowserAgentPanel({ page, profile }: { page: string | null; prof
       </ScrollArea>
 
       <div className="shrink-0 border-t p-2">
+        <QueuedMessages chatId={chatId} />
         <WidgetComposer
           onSend={(text) => void send(text)}
           streaming={streaming}
           onStop={() => stopReply(chatId)}
           placeholder="Ask Sensei about this page…"
+          chatId={chatId}
           history={messages.filter((message) => message.role === 'user').map((message) => message.content)}
         />
       </div>

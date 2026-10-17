@@ -25,6 +25,7 @@ import { useLiveCall } from '@/features/ask-sensei/components/live-call'
 import { deleteMedia, putMedia } from '@/features/note/db/media'
 import type { ChatAttachment } from '@/features/note/db/types'
 import { skillSuggestions } from '@/features/skills/suggest'
+import { useInputHistory } from '@/hooks/use-input-history'
 import { cn } from '@/lib/utils'
 
 import { formatElapsed, useVoiceNote } from './use-voice-note'
@@ -82,7 +83,7 @@ export function ChatComposer({
     () => (chatMessages ?? []).filter((message) => message.role === 'user' && message.content.trim()).map((message) => message.content),
     [chatMessages],
   )
-  const [recalled, setRecalled] = useState<number | null>(null)
+  const recall = useInputHistory({ history: sentTexts, chatId, draft, setDraft })
   // "/" lists the skills, "@" the files of this chat (the ones attached, and the ones Sensei made).
   const skills = useInstalledSkills()
   const [, setSearchParams] = useSearchParams()
@@ -103,26 +104,12 @@ export function ChatComposer({
     setDraft,
     inputRef,
     suggest: (trigger, query) =>
-      trigger === '/'
-        ? { title: 'Skills', items: skillSuggestions(skills, query, openSkillSettings) }
-        : { title: 'Files', items: fileSuggestions(fileNames, query) },
+      recall.active
+        ? { title: '', items: [] }
+        : trigger === '/'
+          ? { title: 'Skills', items: skillSuggestions(skills, query, openSkillSettings) }
+          : { title: 'Files', items: fileSuggestions(fileNames, query) },
   })
-  const draftBeforeRecall = useRef('')
-
-  const [recallChatId, setRecallChatId] = useState(chatId)
-  if (recallChatId !== chatId) {
-    setRecallChatId(chatId)
-    setRecalled(null)
-  }
-
-  /** Shows an earlier message (an index into sentTexts), or the saved draft for null, with the caret at the end. */
-  const recall = (index: number | null, textarea: HTMLTextAreaElement) => {
-    const text = index === null ? draftBeforeRecall.current : sentTexts[index]
-    setRecalled(index)
-    setDraft(text)
-    requestAnimationFrame(() => textarea.setSelectionRange(text.length, text.length))
-  }
-
   useEffect(() => {
     onCallChange?.(inCall)
   }, [inCall, onCallChange])
@@ -192,28 +179,11 @@ export function ChatComposer({
       setAttachments([])
     }
     setDraft('')
-    setRecalled(null)
+    recall.reset()
   }
 
   const handleKeyDown = (event: KeyboardEvent<HTMLTextAreaElement>) => {
-    const textarea = event.currentTarget
-    const { selectionStart, selectionEnd, value } = textarea
-    const noModifier = !event.shiftKey && !event.altKey && !event.ctrlKey && !event.metaKey
-    // Up on the first line goes to the previous message; down at the very end goes to the next one.
-    if (event.key === 'ArrowUp' && noModifier && selectionStart === selectionEnd && !value.slice(0, selectionStart).includes('\n')) {
-      const next = recalled === null ? sentTexts.length - 1 : recalled - 1
-      if (next >= 0) {
-        event.preventDefault()
-        if (recalled === null) draftBeforeRecall.current = value
-        recall(next, textarea)
-      }
-      return
-    }
-    if (event.key === 'ArrowDown' && noModifier && recalled !== null && selectionStart === value.length && selectionEnd === value.length) {
-      event.preventDefault()
-      recall(recalled + 1 < sentTexts.length ? recalled + 1 : null, textarea)
-      return
-    }
+    if (event.nativeEvent.isComposing || recall.onKeyDown(event)) return
     if (event.key === 'Enter' && !event.shiftKey) {
       event.preventDefault()
       send()
@@ -258,7 +228,10 @@ export function ChatComposer({
           <textarea
             rows={1}
             value={draft}
-            onChange={(event) => setDraft(event.target.value)}
+            onChange={(event) => {
+              setDraft(event.target.value)
+              recall.reset()
+            }}
             onKeyDown={handleKeyDown}
             placeholder={call.state === 'connecting' ? 'Connecting…' : 'Talk, or type to Sensei'}
             aria-label="Type during the call"
@@ -309,6 +282,7 @@ export function ChatComposer({
             value={draft}
             onChange={(event) => {
               setDraft(event.target.value)
+              recall.reset()
               suggestions.track(event.target)
               suggestions.typed()
             }}

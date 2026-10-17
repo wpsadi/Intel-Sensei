@@ -43,15 +43,29 @@ export async function ensureBrowserSkill() {
   })
 }
 
-/** The agent in SBrowse: web search, the terminal and skills, plus the computer tool for the page. No scraping. */
+/** The agent in SBrowse: web search, the terminal and skills, plus the computer tool for the page. Public-source research through Firecrawl is separate from live page control. */
 export function createBrowserProfile(host: ComputerHost): ChatProfile {
   return {
-    allow: ['webSearch', 'terminal', 'write_file', 'load_skill', 'sandbox_status', 'view_image', 'lookup_capability', 'find_skill', 'use_skill', 'create_skill'],
+    allow: [
+      'webSearch',
+      'scrape',
+      'firecrawl_mcp_tools',
+      'firecrawl_mcp_call',
+      'terminal',
+      'write_file',
+      'load_skill',
+      'sandbox_status',
+      'view_image',
+      'lookup_capability',
+      'find_skill',
+      'use_skill',
+      'create_skill',
+    ],
     tools: { computer: createComputerTool(host) },
     // Read on every step, so the agent always knows the page that is open without the user's message having to say so.
     get instructions() {
       const url = host.url()
-      return `You are working inside SBrowse, a browser window. ${url ? `The page open now is ${url}.` : 'No page is open yet.'} The user can see the page and asks you to answer questions or to do things on it. You cannot read the page's text; you see it only through the \`computer\` tool, which returns screenshots and operates the page. There is no scrape tool, so to read a page, look at it. Before you operate the page, load the skill "${BROWSER_SKILL}" with use_skill and follow its loop: look, take one action, look again. For plain questions, answer directly or use webSearch.`
+      return `You are working inside SBrowse, a browser window. ${url ? `The page open now is ${url}.` : 'No page is open yet.'} The user can see the page and asks you to answer questions or to do things on it. You see and operate the current signed-in tab through the \`computer\` tool. Firecrawl search, scrape and MCP tools can research public pages independently; they cannot see the tab's live state, cookies or authenticated content. For live page state and interactions, use the computer tool. Before you operate the page, load the skill "${BROWSER_SKILL}" with use_skill and follow its loop: look, take one action, look again. For plain questions, answer directly or use webSearch.`
     },
   }
 }
