@@ -2,8 +2,8 @@
 import {
   type ExecResult,
   PYODIDE_INDEX_URL,
-  SANDBOX_HOME,
   type PyodideLike,
+  SANDBOX_HOME,
   mountFile,
   prepare,
   readFile,
@@ -20,6 +20,7 @@ export type SandboxRequest = { id: number } & (
   | { op: 'mount'; files: { name: string; bytes: Uint8Array; readonly?: boolean }[] }
   | { op: 'read'; path: string }
   | { op: 'skills'; skills: { name: string; description: string; body: string }[] }
+  | { op: 'bundle'; files: { path: string; text: string }[] }
   | { op: 'swiftlatex'; command: string }
 )
 export type SandboxResult = ExecResult | { paths: string[] } | { bytes: Uint8Array } | { path: string }
@@ -56,7 +57,9 @@ function waitForSwiftMessage(worker: Worker, predicate: (message: SwiftLatexMess
         if (event.data.result !== 'failed' || event.data.cmd === 'compile') return
         worker.removeEventListener('message', onMessage)
         worker.removeEventListener('error', onError)
-        reject(new Error([event.data.log?.trim(), `SwiftLaTeX exited with status ${event.data.status ?? 'unknown'}`].filter(Boolean).join('\n')))
+        reject(
+          new Error([event.data.log?.trim(), `SwiftLaTeX exited with status ${event.data.status ?? 'unknown'}`].filter(Boolean).join('\n')),
+        )
         return
       }
       worker.removeEventListener('message', onMessage)
@@ -203,7 +206,19 @@ self.onmessage = async (event: MessageEvent<SandboxRequest>) => {
     else if (request.op === 'ping') result = { paths: [] }
     else if (request.op === 'write') result = { path: writeTextFile(py, request.path, request.text, request.append) }
     else if (request.op === 'skills') result = { path: writeSkills(py, request.skills) }
-    else if (request.op === 'mount') result = { paths: request.files.map((file) => mountFile(py, file.name, file.bytes, file.readonly)) }
+    else if (request.op === 'bundle') {
+      for (const file of request.files) {
+        if (
+          !file.path.startsWith('bundled/') ||
+          file.path.split('/').some((part) => !part || part === '..' || part === '.') ||
+          file.path.includes('\\') ||
+          file.path.includes('\0')
+        )
+          throw new Error('Invalid bundled file path')
+        writeTextFile(py, file.path, file.text)
+      }
+      result = { paths: request.files.map((file) => `${SANDBOX_HOME}/${file.path}`) }
+    } else if (request.op === 'mount') result = { paths: request.files.map((file) => mountFile(py, file.name, file.bytes, file.readonly)) }
     else if (request.op === 'swiftlatex') result = await runSwiftLatex(py, request.command)
     else result = { bytes: readFile(py, request.path) }
     self.postMessage({ id: request.id, ok: true, result } satisfies SandboxResponse)

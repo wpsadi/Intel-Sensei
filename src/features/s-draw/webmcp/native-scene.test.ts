@@ -124,6 +124,42 @@ describe('native Excalidraw scene operations', () => {
       expect(elements.find((element) => element.id === 'existing')?.boundElements).toContainEqual({ id: 'cross-edge', type: 'arrow' })
       expect(elements.find((element) => element.id === 'new-target')?.boundElements).toContainEqual({ id: 'cross-edge', type: 'arrow' })
       expect(elements.filter((element) => element.id === 'existing')).toHaveLength(1)
+      // Exercise the terminal dialect through the browser consumer and actual native handlers.
+      const { runDrawCommand } = await import('../cli/command')
+      const consumer = Object.getOwnPropertyDescriptor(navigator, 'modelContextTesting')
+      Object.defineProperty(navigator, 'modelContextTesting', {
+        configurable: true,
+        value: {
+          listTools: () => [{ name: 'sdraw_create_elements' }],
+          executeTool: (name: Parameters<typeof executeDrawTool>[0], input: string) => executeDrawTool(name, JSON.parse(input)),
+        },
+      })
+      try {
+        const revision = native.getSceneVersion(elements)
+        const request = {
+          sheetId: 'native-integration',
+          expectedRevision: revision,
+          elements: [
+            { id: 'cli-node', type: 'rectangle', x: 700, y: 0, width: 180, height: 100, label: { text: 'CLI node' } },
+            { id: 'cli-edge', type: 'arrow', x: 540, y: 50, width: 160, height: 0, start: { id: 'new-target' }, end: { id: 'cli-node' } },
+          ],
+        }
+        const command = `sdraw create --json '${JSON.stringify(request)}'`
+        const fileId = useDrawStore.getState().fileId
+        expect((await runDrawCommand(command, fileId, `sdraw-${fileId}`)).code).toBe(0)
+        expect(elements.find((element) => element.id === 'cli-edge')).toMatchObject({
+          startBinding: { elementId: 'new-target' },
+          endBinding: { elementId: 'cli-node' },
+        })
+        const node = elements.find((element) => element.id === 'cli-node')
+        expect(node?.boundElements).toEqual(expect.arrayContaining([expect.objectContaining({ type: 'text' })]))
+        const after = elements
+        expect((await runDrawCommand(command, fileId, `sdraw-${fileId}`)).code).toBe(1)
+        expect(elements).toBe(after)
+      } finally {
+        if (consumer) Object.defineProperty(navigator, 'modelContextTesting', consumer)
+        else Reflect.deleteProperty(navigator, 'modelContextTesting')
+      }
     } finally {
       setDrawApi(null)
       useDrawStore.setState(snapshot, true)

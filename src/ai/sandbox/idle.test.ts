@@ -90,3 +90,47 @@ describe('the environment stops when nothing uses it', () => {
     expect(sandbox.sandboxStatus('b')).toBe('ready')
   })
 })
+
+describe('live app commands and bundles', () => {
+  it('records app commands as non-replayable without booting Python and skips replay', async () => {
+    const sandbox = await load()
+    const { registerSandboxExtension } = await import('./extensions')
+    const execute = vi.fn().mockResolvedValue({ output: 'created', code: 0, cwd: '/home/user' })
+    const cleanup = registerSandboxExtension('sdraw-a', { commands: ['sdraw'], execute })
+    const events: import('./client').SandboxEvent[] = []
+    const unsubscribe = sandbox.onSandboxEvent((event) => events.push(event))
+    await sandbox.runShellCommand('sdraw create', undefined, { session: 'sdraw-a' })
+    expect(execute).toHaveBeenCalledOnce()
+    expect(events.at(-1)?.op).toMatchObject({ kind: 'shell', replayable: false, output: 'created' })
+    expect(FakeWorker.alive).toBe(0)
+    await sandbox.runShellCommand('sdraw create', undefined, { session: 'sdraw-a', replay: true })
+    expect(execute).toHaveBeenCalledOnce()
+    expect(events).toHaveLength(2)
+    cleanup()
+    unsubscribe()
+  })
+
+  it('installs a bundle once per boot without leaking it to other sessions', async () => {
+    const sandbox = await load()
+    const { registerSandboxExtension } = await import('./extensions')
+    const bundle = { key: 'kit-1', load: vi.fn().mockResolvedValue([{ path: 'bundled/kit/README.md', text: 'kit' }]) }
+    const cleanup = registerSandboxExtension('sdraw-a', { commands: ['sdraw'], execute: vi.fn(), bundle })
+    const first = sandbox.runShellCommand('ls', undefined, { session: 'sdraw-a' })
+    await vi.advanceTimersByTimeAsync(10)
+    await first
+    const second = sandbox.runShellCommand('ls', undefined, { session: 'sdraw-a' })
+    await vi.advanceTimersByTimeAsync(10)
+    await second
+    expect(bundle.load).toHaveBeenCalledOnce()
+    const other = sandbox.runShellCommand('ls', undefined, { session: 'other' })
+    await vi.advanceTimersByTimeAsync(10)
+    await other
+    expect(bundle.load).toHaveBeenCalledOnce()
+    sandbox.resetSandbox('sdraw-a')
+    const restarted = sandbox.runShellCommand('ls', undefined, { session: 'sdraw-a' })
+    await vi.advanceTimersByTimeAsync(10)
+    await restarted
+    expect(bundle.load).toHaveBeenCalledTimes(2)
+    cleanup()
+  })
+})

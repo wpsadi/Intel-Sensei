@@ -12,7 +12,7 @@ Use **Name sheet with Gemini** (sparkles beside Rename) to name the current shee
 
 ## Default drawing skills
 
-SDraw bundles `/excalidraw-diagram` for diagram composition and interface wireframes, plus `/sdraw-large-drawing` for large scenes. Type `/` in the chat to select either; there is no Skills button. The drawing agent receives both playbooks by default and can load them with `use_skill`. They work without installation, stay specific to SDraw, and coexist with skills installed in Settings. Explicit commands work in new requests, queued messages, and steering inputs.
+SDraw bundles `/excalidraw-diagram` for diagram composition and interface wireframes, plus `/sdraw-large-drawing` for large scenes. The bundled `/sdraw-cli` skill also covers the terminal adapter and its included Obsidian Excalidraw source kit. Type `/` in the chat to select a skill; there is no Skills button. The drawing agent receives these playbooks by default and can load them with `use_skill`. They work without installation, stay specific to SDraw, and coexist with skills installed in Settings. Explicit commands work in new requests, queued messages, and steering inputs.
 
 The diagram skill is an original SDraw adaptation informed by [coleam00/excalidraw-diagram-skill](https://github.com/coleam00/excalidraw-diagram-skill), reviewed at commit `8646fcc9f74f38539c6cdb4c969723336a96ddcd`. It covers visual relationships, typography, spacing, theme-aware color choices, native editable shapes and bindings, and a capture–inspect–fix workflow. It uses live WebMCP operations and native snapshots rather than the upstream filesystem/Python renderer workflow. Source instructions are bundled at `src/features/s-draw/agent/skills/excalidraw-diagram/SKILL.md`.
 
@@ -32,3 +32,5 @@ Element creation, updates and deletion name their target sheet and check the ins
 - `src/features/s-draw/webmcp/schema.json` and `evals.json`: tool-selection fixtures. Optional provider-backed evaluation: `npx webmcp-evals local -t src/features/s-draw/webmcp/schema.json -e src/features/s-draw/webmcp/evals.json`.
 
 For browser verification, open SDraw, draw with native tools, add another sheet and an image, reload, and check both scenes and the library. Open/close chat and terminal independently. Select a region, ask Sensei to edit it, and verify unrelated content remains intact. In Chrome DevTools Application > WebMCP, inspect and execute `sdraw_get_document`, inspect a selected page with `sdraw_read_elements`, and create a shape using the reported sheet ID/revision. Confirm the change is visible and native Undo restores it. Run Lighthouse's Agentic browsing audit where available.
+
+See [SDraw terminal CLI](sdraw-cli.md) for commands, image previews, bundled source provenance and desktop limitations.

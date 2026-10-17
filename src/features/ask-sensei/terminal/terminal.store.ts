@@ -183,6 +183,7 @@ setSandboxRestorer(async (session, signal) => {
   ).catch(() => {})
   for (const op of ops) {
     if (signal.aborted) return
+    if (op.kind === 'shell' && op.replayable === false) continue
     try {
       if (op.kind === 'write') await writeSandboxFile(op.path, op.content, op.append, signal, { session, replay: true })
       else await runShellCommand(op.command, signal, { session, replay: true })

@@ -8,6 +8,7 @@ import { type ReactNode, useEffect, useRef, useState } from 'react'
 import { Link, useLocation } from 'react-router-dom'
 
 import { setDrawApi } from '../bridge'
+import { registerDrawCli } from '../cli/profile'
 import { useDrawStore } from '../s-draw.store'
 import { LEGACY_DRAW_FILE_ID } from '../s-draw.types'
 import { titleDrawSheet } from '../sheet-title'
@@ -30,6 +31,9 @@ export function DrawWorkspace({ children, fileId = LEGACY_DRAW_FILE_ID }: { chil
   const sheets = useDrawStore((state) => state.sheets)
   const error = useDrawStore((state) => state.error)
   const sheet = sheets.find((item) => item.id === activeId)
+  useEffect(() => {
+    if (ready && loadedFileId === fileId) return registerDrawCli(fileId)
+  }, [ready, loadedFileId, fileId])
 
   useEffect(() => {
     void useDrawStore.getState().hydrate(fileId)

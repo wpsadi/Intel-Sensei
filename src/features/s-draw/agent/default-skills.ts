@@ -2,6 +2,7 @@ import { parseSkillMarkdown, parseSlashCommand } from '@/ai/skills/format'
 
 import { LARGE_DRAWING_SKILL } from './large-drawing-skill'
 import diagramSkill from './skills/excalidraw-diagram/SKILL.md?raw'
+import cliSkill from './skills/sdraw-cli/SKILL.md?raw'
 
 export interface DefaultDrawSkill {
   name: string
@@ -9,7 +10,7 @@ export interface DefaultDrawSkill {
   body: string
 }
 
-export const DEFAULT_DRAW_SKILLS: readonly DefaultDrawSkill[] = [diagramSkill, LARGE_DRAWING_SKILL].map((markdown) => {
+export const DEFAULT_DRAW_SKILLS: readonly DefaultDrawSkill[] = [diagramSkill, LARGE_DRAWING_SKILL, cliSkill].map((markdown) => {
   const skill = parseSkillMarkdown(markdown)
   if (!skill.name || !skill.description) throw new Error('A bundled SDraw skill is missing its name or description')
   return { name: skill.name, description: skill.description, body: skill.body }

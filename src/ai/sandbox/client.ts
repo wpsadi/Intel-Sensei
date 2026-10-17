@@ -1,6 +1,7 @@
 import { Skills } from '@/ai/skills/skills'
 
 import { COMMAND_TIMEOUT_MS, type ExecResult, FILE_MAX_BYTES } from './engine'
+import { sandboxCommand, sandboxExtension } from './extensions'
 import type { SandboxRequest, SandboxResponse, SandboxResult } from './sandbox.worker'
 
 type Pending = { resolve: (result: SandboxResult) => void; reject: (error: Error) => void }
@@ -43,7 +44,14 @@ export type SandboxOp = {
   source: SandboxSource
   at: number
 } & (
-  | { kind: 'shell'; command: string; output: string; code: number; /** The current folder once it finished. */ cwd?: string }
+  | {
+      kind: 'shell'
+      command: string
+      output: string
+      code: number
+      /** Commands that act on a live app must never run during restoration. */ replayable?: false
+      /** The current folder once it finished. */ cwd?: string
+    }
   | { kind: 'write'; path: string; content: string; append: boolean }
 )
 
@@ -77,6 +85,8 @@ class Session {
   restoring: AbortController | null = null
   /** What the skills folder in the current worker holds, so it is rewritten only when a skill changed. */
   skillsKey = ''
+  bundleKey = ''
+  private bundleSync: Promise<void> | null = null
   /** Tasks that are running and need the environment, such as a reply being written. */
   holds = 0
   private idleTimer: ReturnType<typeof setTimeout> | null = null
@@ -103,6 +113,8 @@ class Session {
     this.status = 'idle'
     this.mounted.clear()
     this.skillsKey = ''
+    this.bundleKey = ''
+    this.bundleSync = null
     for (const id of [...this.pending.keys()]) this.fail(id, new Error(reason))
   }
 
@@ -235,6 +247,27 @@ class Session {
     }
   }
 
+  private async syncBundle(signal?: AbortSignal) {
+    const bundle = sandboxExtension(this.id)?.bundle
+    if (!bundle || this.bundleKey === bundle.key) return
+    if (this.bundleSync) return this.bundleSync
+    const worker = this.worker
+    const pending = (async () => {
+      const files = await bundle.load(signal)
+      signal?.throwIfAborted()
+      if (this.worker !== worker || sandboxExtension(this.id)?.bundle !== bundle)
+        throw new Error('The terminal or app changed while loading its bundle. Try again.')
+      await this.send({ op: 'bundle', files }, signal, [], COMMAND_TIMEOUT_MS, TIMED_OUT)
+      this.bundleKey = bundle.key
+    })()
+    this.bundleSync = pending
+    try {
+      await pending
+    } finally {
+      if (this.bundleSync === pending) this.bundleSync = null
+    }
+  }
+
   /** A command's clock starts once Pyodide is loaded, so a slow first load never eats into its time. */
   async call(request: Request, signal?: AbortSignal, transfer: Transferable[] = [], replay = false): Promise<SandboxResult> {
     if (this.getStatus() === 'unavailable') throw new Error(SANDBOX_UNAVAILABLE)
@@ -243,6 +276,7 @@ class Session {
     this.touch()
     await (replay ? this.booted : this.ready)
     await this.syncSkills(signal)
+    await this.syncBundle(signal)
     try {
       return await this.send(request, signal, transfer, COMMAND_TIMEOUT_MS, TIMED_OUT)
     } finally {
@@ -297,6 +331,9 @@ export function sandboxUnavailable(session?: string): string | null {
 /** Runs a shell command in a session. It is recorded and shown in its terminal unless it is part of a restore. */
 export async function runShellCommand(command: string, signal?: AbortSignal, ctx: RunContext = {}) {
   const session = ctx.session ?? DEFAULT_SESSION
+  const extension = sandboxCommand(session, command)
+  // Live app commands are not filesystem reconstruction steps. In particular, never repeat drawing writes.
+  if (ctx.replay && extension) return { output: 'Skipped live app command during restore.\n', code: 0, cwd: '/home/user' }
   const op = {
     id: crypto.randomUUID(),
     session,
@@ -307,6 +344,7 @@ export async function runShellCommand(command: string, signal?: AbortSignal, ctx
     command,
     output: '',
     code: 0,
+    ...(extension ? { replayable: false as const } : {}),
   }
   if (!ctx.replay) emit({ phase: 'start', op })
   try {
@@ -314,7 +352,9 @@ export async function runShellCommand(command: string, signal?: AbortSignal, ctx
     // its commands on the same terminal event stream while routing them to the
     // bridge in sandbox.worker.ts.
     const swift = /^(?:\s*)(?:latex|tex)\s+(?:--enable-swiftlatex|--swiftlatex|--compile)\b/i.test(command)
-    const result = (await sessionOf(session).call({ op: swift ? 'swiftlatex' : 'shell', command }, signal, [], ctx.replay)) as ExecResult
+    const result = extension
+      ? await extension.execute(command, signal)
+      : ((await sessionOf(session).call({ op: swift ? 'swiftlatex' : 'shell', command }, signal, [], ctx.replay)) as ExecResult)
     if (!ctx.replay) emit({ phase: 'end', op: { ...op, output: result.output, code: result.code, cwd: result.cwd } })
     return result
   } catch (error) {

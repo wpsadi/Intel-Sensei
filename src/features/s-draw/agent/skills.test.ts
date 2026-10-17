@@ -22,7 +22,7 @@ const options = { toolCallId: 'test', messages: [], context: {} }
 describe('default SDraw skills', () => {
   it('ships valid, uniquely named skills with the drawing and large-scene workflows', () => {
     const names = DEFAULT_DRAW_SKILLS.map((skill) => skill.name)
-    expect(names).toEqual(['excalidraw-diagram', 'sdraw-large-drawing'])
+    expect(names).toEqual(['excalidraw-diagram', 'sdraw-large-drawing', 'sdraw-cli'])
     expect(new Set(names).size).toBe(names.length)
     for (const skill of DEFAULT_DRAW_SKILLS) {
       expect(skill.description).toBeTruthy()

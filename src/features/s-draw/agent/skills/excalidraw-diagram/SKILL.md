@@ -44,7 +44,7 @@ For a clean diagram, begin with `roughness: 0`, `fillStyle: "solid"`, `strokeWid
 
 ## Build with native SDraw tools
 
-Use only registered `sdraw_` WebMCP tools to inspect or modify the scene. The terminal may calculate coordinates but must not read or write drawing state. Do not create a replacement `.excalidraw` file to bypass live edits.
+Use registered `sdraw_` WebMCP tools to inspect or modify the scene, either directly or through the bundled `sdraw`/`excalidraw` terminal adapter (load `sdraw-cli` for usage). The adapter calls those same tools. Arbitrary terminal scripts may calculate coordinates or prepare request JSON but must not read or write drawing state directly. Do not create a replacement `.excalidraw` file to bypass live edits.
 
 1. Obtain the active sheet ID and revision. Read the target area and check existing IDs before choosing new descriptive IDs.
 2. Create coherent sections in batches of at most 20 elements with `sdraw_create_elements`. Use the revision returned by a successful mutation; reread after a conflict or human change. Split large diagrams into sections and use the `sdraw-large-drawing` skill for bounded inspection.
