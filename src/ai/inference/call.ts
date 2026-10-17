@@ -10,6 +10,7 @@ import {
 import type { Tool } from 'ai'
 import { z } from 'zod'
 
+import type { AgentProgress } from '@/ai/tools/progress'
 import { currentTimePrompt } from '@/ai/utils/current-time'
 import { GEMINI_KEY } from '@/ai/utils/gemini-key'
 import { LIVE_MODEL } from '@/constants/ai'
@@ -97,6 +98,8 @@ export class LiveCall {
   private voiceOut: GainNode | null = null
   private samples = new Uint8Array(512)
   private stopped = false
+  private runningTools = new Map<string, { name: string; abort: AbortController; nonBlocking: boolean }>()
+  private lastProgressAt = -Infinity
 
   private options: LiveCallOptions
 
@@ -180,6 +183,27 @@ export class LiveCall {
     this.session?.sendRealtimeInput({ text })
   }
 
+  /** Adds a milestone to the pending tool, letting Live speak when idle while the agent keeps working. */
+  reportToolProgress(id: string, progress: AgentProgress) {
+    const running = this.runningTools.get(id)
+    if (this.stopped || !running?.nonBlocking || running.abort.signal.aborted || !this.session) return
+    const now = Date.now()
+    // Keep frequent updates as context, without prompting another spoken response for each one.
+    const speak = now - this.lastProgressAt >= 6000
+    if (speak) this.lastProgressAt = now
+    this.session.sendToolResponse({
+      functionResponses: [
+        {
+          id,
+          name: running.name,
+          response: { output: { status: 'in_progress', ...progress } },
+          willContinue: true,
+          scheduling: speak ? FunctionResponseScheduling.WHEN_IDLE : FunctionResponseScheduling.SILENT,
+        },
+      ],
+    })
+  }
+
   /** How loud Sensei's voice is right now, 0 to 1. The mic is left out, so only Sensei's replies move the aurora. */
   level() {
     const loudness = (analyser: AnalyserNode | null) => {
@@ -195,6 +219,8 @@ export class LiveCall {
   async stop(error?: string) {
     if (this.stopped) return
     this.stopped = true
+    this.runningTools.forEach((running) => running.abort.abort())
+    this.runningTools.clear()
     this.session?.close()
     this.session = null
     this.mic?.getTracks().forEach((track) => track.stop())
@@ -228,6 +254,11 @@ export class LiveCall {
   }
 
   private handleMessage(message: LiveServerMessage) {
+    if (this.stopped) return
+    for (const id of message.toolCallCancellation?.ids ?? []) {
+      this.runningTools.get(id)?.abort.abort()
+      this.runningTools.delete(id)
+    }
     if (message.toolCall?.functionCalls?.length) this.handleToolCalls(message.toolCall.functionCalls)
     // The user started talking over the model, so drop the voice that is still queued.
     if (message.serverContent?.interrupted) {
@@ -253,20 +284,37 @@ export class LiveCall {
     for (const call of calls) {
       void (async () => {
         const base = { id: call.id ?? crypto.randomUUID(), name: call.name ?? '', args: (call.args ?? {}) as Record<string, unknown> }
-        const scheduling = this.options.nonBlocking?.includes(base.name) ? FunctionResponseScheduling.WHEN_IDLE : undefined
+        if (this.runningTools.has(base.id)) return
+        const nonBlocking = this.options.nonBlocking?.includes(base.name) ?? false
+        const scheduling = nonBlocking ? FunctionResponseScheduling.WHEN_IDLE : undefined
+        const abort = new AbortController()
+        this.runningTools.set(base.id, { name: base.name, abort, nonBlocking })
         this.options.onTool?.({ ...base, status: 'running' })
         let response: Record<string, unknown>
         try {
           const own = this.options.tools?.[base.name]
           if (!own?.execute) throw new Error(`Unknown tool ${base.name}`)
-          response = { output: await own.execute(call.args ?? {}, { toolCallId: base.id, messages: [], context: undefined }) }
+          response = {
+            output: await own.execute(call.args ?? {}, {
+              toolCallId: base.id,
+              messages: [],
+              context: undefined,
+              abortSignal: abort.signal,
+            }),
+          }
+          if (abort.signal.aborted) return
           this.options.onTool?.({ ...base, status: 'done' })
         } catch (error) {
+          if (abort.signal.aborted) return
           const message = error instanceof Error ? error.message : 'The tool failed'
           this.options.onTool?.({ ...base, status: 'failed', error: message })
           response = { error: message }
+        } finally {
+          this.runningTools.delete(base.id)
         }
-        this.session?.sendToolResponse({ functionResponses: [{ id: call.id, name: call.name, response, scheduling }] })
+        this.session?.sendToolResponse({
+          functionResponses: [{ id: base.id, name: base.name, response, scheduling, ...(nonBlocking && { willContinue: false }) }],
+        })
       })()
     }
   }

@@ -19,6 +19,7 @@ import { SKILLS_INSTRUCTIONS, createSkillTools, skillsPrompt } from '@/ai/skills
 import { ASK_INSTRUCTIONS, createAskTools } from '@/ai/tools/ask'
 import { EXPORT_INSTRUCTIONS, createExportFileTool, documentName } from '@/ai/tools/export-file'
 import { PLAN_INSTRUCTIONS, createPlanTools } from '@/ai/tools/plan'
+import { type AgentProgress, PROGRESS_INSTRUCTIONS, createProgressTool } from '@/ai/tools/progress'
 import { createScrapeTool } from '@/ai/tools/scrape'
 import { createSearchTool, upsertSearch } from '@/ai/tools/search'
 import { catalogOf, createToolSelector, lastUserText } from '@/ai/tools/selector'
@@ -89,6 +90,8 @@ export async function chatWithSensei(
     onArtifactDraft?: (draft: { id: string; name: string; content: string; format: 'markdown' | 'html'; done?: boolean }) => void
     /** Receives the tool calls of this reply, in order, each time one starts or ends. */
     onSteps?: (steps: ChatToolStep[]) => void
+    /** Public milestones and verified findings for a live voice call. */
+    onProgress?: (progress: AgentProgress) => void
     /** Limits the agent to one app's tools and instructions. */
     profile?: ChatProfile
   },
@@ -107,6 +110,7 @@ export async function chatWithSensei(
     onSearches?.(searches)
   })
   const allTools = {
+    ...(scope?.onProgress && { reportProgress: createProgressTool(scope.onProgress) }),
     webSearch,
     scrape: createScrapeTool(scope?.chatId),
     // terminal and python: files attached to this conversation are in the sandbox's home folder.
@@ -139,7 +143,7 @@ export async function chatWithSensei(
   const selector = createToolSelector({
     model: AI_MODELS.chatModel,
     catalog: catalogOf(tools),
-    alwaysInclude: ['memory', 'scratchpad', 'askUser', 'use_skill', 'lookup_capability'],
+    alwaysInclude: ['memory', 'scratchpad', 'askUser', 'use_skill', 'lookup_capability', ...(scope?.onProgress ? ['reportProgress'] : [])],
     max: 8,
     signal: abortSignal,
     onUsage: (usage) => void recordSdkUsage({ provider, model }, usage),
@@ -193,6 +197,7 @@ export async function chatWithSensei(
               await skillsPrompt(),
             ]
         )
+          .concat(scope?.onProgress ? [PROGRESS_INSTRUCTIONS] : [])
           .filter(Boolean)
           .join('\n\n'),
       }
@@ -258,7 +263,7 @@ export async function chatWithSensei(
         thoughts += part.text
         onReasoning?.(thinkingOnly(thoughts))
       } else if (part.type === 'tool-call') {
-        if (!hasOwnUi(part.toolName))
+        if (!hasOwnUi(part.toolName) && part.toolName !== 'reportProgress')
           setStep(
             part.toolCallId,
             {},
@@ -266,8 +271,12 @@ export async function chatWithSensei(
           )
       } else if (part.type === 'tool-result') {
         // The answers the user gave are the result of the questions step, so they read inside the thinking.
-        const answered = part.toolName === 'askUser' && typeof part.output === 'string' ? part.output.replace(/^The user answered:\n/, '') : undefined
-        setStep(part.toolCallId, { status: resultFailed(part.toolName, part.output) ? 'failed' : 'done', ...(answered && { detail: answered }) })
+        const answered =
+          part.toolName === 'askUser' && typeof part.output === 'string' ? part.output.replace(/^The user answered:\n/, '') : undefined
+        setStep(part.toolCallId, {
+          status: resultFailed(part.toolName, part.output) ? 'failed' : 'done',
+          ...(answered && { detail: answered }),
+        })
       } else if (part.type === 'tool-error') {
         const draft = documents.get(part.toolCallId)
         if (draft) scope?.onArtifactDraft?.({ id: part.toolCallId, name: '', content: '', format: 'markdown', done: true })

@@ -2,8 +2,6 @@ import { useEffect, useRef, useState } from 'react'
 import { toast } from 'sonner'
 
 import { type CallToolEvent, LiveCall } from '@/ai/inference/call'
-import { GENERAL_INSTRUCTIONS, createGeneralTools } from '@/ai/tools/general'
-import { SKILLS_INSTRUCTIONS, createSkillTools, skillsPrompt } from '@/ai/skills/tools'
 import {
   MEMORY_INSTRUCTIONS,
   SCRATCHPAD_INSTRUCTIONS,
@@ -15,7 +13,9 @@ import {
   episodicMemory,
   memoryPrompt,
 } from '@/ai/memory'
+import { SKILLS_INSTRUCTIONS, createSkillTools, skillsPrompt } from '@/ai/skills/tools'
 import { DEEP_ANSWER_INSTRUCTIONS, createDeepAnswerTool } from '@/ai/tools/deep-answer'
+import { GENERAL_INSTRUCTIONS, createGeneralTools } from '@/ai/tools/general'
 import { PLAN_INSTRUCTIONS, createPlanTools } from '@/ai/tools/plan'
 import { createSearchTool, upsertSearch } from '@/ai/tools/search'
 import { TODO_INSTRUCTIONS, createTodoTools } from '@/ai/tools/todo'
@@ -236,6 +236,7 @@ export function useLiveCall(chatId: string | null, onChatOpened: (id: string) =>
         ...createSkillTools(),
         deepAnswer: createDeepAnswerTool({
           chatId: chat,
+          onProgress: (id, progress) => callRef.current?.reportToolProgress(id, progress),
           history: () =>
             (useAskSenseiStore.getState().messages[chat] ?? [])
               .map((message) => ({ role: message.role, content: messageText(message) }))
@@ -264,7 +265,7 @@ export function useLiveCall(chatId: string | null, onChatOpened: (id: string) =>
       // The deep answer runs in the background, so the voice keeps talking meanwhile.
       nonBlocking: ['deepAnswer'],
       instructions: [
-        `You are the live Gemini browser agent. Focus first on operating the user's active SBrowse iframe and explaining what you are doing. Use the terminal, web tools, and skills when they help inspect or complete the task; never claim a tool ran if it did not.`,
+        `You handle the spoken conversation during this live call. Delegate research and substantive tasks to deepAnswer, which runs the normal chat agent and feeds you progress and findings while it works. For direct requests to operate the user's active SBrowse iframe, use the browser tools and explain what you are doing. Never claim work happened unless a tool result or progress update confirms it.`,
         GENERAL_INSTRUCTIONS,
         SKILLS_INSTRUCTIONS,
         await skillsPrompt(),

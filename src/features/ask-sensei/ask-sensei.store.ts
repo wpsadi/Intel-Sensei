@@ -333,7 +333,10 @@ export const useAskSenseiStore = create<AskSenseiState>()((set, get) => {
         await chatMessagesRepo.put({ ...existing, content, reasoning, ...extras })
       } else {
         const isFirstMessage = (get().messages[chatId] ?? []).length === 0
-        await addMessage({ id, chatId, role, content, reasoning, ...extras, createdAt: Date.now() })
+        const message: ChatMessage = { id, chatId, role, content, reasoning, ...extras, createdAt: Date.now() }
+        // Publish before awaiting storage: the next transcript chunk must update this same message.
+        set((state) => ({ messages: { ...state.messages, [chatId]: [...(state.messages[chatId] ?? []), message] } }))
+        await chatMessagesRepo.put(message)
         await touchChat(chatId)
         if (isFirstMessage && role === 'user') void nameChat(chatId).catch(() => {})
       }
