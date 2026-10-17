@@ -122,49 +122,136 @@ describe('live background tool progress', () => {
   })
 })
 
-describe('ending a call from the model', () => {
-  it('hangs up, aborts background work, and retains the final transcript', async () => {
-    const { call, session, receive, finish, signal, onChange, onTranscript, execute } = setup()
-    const stopMic = vi.fn()
-    const stopAudio = vi.fn()
-    const closeInput = vi.fn(async () => {})
-    const closeOutput = vi.fn(async () => {})
-    Object.assign(call, {
-      mic: { getTracks: () => [{ stop: stopMic }] },
-      inputContext: { close: closeInput },
-      outputContext: { close: closeOutput },
-      playing: new Set([{ stop: stopAudio }]),
-    })
-    const order: string[] = []
-    onTranscript.mockImplementation(() => order.push('transcript'))
-    onChange.mockImplementation(() => order.push('idle'))
-    receive({
-      serverContent: { outputTranscription: { text: 'Goodbye.' } },
-      toolCall: {
-        functionCalls: [
-          { id: 'end', name: 'endCall', args: {} },
-          { id: 'another-task', name: 'deepAnswer', args: {} },
-        ],
+function mockAudio(call: LiveCall) {
+  const sources: { onended: (() => void) | null; stop: ReturnType<typeof vi.fn> }[] = []
+  const stopMic = vi.fn()
+  const closeInput = vi.fn(async () => {})
+  const closeOutput = vi.fn(async () => {})
+  Object.assign(call, {
+    mic: { getTracks: () => [{ stop: stopMic }] },
+    inputContext: { close: closeInput },
+    outputContext: {
+      close: closeOutput,
+      currentTime: 0,
+      destination: {},
+      createBuffer: () => ({ duration: 0.2, copyToChannel: vi.fn() }),
+      createBufferSource: () => {
+        const source = { onended: null, stop: vi.fn(), connect: vi.fn(), start: vi.fn() }
+        sources.push(source)
+        return source
       },
+    },
+  })
+  return { sources, stopMic, closeInput, closeOutput }
+}
+
+const endRequest = { toolCall: { functionCalls: [{ id: 'end', name: 'endCall', args: {} }] } }
+const goodbyeAudio = {
+  serverContent: {
+    outputTranscription: { text: 'Achha bhai, bye!' },
+    modelTurn: { parts: [{ inlineData: { data: 'AAA=', mimeType: 'audio/pcm;rate=24000' } }] },
+  },
+}
+
+describe('ending a call from the model', () => {
+  it('asks for a goodbye and waits for every audio chunk to finish playing before hanging up', async () => {
+    const { call, session, receive, finish, signal, onChange, onTranscript, execute } = setup()
+    const { sources, stopMic, closeInput, closeOutput } = mockAudio(call)
+    receive({ ...endRequest, serverContent: { turnComplete: true } })
+    expect(signal()?.aborted).toBe(true)
+    expect(session.close).not.toHaveBeenCalled()
+    expect(session.sendToolResponse.mock.lastCall?.[0].functionResponses[0]).toMatchObject({
+      name: 'endCall',
+      response: { output: { instruction: expect.stringContaining('goodbye') } },
     })
+    expect(session.sendToolResponse.mock.lastCall?.[0].functionResponses[1]).toMatchObject({
+      id: 'task',
+      name: 'deepAnswer',
+      willContinue: false,
+      scheduling: 'SILENT',
+      response: { error: expect.stringContaining('ending') },
+    })
+    // Completing the tool-calling turn must not hang up before the farewell response arrives.
+    receive({ serverContent: { turnComplete: true } })
+    expect(session.close).not.toHaveBeenCalled()
+    receive(goodbyeAudio)
+    receive({ serverContent: { modelTurn: goodbyeAudio.serverContent.modelTurn, turnComplete: true } })
+    expect(onTranscript).toHaveBeenCalledWith('assistant', 'Achha bhai, bye!')
+    expect(session.close).not.toHaveBeenCalled()
+    sources[0].onended!()
+    expect(session.close).not.toHaveBeenCalled()
+    sources[1].onended!()
     await settle()
     expect(session.close).toHaveBeenCalledOnce()
     expect(stopMic).toHaveBeenCalledOnce()
-    expect(stopAudio).toHaveBeenCalledOnce()
     expect(closeInput).toHaveBeenCalledOnce()
     expect(closeOutput).toHaveBeenCalledOnce()
-    expect(signal()?.aborted).toBe(true)
-    expect(onTranscript).toHaveBeenCalledWith('assistant', 'Goodbye.')
     expect(onChange).toHaveBeenCalledWith('idle', undefined)
-    expect(order).toEqual(['transcript', 'idle'])
     expect(execute).toHaveBeenCalledOnce()
 
     finish('Late result')
     await settle()
     call.reportToolProgress('task', progress)
-    receive({ toolCall: { functionCalls: [{ id: 'end-again', name: 'endCall', args: {} }] } })
-    expect(session.sendToolResponse).not.toHaveBeenCalled()
+    receive(endRequest)
+    expect(session.sendToolResponse).toHaveBeenCalledOnce()
     expect(session.close).toHaveBeenCalledOnce()
     expect(onChange).toHaveBeenCalledOnce()
+  })
+
+  it('waits for turn completion if audio finishes between streamed chunks', async () => {
+    const { call, session, receive } = setup()
+    const { sources } = mockAudio(call)
+    receive(endRequest)
+    receive(goodbyeAudio)
+    sources[0].onended!()
+    expect(session.close).not.toHaveBeenCalled()
+    receive({ serverContent: { turnComplete: true } })
+    await settle()
+    expect(session.close).toHaveBeenCalledOnce()
+  })
+
+  it('lets the End button disconnect immediately during the goodbye', async () => {
+    vi.useFakeTimers()
+    const { call, session, receive, onChange } = setup()
+    const { sources } = mockAudio(call)
+    receive(endRequest)
+    receive(goodbyeAudio)
+    await call.stop()
+    expect(sources[0].stop).toHaveBeenCalledOnce()
+    expect(session.close).toHaveBeenCalledOnce()
+    await vi.advanceTimersByTimeAsync(20000)
+    expect(onChange).toHaveBeenCalledOnce()
+  })
+
+  it('closes safely if the farewell audio never arrives', async () => {
+    vi.useFakeTimers()
+    const { session, receive, onChange } = setup()
+    receive(endRequest)
+    await vi.advanceTimersByTimeAsync(19999)
+    expect(session.close).not.toHaveBeenCalled()
+    await vi.advanceTimersByTimeAsync(1)
+    expect(session.close).toHaveBeenCalledOnce()
+    expect(onChange).toHaveBeenCalledWith('idle', undefined)
+  })
+
+  it('does not hang up just because a transcript contains cut or bye', async () => {
+    const { call, session, receive } = setup()
+    receive({ serverContent: { inputTranscription: { text: 'Do not cut the call, I am not saying bye yet.' }, turnComplete: true } })
+    expect(session.close).not.toHaveBeenCalled()
+    await call.stop()
+  })
+
+  it('answers every tool in a hangup batch without starting more work', async () => {
+    const { call, session, receive, execute } = setup()
+    receive({ toolCall: { functionCalls: [...endRequest.toolCall.functionCalls, { id: 'extra', name: 'deepAnswer', args: {} }] } })
+    expect(execute).toHaveBeenCalledOnce()
+    expect(session.sendToolResponse.mock.lastCall?.[0].functionResponses).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ id: 'end', name: 'endCall' }),
+        expect.objectContaining({ id: 'extra', response: { error: expect.stringContaining('ending') } }),
+        expect.objectContaining({ id: 'task', willContinue: false }),
+      ]),
+    )
+    await call.stop()
   })
 })

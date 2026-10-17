@@ -18,6 +18,8 @@ import { LIVE_MODEL } from '@/constants/ai'
 /** Gemini Live takes 16 kHz mono PCM in and sends 24 kHz mono PCM back. */
 const INPUT_RATE = 16000
 const OUTPUT_RATE = 24000
+/** A failed farewell response must not leave the microphone and call open indefinitely. */
+const FAREWELL_TIMEOUT_MS = 20_000
 
 /** Runs in the audio thread and hands each block of microphone samples to the page. */
 const CAPTURE_WORKLET = `
@@ -100,6 +102,7 @@ export class LiveCall {
   private stopped = false
   private runningTools = new Map<string, { name: string; abort: AbortController; nonBlocking: boolean }>()
   private lastProgressAt = -Infinity
+  private ending: { heardAudio: boolean; turnComplete: boolean; timeout: ReturnType<typeof setTimeout> } | null = null
 
   private options: LiveCallOptions
 
@@ -134,7 +137,7 @@ export class LiveCall {
         ...(LIVE_MODEL.includes('extended-thinking') && { thinkingConfig: { thinkingLevel: ThinkingLevel.MEDIUM, includeThoughts: true } }),
         systemInstruction:
           "You are Sensei, a friendly, general-purpose assistant on a live voice call. Help with the user's request across topics; do not steer the conversation toward studying unless asked. Keep replies short and conversational, because they are spoken aloud. After a tool call, carry on from where you stopped: never say again what you already said. Do not use tools for a plain answer.\n\n" +
-          'Call endCall when the user asks to hang up, disconnect or end the call, or clearly says goodbye and is finished. It disconnects immediately. Do not end the call just because you completed an answer, are waiting on a tool, or the user is quiet.\n\n' +
+          'Call endCall when the user asks to hang up, disconnect or end the call, or clearly says goodbye and is finished. After its result, say one brief, warm goodbye in the language of the conversation. The app will disconnect after your goodbye finishes playing. Do not end the call just because you completed an answer, are waiting on a tool, or the user is quiet.\n\n' +
           currentTimePrompt() +
           (this.options.instructions ? `\n\n${this.options.instructions}` : '') +
           ((this.options.history ?? '')
@@ -147,8 +150,9 @@ export class LiveCall {
               {
                 name: 'endCall',
                 description:
-                  'Hang up this voice call immediately when the user asks to end it or clearly says goodbye. Stops the microphone, audio playback and background work.',
+                  'Finish this voice call when the user asks to end it or clearly says goodbye. After the tool result, say a brief natural goodbye; the app hangs up once it finishes playing.',
                 parametersJsonSchema: { type: 'object', properties: {} },
+                behavior: Behavior.BLOCKING,
               },
               // Each tool's own description and zod input schema become the Live API's function declaration.
               ...Object.entries(this.options.tools ?? {}).map(([name, item]) => {
@@ -226,6 +230,8 @@ export class LiveCall {
   async stop(error?: string) {
     if (this.stopped) return
     this.stopped = true
+    if (this.ending) clearTimeout(this.ending.timeout)
+    this.ending = null
     this.runningTools.forEach((running) => running.abort.abort())
     this.runningTools.clear()
     this.session?.close()
@@ -253,6 +259,7 @@ export class LiveCall {
     const source = context.createMediaStreamSource(mic)
     const capture = new AudioWorkletNode(context, 'capture')
     capture.port.onmessage = (event: MessageEvent<Float32Array>) => {
+      if (this.ending) return
       this.session?.sendRealtimeInput({
         audio: { data: toBase64Pcm(event.data), mimeType: `audio/pcm;rate=${INPUT_RATE}` },
       })
@@ -280,8 +287,16 @@ export class LiveCall {
       if (part.thought && part.text) this.options.onTranscript('thought', part.text)
       else if (part.inlineData?.data) this.play(fromBase64Pcm(part.inlineData.data))
     }
-    // Save any last words in this message before an endCall closes and finalizes the conversation.
+    if (message.serverContent?.turnComplete && this.ending?.heardAudio) {
+      this.ending.turnComplete = true
+      this.finishFarewell()
+    }
     if (message.toolCall?.functionCalls?.length) this.handleToolCalls(message.toolCall.functionCalls)
+  }
+
+  /** Both generation and actual playback must finish before the call disconnects. */
+  private finishFarewell() {
+    if (this.ending?.turnComplete && this.playing.size === 0) void this.stop()
   }
 
   /**
@@ -289,8 +304,54 @@ export class LiveCall {
    * not hold up a quick one. A non-blocking tool's result is added when the model is idle, so it never cuts in on speech.
    */
   private handleToolCalls(calls: NonNullable<LiveServerMessage['toolCall']>['functionCalls'] & {}) {
-    if (calls.some((call) => call.name === 'endCall')) {
-      void this.stop()
+    if (this.stopped) return
+    const endCall = calls.find((call) => call.name === 'endCall')
+    if (endCall) {
+      const cancelled = Array.from(this.runningTools, ([id, running]) => {
+        running.abort.abort()
+        return {
+          id,
+          name: running.name,
+          response: { error: 'Cancelled because the call is ending.' },
+          ...(running.nonBlocking && { willContinue: false, scheduling: FunctionResponseScheduling.SILENT }),
+        }
+      })
+      this.runningTools.clear()
+      if (!this.ending) {
+        this.ending = {
+          heardAudio: false,
+          turnComplete: false,
+          timeout: setTimeout(() => void this.stop(), FAREWELL_TIMEOUT_MS),
+        }
+      }
+      this.session?.sendToolResponse({
+        functionResponses: [
+          ...calls.map((call) => ({
+            id: call.id,
+            name: call.name,
+            response:
+              call.name === 'endCall'
+                ? {
+                    output: {
+                      instruction:
+                        'Say one short, natural goodbye now in the language of this conversation. Do not call more tools. The call will close after your goodbye finishes playing.',
+                    },
+                  }
+                : { error: 'The call is ending. Say a brief goodbye instead of starting more work.' },
+          })),
+          ...cancelled,
+        ],
+      })
+      return
+    }
+    if (this.ending) {
+      this.session?.sendToolResponse({
+        functionResponses: calls.map((call) => ({
+          id: call.id,
+          name: call.name,
+          response: { error: 'The call is ending. Say one brief goodbye now without using tools.' },
+        })),
+      })
       return
     }
     for (const call of calls) {
@@ -344,6 +405,10 @@ export class LiveCall {
     source.start(startAt)
     this.nextStart = startAt + buffer.duration
     this.playing.add(source)
-    source.onended = () => this.playing.delete(source)
+    if (this.ending) this.ending.heardAudio = true
+    source.onended = () => {
+      this.playing.delete(source)
+      this.finishFarewell()
+    }
   }
 }
