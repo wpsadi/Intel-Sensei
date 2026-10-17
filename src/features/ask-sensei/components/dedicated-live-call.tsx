@@ -1,4 +1,4 @@
-import { Mic, MicOff, Phone, PhoneOff } from 'lucide-react'
+import { AudioLines, Mic, MicOff, Phone, PhoneOff } from 'lucide-react'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { toast } from 'sonner'
 
@@ -89,17 +89,21 @@ export function DedicatedLiveCall({ scope, session }: { scope: string | null; se
     return () => cancelAnimationFrame(frame)
   }, [live.state, level])
 
+  // A widget without a live scope has no Gemini Live session to attach to.
+  // Keep the control out of the toolbar instead of showing a disabled phone button.
+  if (!scope) return null
+
   if (live.state === 'idle')
     return (
       <Button
-        variant="ghost"
+        variant="secondary"
         size="icon-sm"
+        className="rounded-full"
         aria-label="Start Gemini Live call"
         title="Start Gemini Live call"
         onClick={() => void live.start()}
-        disabled={!scope}
       >
-        <Phone />
+        <AudioLines />
       </Button>
     )
 
