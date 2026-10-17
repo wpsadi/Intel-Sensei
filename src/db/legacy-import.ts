@@ -10,6 +10,7 @@
  */
 import type { PGliteInterface } from '@electric-sql/pglite'
 
+import { LEGACY_DRAW_FILE_ID } from '@/features/s-draw/s-draw.types'
 import { type Collection, collectionOf } from '@/features/vault/migrate'
 
 import type { Db } from './client'
@@ -24,6 +25,8 @@ const LEGACY_DATABASES = [
   'sensei-skills',
   'sensei-terminals',
   'sensei-sbrowse',
+  'sensei-s-draw',
+  'sensei-sdraw-chats',
 ]
 
 const BATCH = 100
@@ -98,6 +101,19 @@ function unwrap(record: unknown): { record: unknown; cipher?: Uint8Array } {
  * became pinned facts, facts and episodes, and its embeddings were renamed to match.
  */
 function upgradeStores(name: string, stores: OldStores): OldStores {
+  if (name === 'sensei-s-draw' && stores.workspace) {
+    return {
+      workspace: {
+        keyPath: 'id',
+        records: stores.workspace.records.map((record) => ({ ...(record as object), id: LEGACY_DRAW_FILE_ID, updatedAt: 0 })),
+      },
+    }
+  }
+  if (name === 'sensei-sdraw-chats' && stores.chats) {
+    return {
+      chats: { keyPath: 'id', records: stores.chats.records.map((record) => ({ ...(record as object), fileId: LEGACY_DRAW_FILE_ID })) },
+    }
+  }
   if (name !== 'sensei-memory' || !('core' in stores || 'notes' in stores || 'conversations' in stores)) return stores
   const get = (store: string) => (stores[store]?.records ?? []) as Record<string, unknown>[]
   const old = new Set(['core', 'notes', 'conversations', 'vectors'])
@@ -156,6 +172,12 @@ async function syncDatabase(name: string, db: Db): Promise<{ copied: number; syn
     return { copied: 0, synced: true }
   }
 
+  if (name === 'sensei-sdraw-chats' && stores.chats?.records.length) {
+    const { sdrawFilesStore } = await import('@/features/s-draw/s-draw.db')
+    const existing = await existingDatabases()
+    if (existing && !existing.has('sensei-s-draw'))
+      await sdrawFilesStore.addMany([{ value: { id: LEGACY_DRAW_FILE_ID, updatedAt: 0, sheets: [], activeId: '', libraryItems: [] } }], db)
+  }
   let copied = 0
   let synced = true
   for (const [store, { keyPath, records }] of Object.entries(upgradeStores(name, stores))) {

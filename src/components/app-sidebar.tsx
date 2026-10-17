@@ -6,6 +6,7 @@ import {
   DraftingCompassIcon,
   HomeIcon,
   NotebookPenIcon,
+  PaintbrushIcon,
   PenToolIcon,
   Settings2Icon,
   SparklesIcon,
@@ -44,6 +45,11 @@ const data = {
       title: 'SNote',
       url: '/s-note',
       icon: <NotebookPenIcon />,
+    },
+    {
+      title: 'SDraw',
+      url: '/s-draw',
+      icon: <PaintbrushIcon />,
     },
     {
       title: 'S-Design',

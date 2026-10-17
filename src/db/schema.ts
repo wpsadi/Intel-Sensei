@@ -96,3 +96,18 @@ export const s3dChats = pgTable('s3d_chats', { id: text('id').primaryKey(), docI
   index('s3d_chats_doc').on(t.docId),
 ])
 export const s3dSettings = pgTable('s3d_settings', { key: text('key').primaryKey(), data: data() })
+
+export const sdrawFiles = pgTable('sdraw_files', { id: text('id').primaryKey(), updatedAt: time('updated_at').notNull(), data: data() })
+export const sdrawChats = pgTable(
+  'sdraw_chats',
+  {
+    id: text('id').primaryKey(),
+    fileId: text('file_id')
+      .notNull()
+      .references(() => sdrawFiles.id, { onDelete: 'cascade' }),
+    updatedAt: time('updated_at').notNull(),
+    data: data(),
+  },
+  (t) => [index('sdraw_chats_file').on(t.fileId)],
+)
+export const sdrawSettings = pgTable('sdraw_settings', { key: text('key').primaryKey(), data: data() })

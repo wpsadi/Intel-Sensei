@@ -1,0 +1,107 @@
+.s-draw-workspace {
+  position: relative;
+  width: 100%;
+  height: 100dvh;
+  overflow: hidden;
+  background: var(--background);
+  color: var(--foreground);
+}
+
+.s-draw-sheet-controls {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding: 4px;
+  border-radius: 8px;
+  background: var(--island-bg-color, var(--background));
+  box-shadow: var(--shadow-island);
+  color: var(--color-on-surface, var(--foreground));
+}
+
+.s-draw-sheet-controls button,
+.s-draw-sheet-controls a {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  height: 32px;
+  width: 30px;
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+.s-draw-sheet-controls button:hover,
+.s-draw-sheet-controls a:hover {
+  background: var(--button-hover-bg, var(--accent));
+}
+
+.s-draw-sheet-controls select {
+  max-width: 140px;
+  height: 32px;
+  font: inherit;
+  background: inherit;
+  color: inherit;
+}
+
+.s-draw-loading {
+  display: flex;
+  min-height: 100dvh;
+  justify-content: center;
+  align-items: center;
+  gap: 12px;
+  background: var(--background);
+  color: var(--foreground);
+}
+
+.s-draw-save-error {
+  position: absolute;
+  left: 50%;
+  bottom: 72px;
+  transform: translateX(-50%);
+  padding: 10px 16px;
+  border-radius: 8px;
+  background: var(--background);
+  color: var(--destructive);
+  border: 1px solid var(--destructive);
+  z-index: 5;
+}
+
+@media (max-width: 600px) {
+  .s-draw-sheet-controls select {
+    max-width: 100px;
+  }
+  .s-draw-sheet-controls button,
+  .s-draw-sheet-controls a {
+    width: 26px;
+  }
+}
+
+.s-draw-sheets {
+  position: relative;
+}
+.s-draw-sheets > summary {
+  display: none;
+}
+.s-draw-sheets[data-mobile='true'] > summary {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  border-radius: 8px;
+  cursor: pointer;
+  background: var(--island-bg-color, var(--background));
+  color: var(--color-on-surface, var(--foreground));
+  box-shadow: var(--shadow-island);
+  list-style: none;
+}
+.s-draw-sheets > summary::-webkit-details-marker {
+  display: none;
+}
+.s-draw-sheets[data-mobile='true'] .s-draw-sheet-controls {
+  position: absolute;
+  right: 0;
+  top: 44px;
+  width: max-content;
+  max-width: calc(100vw - 24px);
+  z-index: 10;
+}

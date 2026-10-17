@@ -1,0 +1,969 @@
+{
+  "tools": [
+    {
+      "name": "sdraw_get_document",
+      "description": "Inspect the active drawing, revision, selection and whole-workspace counts. Use before editing to identify the current sheet and focused region.",
+      "inputSchema": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "type": "object",
+        "properties": {},
+        "additionalProperties": false
+      },
+      "annotations": {
+        "readOnlyHint": true,
+        "untrustedContentHint": true
+      }
+    },
+    {
+      "name": "sdraw_list_sheets",
+      "description": "List drawing sheets with their sizes. Use to find another sheet or inspect a large workspace in pages.",
+      "inputSchema": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "type": "object",
+        "properties": {
+          "offset": {
+            "default": 0,
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          },
+          "limit": {
+            "default": 5,
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 10
+          }
+        },
+        "required": ["offset", "limit"],
+        "additionalProperties": false
+      },
+      "annotations": {
+        "readOnlyHint": true,
+        "untrustedContentHint": true
+      }
+    },
+    {
+      "name": "sdraw_read_elements",
+      "description": "Read drawing elements in bounded pages, optionally within the human selection, a region or matching text. Use to understand content and locate edit targets.",
+      "inputSchema": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "type": "object",
+        "properties": {
+          "offset": {
+            "default": 0,
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          },
+          "limit": {
+            "default": 5,
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 10
+          },
+          "scope": {
+            "default": "all",
+            "type": "string",
+            "enum": ["all", "selection", "region"]
+          },
+          "region": {
+            "type": "object",
+            "properties": {
+              "x": {
+                "type": "number"
+              },
+              "y": {
+                "type": "number"
+              },
+              "width": {
+                "type": "number",
+                "minimum": 0
+              },
+              "height": {
+                "type": "number",
+                "minimum": 0
+              }
+            },
+            "required": ["x", "y", "width", "height"],
+            "additionalProperties": false
+          },
+          "query": {
+            "type": "string",
+            "maxLength": 200
+          }
+        },
+        "required": ["offset", "limit", "scope"],
+        "additionalProperties": false
+      },
+      "annotations": {
+        "readOnlyHint": true,
+        "untrustedContentHint": true
+      }
+    },
+    {
+      "name": "sdraw_read_element_field",
+      "description": "Read a complete element property in small JSON text chunks. Use for long labels, freehand points, bindings or other details omitted from summaries.",
+      "inputSchema": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 100
+          },
+          "field": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 40
+          },
+          "offset": {
+            "default": 0,
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          },
+          "length": {
+            "default": 600,
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 600
+          }
+        },
+        "required": ["id", "field", "offset", "length"],
+        "additionalProperties": false
+      },
+      "annotations": {
+        "readOnlyHint": true,
+        "untrustedContentHint": true
+      }
+    },
+    {
+      "name": "sdraw_create_elements",
+      "description": "Draw native Excalidraw shapes, text, arrows, images and frames while preserving the existing scene. Use when asked to add a diagram or drawing.",
+      "inputSchema": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "type": "object",
+        "properties": {
+          "sheetId": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 100
+          },
+          "expectedRevision": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991,
+            "description": "Revision returned by get_document; reread after a human edit"
+          },
+          "elements": {
+            "minItems": 1,
+            "maxItems": 20,
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "type": {
+                  "type": "string",
+                  "enum": [
+                    "rectangle",
+                    "ellipse",
+                    "diamond",
+                    "text",
+                    "arrow",
+                    "line",
+                    "freedraw",
+                    "image",
+                    "frame",
+                    "magicframe",
+                    "embeddable",
+                    "iframe"
+                  ]
+                },
+                "x": {
+                  "type": "number"
+                },
+                "y": {
+                  "type": "number"
+                },
+                "id": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 100
+                },
+                "width": {
+                  "type": "number",
+                  "minimum": 0
+                },
+                "height": {
+                  "type": "number",
+                  "minimum": 0
+                },
+                "text": {
+                  "type": "string",
+                  "maxLength": 100000
+                },
+                "label": {
+                  "type": "object",
+                  "properties": {
+                    "text": {
+                      "type": "string",
+                      "maxLength": 10000
+                    }
+                  },
+                  "required": ["text"],
+                  "additionalProperties": {}
+                },
+                "points": {
+                  "maxItems": 10000,
+                  "type": "array",
+                  "items": {
+                    "type": "array",
+                    "prefixItems": [
+                      {
+                        "type": "number"
+                      },
+                      {
+                        "type": "number"
+                      }
+                    ],
+                    "items": false,
+                    "minItems": 2,
+                    "maxItems": 2
+                  }
+                },
+                "fileId": {
+                  "anyOf": [
+                    {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 100
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "start": {
+                  "type": "object",
+                  "properties": {
+                    "id": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 100
+                    },
+                    "type": {
+                      "type": "string",
+                      "enum": ["rectangle", "ellipse", "diamond", "text"]
+                    },
+                    "text": {
+                      "type": "string",
+                      "maxLength": 100000
+                    },
+                    "x": {
+                      "type": "number"
+                    },
+                    "y": {
+                      "type": "number"
+                    },
+                    "width": {
+                      "type": "number",
+                      "minimum": 0
+                    },
+                    "height": {
+                      "type": "number",
+                      "minimum": 0
+                    }
+                  },
+                  "additionalProperties": {}
+                },
+                "end": {
+                  "type": "object",
+                  "properties": {
+                    "id": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 100
+                    },
+                    "type": {
+                      "type": "string",
+                      "enum": ["rectangle", "ellipse", "diamond", "text"]
+                    },
+                    "text": {
+                      "type": "string",
+                      "maxLength": 100000
+                    },
+                    "x": {
+                      "type": "number"
+                    },
+                    "y": {
+                      "type": "number"
+                    },
+                    "width": {
+                      "type": "number",
+                      "minimum": 0
+                    },
+                    "height": {
+                      "type": "number",
+                      "minimum": 0
+                    }
+                  },
+                  "additionalProperties": {}
+                },
+                "link": {
+                  "anyOf": [
+                    {
+                      "type": "string",
+                      "maxLength": 10000
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "containerId": {
+                  "anyOf": [
+                    {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 100
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "boundElements": {
+                  "anyOf": [
+                    {
+                      "maxItems": 10000,
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "id": {
+                            "type": "string",
+                            "minLength": 1,
+                            "maxLength": 100
+                          },
+                          "type": {
+                            "type": "string",
+                            "enum": ["arrow", "text"]
+                          }
+                        },
+                        "required": ["id", "type"],
+                        "additionalProperties": false
+                      }
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "startBinding": {
+                  "anyOf": [
+                    {
+                      "type": "object",
+                      "properties": {
+                        "elementId": {
+                          "type": "string",
+                          "minLength": 1,
+                          "maxLength": 100
+                        },
+                        "focus": {
+                          "type": "number"
+                        },
+                        "gap": {
+                          "type": "number",
+                          "minimum": 0
+                        },
+                        "fixedPoint": {
+                          "type": "array",
+                          "prefixItems": [
+                            {
+                              "type": "number"
+                            },
+                            {
+                              "type": "number"
+                            }
+                          ],
+                          "items": false,
+                          "minItems": 2,
+                          "maxItems": 2
+                        }
+                      },
+                      "required": ["elementId", "focus", "gap"],
+                      "additionalProperties": false
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "endBinding": {
+                  "anyOf": [
+                    {
+                      "type": "object",
+                      "properties": {
+                        "elementId": {
+                          "type": "string",
+                          "minLength": 1,
+                          "maxLength": 100
+                        },
+                        "focus": {
+                          "type": "number"
+                        },
+                        "gap": {
+                          "type": "number",
+                          "minimum": 0
+                        },
+                        "fixedPoint": {
+                          "type": "array",
+                          "prefixItems": [
+                            {
+                              "type": "number"
+                            },
+                            {
+                              "type": "number"
+                            }
+                          ],
+                          "items": false,
+                          "minItems": 2,
+                          "maxItems": 2
+                        }
+                      },
+                      "required": ["elementId", "focus", "gap"],
+                      "additionalProperties": false
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "roundness": {
+                  "anyOf": [
+                    {
+                      "type": "object",
+                      "properties": {
+                        "type": {
+                          "anyOf": [
+                            {
+                              "type": "number",
+                              "const": 1
+                            },
+                            {
+                              "type": "number",
+                              "const": 2
+                            },
+                            {
+                              "type": "number",
+                              "const": 3
+                            }
+                          ]
+                        },
+                        "value": {
+                          "type": "number"
+                        }
+                      },
+                      "required": ["type"],
+                      "additionalProperties": false
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "crop": {
+                  "anyOf": [
+                    {
+                      "type": "object",
+                      "properties": {
+                        "x": {
+                          "type": "number"
+                        },
+                        "y": {
+                          "type": "number"
+                        },
+                        "width": {
+                          "type": "number",
+                          "minimum": 0
+                        },
+                        "height": {
+                          "type": "number",
+                          "minimum": 0
+                        },
+                        "naturalWidth": {
+                          "type": "number",
+                          "exclusiveMinimum": 0
+                        },
+                        "naturalHeight": {
+                          "type": "number",
+                          "exclusiveMinimum": 0
+                        }
+                      },
+                      "required": ["x", "y", "width", "height", "naturalWidth", "naturalHeight"],
+                      "additionalProperties": false
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "scale": {
+                  "type": "array",
+                  "prefixItems": [
+                    {
+                      "anyOf": [
+                        {
+                          "type": "number",
+                          "const": -1
+                        },
+                        {
+                          "type": "number",
+                          "const": 1
+                        }
+                      ]
+                    },
+                    {
+                      "anyOf": [
+                        {
+                          "type": "number",
+                          "const": -1
+                        },
+                        {
+                          "type": "number",
+                          "const": 1
+                        }
+                      ]
+                    }
+                  ],
+                  "items": false,
+                  "minItems": 2,
+                  "maxItems": 2
+                },
+                "pressures": {
+                  "maxItems": 10000,
+                  "type": "array",
+                  "items": {
+                    "type": "number",
+                    "minimum": 0,
+                    "maximum": 1
+                  }
+                },
+                "simulatePressure": {
+                  "type": "boolean"
+                },
+                "textAlign": {
+                  "type": "string",
+                  "enum": ["left", "center", "right"]
+                },
+                "verticalAlign": {
+                  "type": "string",
+                  "enum": ["top", "middle", "bottom"]
+                },
+                "fontFamily": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 10
+                },
+                "lineHeight": {
+                  "type": "number",
+                  "exclusiveMinimum": 0,
+                  "maximum": 20
+                },
+                "autoResize": {
+                  "type": "boolean"
+                },
+                "originalText": {
+                  "type": "string",
+                  "maxLength": 100000
+                },
+                "locked": {
+                  "type": "boolean"
+                },
+                "strokeColor": {
+                  "type": "string",
+                  "maxLength": 100
+                },
+                "backgroundColor": {
+                  "type": "string",
+                  "maxLength": 100
+                },
+                "fillStyle": {
+                  "type": "string",
+                  "enum": ["hachure", "cross-hatch", "solid", "zigzag"]
+                },
+                "strokeStyle": {
+                  "type": "string",
+                  "enum": ["solid", "dashed", "dotted"]
+                },
+                "strokeWidth": {
+                  "type": "number",
+                  "minimum": 0,
+                  "maximum": 100
+                },
+                "roughness": {
+                  "type": "number",
+                  "minimum": 0,
+                  "maximum": 10
+                },
+                "opacity": {
+                  "type": "number",
+                  "minimum": 0,
+                  "maximum": 100
+                },
+                "fontSize": {
+                  "type": "number",
+                  "minimum": 1,
+                  "maximum": 1000
+                },
+                "angle": {
+                  "type": "number"
+                },
+                "groupIds": {
+                  "maxItems": 50,
+                  "type": "array",
+                  "items": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 100
+                  }
+                },
+                "frameId": {
+                  "anyOf": [
+                    {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 100
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "children": {
+                  "maxItems": 10000,
+                  "type": "array",
+                  "items": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 100
+                  }
+                }
+              },
+              "required": ["type", "x", "y"],
+              "additionalProperties": {},
+              "description": "Native Excalidraw skeleton; supports styles, labels, bindings, groups, frames and links"
+            }
+          }
+        },
+        "required": ["sheetId", "expectedRevision", "elements"],
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "sdraw_update_elements",
+      "description": "Edit existing drawing elements in place, preserving identity and undo history. Use to move, style, relabel, group or bind inspected elements.",
+      "inputSchema": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "type": "object",
+        "properties": {
+          "sheetId": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 100
+          },
+          "expectedRevision": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991,
+            "description": "Revision returned by get_document; reread after a human edit"
+          },
+          "updates": {
+            "minItems": 1,
+            "maxItems": 20,
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "id": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 100
+                },
+                "patch": {
+                  "type": "object",
+                  "propertyNames": {
+                    "type": "string"
+                  },
+                  "additionalProperties": {}
+                }
+              },
+              "required": ["id", "patch"],
+              "additionalProperties": false
+            }
+          }
+        },
+        "required": ["sheetId", "expectedRevision", "updates"],
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "sdraw_delete_elements",
+      "description": "Remove specific elements and repair their references. Use when the user asks to remove drawing content.",
+      "inputSchema": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "type": "object",
+        "properties": {
+          "sheetId": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 100
+          },
+          "expectedRevision": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991,
+            "description": "Revision returned by get_document; reread after a human edit"
+          },
+          "ids": {
+            "minItems": 1,
+            "maxItems": 20,
+            "type": "array",
+            "items": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 100
+            }
+          }
+        },
+        "required": ["sheetId", "expectedRevision", "ids"],
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "sdraw_select_elements",
+      "description": "Select drawing elements and optionally bring them into view. Use to show a result or focus an area for the human.",
+      "inputSchema": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "type": "object",
+        "properties": {
+          "ids": {
+            "maxItems": 1000,
+            "type": "array",
+            "items": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 100
+            }
+          },
+          "fit": {
+            "default": false,
+            "type": "boolean"
+          }
+        },
+        "required": ["ids", "fit"],
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "sdraw_manage_sheets",
+      "description": "Create, switch, rename or duplicate drawing sheets. Use to organize separate drawings without replacing the current scene.",
+      "inputSchema": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "type": "object",
+        "properties": {
+          "action": {
+            "type": "string",
+            "enum": ["create", "switch", "rename", "duplicate"]
+          },
+          "sheet": {
+            "description": "Sheet name or ID; required except for create",
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 100
+          },
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 160
+          }
+        },
+        "required": ["action"],
+        "additionalProperties": false
+      },
+      "annotations": {
+        "untrustedContentHint": true
+      }
+    },
+    {
+      "name": "sdraw_delete_sheet",
+      "description": "Delete a drawing sheet permanently. Use only when the user explicitly asks to delete that sheet.",
+      "inputSchema": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "type": "object",
+        "properties": {
+          "sheet": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 100,
+            "description": "Exact sheet name or ID"
+          },
+          "confirmDelete": {
+            "type": "boolean",
+            "const": true,
+            "description": "User explicitly requested deletion of this sheet"
+          }
+        },
+        "required": ["sheet", "confirmDelete"],
+        "additionalProperties": false
+      },
+      "annotations": {
+        "consequentialHint": true
+      }
+    },
+    {
+      "name": "sdraw_set_view",
+      "description": "Adjust the drawing viewport, appearance or grid. Use to frame content or apply requested canvas settings.",
+      "inputSchema": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "type": "object",
+        "properties": {
+          "fit": {
+            "type": "string",
+            "enum": ["all", "selection"]
+          },
+          "zoom": {
+            "type": "number",
+            "minimum": 0.1,
+            "maximum": 30
+          },
+          "scrollX": {
+            "type": "number"
+          },
+          "scrollY": {
+            "type": "number"
+          },
+          "theme": {
+            "type": "string",
+            "enum": ["light", "dark"]
+          },
+          "background": {
+            "type": "string",
+            "maxLength": 100
+          },
+          "grid": {
+            "type": "boolean"
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "sdraw_add_files",
+      "description": "Store image data in the active drawing. Use before creating image elements that reference these files.",
+      "inputSchema": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "type": "object",
+        "properties": {
+          "sheetId": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 100
+          },
+          "files": {
+            "minItems": 1,
+            "maxItems": 5,
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "id": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 100
+                },
+                "dataURL": {
+                  "type": "string",
+                  "maxLength": 14000000,
+                  "pattern": "^data:image\\/(png|jpeg|gif|webp|svg\\+xml);base64,"
+                },
+                "mimeType": {
+                  "type": "string",
+                  "enum": ["image/png", "image/jpeg", "image/gif", "image/webp", "image/svg+xml"]
+                }
+              },
+              "required": ["id", "dataURL", "mimeType"],
+              "additionalProperties": false
+            }
+          }
+        },
+        "required": ["sheetId", "files"],
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "sdraw_capture_view",
+      "description": "Inspect a rendered image of the drawing or selection. Use to understand images and spatial layout, or visually verify an edit.",
+      "inputSchema": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "type": "object",
+        "properties": {
+          "scope": {
+            "default": "all",
+            "type": "string",
+            "enum": ["all", "selection"]
+          }
+        },
+        "required": ["scope"],
+        "additionalProperties": false
+      },
+      "annotations": {
+        "readOnlyHint": true,
+        "untrustedContentHint": true
+      }
+    },
+    {
+      "name": "sdraw_export_scene",
+      "description": "Download the drawing as a native editable file, SVG or PNG. Use when the user requests a local export.",
+      "inputSchema": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "type": "object",
+        "properties": {
+          "format": {
+            "type": "string",
+            "enum": ["excalidraw", "svg", "png"]
+          },
+          "scope": {
+            "default": "all",
+            "type": "string",
+            "enum": ["all", "selection"]
+          }
+        },
+        "required": ["format", "scope"],
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "sdraw_read_guide",
+      "description": "Read the large-drawing skill in bounded pages. Use when the file or selection is too large to inspect in a single context.",
+      "inputSchema": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "type": "object",
+        "properties": {
+          "offset": {
+            "default": 0,
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          }
+        },
+        "required": ["offset"],
+        "additionalProperties": false
+      },
+      "annotations": {
+        "readOnlyHint": true
+      }
+    }
+  ]
+}

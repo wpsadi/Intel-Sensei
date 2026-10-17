@@ -53,4 +53,8 @@ export const MIGRATIONS: string[] = [
   // Capabilities were added after the initial schema. Keeping this as a separate
   // migration makes existing PGlite databases pick up their HNSW index too.
   `CREATE INDEX IF NOT EXISTS memory_vectors_capability ON memory_vectors USING hnsw (embedding vector_cosine_ops) WHERE kind = 'capability';`,
+  `CREATE TABLE IF NOT EXISTS sdraw_files (id text PRIMARY KEY, updated_at bigint NOT NULL, data jsonb NOT NULL);
+   CREATE TABLE IF NOT EXISTS sdraw_chats (id text PRIMARY KEY, file_id text NOT NULL REFERENCES sdraw_files(id) ON DELETE CASCADE, updated_at bigint NOT NULL, data jsonb NOT NULL);
+   CREATE INDEX IF NOT EXISTS sdraw_chats_file ON sdraw_chats (file_id);
+   CREATE TABLE IF NOT EXISTS sdraw_settings (key text PRIMARY KEY, data jsonb NOT NULL);`,
 ]

@@ -20,6 +20,7 @@ import {
   widgetChatsStore,
 } from '@/features/note/db/stores'
 import { filesStore, s3dChatsStore, s3dDocsStore, s3dSettingsStore, s3dVersionsStore } from '@/features/s-3d/db'
+import { sdrawChatsStore, sdrawFilesStore, sdrawSettingsStore } from '@/features/s-draw/s-draw.db'
 import { grantsStore } from '@/pages/s-browse.db'
 
 import { resealBlobs } from './blob'
@@ -96,6 +97,9 @@ export const COLLECTIONS: Collection[] = [
   of('s3d', 'files', filesStore),
   of('s3d', 'chats', s3dChatsStore),
   of('s3d', 'settings', s3dSettingsStore),
+  of('sensei-s-draw', 'workspace', sdrawFilesStore),
+  of('sensei-sdraw-chats', 'chats', sdrawChatsStore),
+  of('sdraw', 'settings', sdrawSettingsStore),
   of('sensei-memory', 'semantic', semanticStore),
   of('sensei-memory', 'episodes', episodesStore),
   of('sensei-memory', 'procedures', proceduresStore),

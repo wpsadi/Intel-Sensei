@@ -11,7 +11,7 @@ import {
   useSensor,
   useSensors,
 } from '@dnd-kit/core'
-import { DollarSignIcon, DraftingCompassIcon, NotebookPenIcon, PenToolIcon, Settings2Icon } from 'lucide-react'
+import { DollarSignIcon, DraftingCompassIcon, NotebookPenIcon, PaintbrushIcon, PenToolIcon, Settings2Icon } from 'lucide-react'
 import { type ComponentType, useEffect, useRef, useState } from 'react'
 import { BsBrowserChrome } from 'react-icons/bs'
 import { Link } from 'react-router-dom'
@@ -33,6 +33,7 @@ const SLOT_COUNT = COLUMNS * ROWS
 const apps: AppEntry[] = [
   { id: 'ask-sensei', name: 'Ask Sensei', href: '/ask-sensei', icon: SenseiLogo },
   { id: 's-note', name: 'SNote', href: '/s-note', icon: NotebookPenIcon },
+  { id: 's-draw', name: 'SDraw', href: '/s-draw', icon: PaintbrushIcon },
   { id: 's-design', name: 'S-Design', href: '/s-design', icon: PenToolIcon },
   { id: 's-3d', name: 'S3D', href: '/s-3d', icon: DraftingCompassIcon },
   { id: 's-browse', name: 'SBrowse', href: '/s-browse', icon: BsBrowserChrome },

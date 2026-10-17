@@ -1,5 +1,5 @@
 import { PlusIcon, RotateCcwIcon, XIcon } from 'lucide-react'
-import { useEffect, useRef, useState } from 'react'
+import { type HTMLAttributes, useEffect, useRef, useState } from 'react'
 
 import { type SandboxStatus, resetSandbox, sandboxStatus, warmSandbox } from '@/ai/sandbox/client'
 import { Button } from '@/components/ui/button'
@@ -44,7 +44,15 @@ function useSandboxStatus(chatId: string) {
  * The terminals of the open chat, under the conversation. Each chat has its own environment (files and commands), kept
  * across reloads, and any number of screens onto it.
  */
-export function TerminalPanel({ chatId, onClose }: { chatId: string; onClose: () => void }) {
+export function TerminalPanel({
+  chatId,
+  onClose,
+  dragHandleProps,
+}: {
+  chatId: string
+  onClose: () => void
+  dragHandleProps?: HTMLAttributes<HTMLDivElement>
+}) {
   const { sessions, active, height, load, setActive, addTerminal, closeTerminal, setHeight } = useTerminals()
   const [loaded, setLoaded] = useState(false)
   const status = useSandboxStatus(chatId)
@@ -63,7 +71,11 @@ export function TerminalPanel({ chatId, onClose }: { chatId: string; onClose: ()
   const activeId = active[chatId] ?? 'agent'
 
   return (
-    <section aria-label="Terminal" className="relative flex shrink-0 flex-col border-t bg-zinc-100 text-zinc-800 dark:bg-[#161616] dark:text-zinc-200" style={{ height }}>
+    <section
+      aria-label="Terminal"
+      className="relative flex shrink-0 flex-col border-t bg-zinc-100 text-zinc-800 dark:bg-[#161616] dark:text-zinc-200"
+      style={{ height }}
+    >
       <div
         role="separator"
         aria-orientation="horizontal"
@@ -79,13 +91,21 @@ export function TerminalPanel({ chatId, onClose }: { chatId: string; onClose: ()
         }}
         onPointerUp={() => void (drag.current = null)}
       />
-      <div className="flex h-9 shrink-0 items-center gap-1 border-b border-black/10 dark:border-white/10 px-2">
+      <div
+        {...dragHandleProps}
+        className={cn(
+          'flex h-9 shrink-0 items-center gap-1 border-b border-black/10 dark:border-white/10 px-2',
+          dragHandleProps?.className,
+        )}
+      >
         {session?.terminals.map((tab) => (
           <div
             key={tab.id}
             className={cn(
               'group flex h-7 items-center gap-1 rounded-md px-2 text-xs',
-              tab.id === activeId ? 'bg-black/10 text-black dark:bg-white/10 dark:text-white' : 'text-zinc-500 hover:bg-black/5 dark:text-zinc-400 dark:hover:bg-white/5',
+              tab.id === activeId
+                ? 'bg-black/10 text-black dark:bg-white/10 dark:text-white'
+                : 'text-zinc-500 hover:bg-black/5 dark:text-zinc-400 dark:hover:bg-white/5',
             )}
           >
             <button type="button" className="flex items-center gap-1.5 truncate" onClick={() => setActive(chatId, tab.id)}>

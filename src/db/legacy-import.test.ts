@@ -5,17 +5,23 @@ import { semanticStore } from '@/ai/memory/db'
 import { pagesRepo } from '@/features/note/db/repo'
 import { chatsStore } from '@/features/note/db/stores'
 import { profileRepo } from '@/features/profile/profile.db'
+import { drawChats } from '@/features/s-draw/agent/chats'
+import { readDrawWorkspace } from '@/features/s-draw/s-draw.db'
+import { LEGACY_DRAW_FILE_ID } from '@/features/s-draw/s-draw.types'
 
 import { getDb, whenLegacyImported } from './client'
 
 /** An old database the way the IndexedDB version of the app made it. */
-function seed(name: string, stores: Record<string, { keyPath: string; rows: unknown[] }>) {
+function seed(name: string, stores: Record<string, { keyPath?: string; rows: unknown[] }>) {
   return new Promise<void>((resolve, reject) => {
     const opening = indexedDB.open(name, 1)
     opening.onupgradeneeded = () => {
       for (const [store, { keyPath, rows }] of Object.entries(stores)) {
-        const objects = opening.result.createObjectStore(store, { keyPath })
-        for (const row of rows) objects.put(row)
+        const objects = opening.result.createObjectStore(store, keyPath ? { keyPath } : undefined)
+        for (const row of rows) {
+          if (keyPath) objects.put(row)
+          else objects.put(row, 'default')
+        }
       }
     }
     opening.onsuccess = () => {
@@ -47,6 +53,39 @@ describe('importing the old IndexedDB data', () => {
       notes: { keyPath: 'id', rows: [{ id: 'f2', text: 'Likes tea', createdAt: 2 }] },
     })
 
+    await seed('sensei-s-draw', {
+      workspace: {
+        rows: [
+          {
+            activeId: 'old-sheet',
+            libraryItems: [],
+            sheets: [
+              {
+                id: 'old-sheet',
+                name: 'Old drawing',
+                createdAt: 1,
+                updatedAt: 1,
+                scene: { elements: [], appState: {}, files: { image: { dataURL: 'data:image/png;base64,abc' } } },
+              },
+            ],
+          },
+        ],
+      },
+    })
+    await seed('sensei-sdraw-chats', {
+      chats: {
+        keyPath: 'id',
+        rows: [
+          {
+            id: 'old-draw-chat',
+            title: 'Old conversation',
+            messages: [{ id: 'm1', role: 'user', content: 'Keep this drawing' }],
+            updatedAt: 1,
+          },
+        ],
+      },
+    })
+
     // The app is usable (and the password is known) before the bulk of the data has been copied.
     await getDb()
     expect((await profileRepo.get())?.passwordHash).toBe('abc')
@@ -62,6 +101,16 @@ describe('importing the old IndexedDB data', () => {
       ['f1', true],
       ['f2', false],
     ])
+    expect((await readDrawWorkspace(LEGACY_DRAW_FILE_ID))?.sheets[0].scene.files).toMatchObject({
+      image: { dataURL: 'data:image/png;base64,abc' },
+    })
+    expect((await drawChats.all(LEGACY_DRAW_FILE_ID))[0]).toMatchObject({
+      id: 'old-draw-chat',
+      fileId: LEGACY_DRAW_FILE_ID,
+      messages: [{ content: 'Keep this drawing' }],
+    })
+    expect(await exists('sensei-s-draw')).toBe(false)
+    expect(await exists('sensei-sdraw-chats')).toBe(false)
     expect(await exists('snote')).toBe(false)
     expect(await exists('sensei-memory')).toBe(false)
   }, 90_000)

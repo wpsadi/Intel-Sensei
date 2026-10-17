@@ -3,6 +3,7 @@ import { Suspense, lazy } from 'react'
 import { RouterProvider, createBrowserRouter } from 'react-router-dom'
 
 import { SNoteSkeleton } from '@/features/note/components/SNoteSkeleton'
+import { DrawSkeleton } from '@/features/s-draw/components/draw-skeleton'
 import MainLayout from '@/layouts/main.layout'
 import S3DLayout from '@/layouts/s-3d.layout'
 import AiUsagePage from '@/pages/ai-usage.page'
@@ -16,6 +17,7 @@ import SDesignPage from '@/pages/s-design.page'
 
 // The editor pulls in Tiptap, KaTeX, Mermaid and Leaflet; load it only on /s-note.
 const SNotePage = lazy(() => import('@/pages/s-note.page'))
+const SDrawPage = lazy(() => import('@/pages/s-draw.page'))
 // Published S3D files open full-screen, outside the app shell.
 const S3DEmbedPage = lazy(() => import('@/pages/s-3d-embed.page'))
 
@@ -32,6 +34,14 @@ const router = createBrowserRouter([
       },
       { path: '/ai-usage', element: <AiUsagePage /> },
       { path: '/s-browse', element: <SBrowsePage /> },
+      {
+        path: '/s-draw',
+        element: (
+          <Suspense fallback={<DrawSkeleton />}>
+            <SDrawPage />
+          </Suspense>
+        ),
+      },
       {
         path: '/s-note',
         element: (

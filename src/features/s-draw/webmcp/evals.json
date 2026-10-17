@@ -1,0 +1,61 @@
+[
+  {
+    "name": "Inspect before adding a diagram",
+    "messages": [
+      { "role": "user", "type": "message", "content": "Draw a simple flowchart on this sheet, preserving the existing drawing." }
+    ],
+    "expectedCall": [{ "functionName": "sdraw_get_document", "arguments": {} }]
+  },
+  {
+    "name": "Focus an edit on selected content",
+    "messages": [
+      { "role": "user", "type": "message", "content": "I selected one region. Inspect only my selection before changing its labels." }
+    ],
+    "expectedCall": [{ "functionName": "sdraw_read_elements", "arguments": { "scope": "selection" } }]
+  },
+  {
+    "name": "Read skill for oversized canvas",
+    "messages": [
+      {
+        "role": "user",
+        "type": "message",
+        "content": "This drawing has thousands of elements. Load the large-drawing skill first so you can inspect it in sections."
+      }
+    ],
+    "expectedCall": [{ "functionName": "sdraw_read_guide", "arguments": {} }]
+  },
+  {
+    "name": "Create another drawing sheet",
+    "messages": [{ "role": "user", "type": "message", "content": "Create a new drawing sheet called Architecture." }],
+    "expectedCall": [{ "functionName": "sdraw_manage_sheets", "arguments": { "action": "create", "name": "Architecture" } }]
+  },
+  {
+    "name": "Export native editable document",
+    "messages": [{ "role": "user", "type": "message", "content": "Download the whole current drawing as an editable Excalidraw file." }],
+    "expectedCall": [{ "functionName": "sdraw_export_scene", "arguments": { "format": "excalidraw", "scope": "all" } }]
+  },
+  {
+    "name": "Reconcile a stale revision",
+    "messages": [
+      { "role": "user", "type": "message", "content": "Make that rectangle blue." },
+      {
+        "role": "model",
+        "type": "functioncall",
+        "name": "sdraw_update_elements",
+        "arguments": { "sheetId": "sheet-a", "expectedRevision": 3, "updates": [{ "id": "box", "patch": { "backgroundColor": "blue" } }] }
+      },
+      {
+        "role": "user",
+        "type": "functionresponse",
+        "name": "sdraw_update_elements",
+        "response": {
+          "result": {
+            "isError": true,
+            "error": "Drawing changed since inspection. Read the current revision and reconcile human edits before retrying."
+          }
+        }
+      }
+    ],
+    "expectedCall": [{ "functionName": "sdraw_get_document", "arguments": {} }]
+  }
+]
