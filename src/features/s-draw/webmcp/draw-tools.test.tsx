@@ -1,3 +1,4 @@
+import { exportToBlob } from '@excalidraw/excalidraw'
 // @vitest-environment jsdom
 import type { AppState, ExcalidrawImperativeAPI } from '@excalidraw/excalidraw/types'
 import { act, cleanup, render } from '@testing-library/react'
@@ -21,6 +22,7 @@ vi.mock('../s-draw.db', () => ({ readDrawWorkspace: vi.fn(), writeDrawWorkspace:
 
 import type { ExcalidrawElement } from '@excalidraw/excalidraw/element/types'
 
+import { loadDrawTools } from '../agent/webmcp'
 import { setDrawApi } from '../bridge'
 import { useDrawStore } from '../s-draw.store'
 import { DrawTools } from './draw-tools'
@@ -131,6 +133,28 @@ describe('S Draw browser tool registration', () => {
     const result = await call('sdraw_get_document', {})
     expect(result.isError).not.toBe(true)
     expect(JSON.parse(result.content[0].text)).toMatchObject({ sheetId: 'a', name: 'Drawing', elementCount: 0 })
+  })
+
+  it('delivers a rendered image through the registered browser tool to the widget vision bridge', async () => {
+    const elements = [{ id: 'box', type: 'rectangle', x: 0, y: 0, width: 100, height: 50, angle: 0 }] as ExcalidrawElement[]
+    setDrawApi({
+      getSceneElements: () => elements,
+      getSceneElementsIncludingDeleted: () => elements,
+      getAppState: () => ({ selectedElementIds: {}, theme: 'light' }),
+      getFiles: () => ({}),
+    } as unknown as ExcalidrawImperativeAPI)
+    vi.mocked(exportToBlob).mockResolvedValueOnce(new Blob(['rendered PNG'], { type: 'image/png' }))
+    Object.assign(document.modelContext!, {
+      getTools: async () => [...registered.values()],
+      executeTool: async (tool: Tool, args: unknown, options: { signal: AbortSignal }) => tool.execute(args, options),
+    })
+    render(<DrawTools />)
+    const tools = await loadDrawTools()
+    const capture = tools.find((tool) => tool.name === 'sdraw_capture_view')!
+    expect(await capture.call({ scope: 'elements', ids: ['box'] })).toEqual({
+      image: btoa('rendered PNG'),
+      mediaType: 'image/png',
+    })
   })
 
   it('exposes arrow endpoints and heads through the registered browser callback', async () => {

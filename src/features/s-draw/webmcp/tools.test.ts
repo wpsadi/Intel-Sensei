@@ -1,3 +1,4 @@
+import { exportToBlob } from '@excalidraw/excalidraw'
 // @vitest-environment jsdom
 import type { ExcalidrawElement } from '@excalidraw/excalidraw/element/types'
 import type { AppState, BinaryFiles, ExcalidrawImperativeAPI } from '@excalidraw/excalidraw/types'
@@ -114,6 +115,48 @@ beforeEach(() => {
 })
 
 describe('drawing inspection and bounded traversal', () => {
+  it('captures chosen elements and owned labels as a themed PNG without changing the human selection', async () => {
+    elements = [shape('chosen'), shape('label', { type: 'text', text: 'Hello', containerId: 'chosen' }), shape('unrelated', { x: 1000 })]
+    appState.selectedElementIds = { unrelated: true }
+    appState.theme = 'dark'
+    vi.mocked(exportToBlob).mockResolvedValueOnce(new Blob(['png'], { type: 'image/png' }))
+    const result = await call('sdraw_capture_view', { scope: 'elements', ids: ['chosen'], maxSize: 2000 })
+    expect(exportToBlob).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        elements: [elements[0], elements[1]],
+        appState: expect.objectContaining({ theme: 'dark', exportWithDarkMode: true, exportBackground: true }),
+        mimeType: 'image/png',
+        maxWidthOrHeight: 2000,
+      }),
+    )
+    expect(result).toMatchObject({ content: [{ type: 'image', data: 'cG5n', mimeType: 'image/png' }, { type: 'text' }] })
+    expect(appState.selectedElementIds).toEqual({ unrelated: true })
+    expect(updateScene).not.toHaveBeenCalled()
+  })
+
+  it('keeps whole-sheet and selected capture modes and defaults to a readable image size', async () => {
+    elements = [shape('chosen'), shape('other')]
+    appState.selectedElementIds = { chosen: true }
+    vi.mocked(exportToBlob).mockResolvedValue(new Blob(['png'], { type: 'image/png' }))
+    await call('sdraw_capture_view', {})
+    expect(exportToBlob).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        elements,
+        maxWidthOrHeight: 1600,
+        appState: expect.objectContaining({ exportWithDarkMode: false }),
+      }),
+    )
+    await call('sdraw_capture_view', { scope: 'selection' })
+    expect(exportToBlob).toHaveBeenLastCalledWith(expect.objectContaining({ elements: [elements[0]] }))
+  })
+
+  it('rejects ambiguous or missing capture targets instead of silently capturing unrelated content', async () => {
+    await expect(call('sdraw_capture_view', { scope: 'elements' })).rejects.toThrow('Provide element IDs')
+    await expect(call('sdraw_capture_view', { scope: 'all', ids: ['existing'] })).rejects.toThrow('Choose elements scope')
+    await expect(call('sdraw_capture_view', { scope: 'elements', ids: ['missing'] })).rejects.toThrow('Element not found')
+    await expect(call('sdraw_capture_view', { scope: 'selection' })).rejects.toThrow('No drawing elements')
+  })
+
   it('paginates layout findings, filters selected issues and preserves the scene', async () => {
     elements = [
       shape('box'),

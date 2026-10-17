@@ -68,5 +68,27 @@
       }
     ],
     "expectedCall": [{ "functionName": "sdraw_check_layout", "arguments": {} }]
+  },
+  {
+    "name": "View the rendered drawing before finishing",
+    "messages": [
+      {
+        "role": "user",
+        "type": "message",
+        "content": "View the drawing you just made as an image and check text and arrow overlaps before finishing."
+      }
+    ],
+    "expectedCall": [{ "functionName": "sdraw_capture_view", "arguments": { "scope": "all" } }]
+  },
+  {
+    "name": "Inspect a created node without changing selection",
+    "messages": [
+      {
+        "role": "user",
+        "type": "message",
+        "content": "Show yourself a close-up image of process-a to check its label without changing my selection."
+      }
+    ],
+    "expectedCall": [{ "functionName": "sdraw_capture_view", "arguments": { "scope": "elements", "ids": ["process-a"] } }]
   }
 ]

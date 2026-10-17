@@ -64,6 +64,8 @@ describe('drawing agent', () => {
       expect(start.instructions).toContain('selected IDs: shape-1; sheet B: 400 elements')
       expect(start.instructions).toContain('Only browser WebMCP may read or mutate drawings')
       expect(start.instructions).toContain('Use sdraw_capture_view to inspect image content')
+      expect(start.instructions).toContain('you MUST call it and inspect the latest result before reporting completion')
+      expect(start.instructions).toContain('capture again after the final layout change')
       expect(start.tools.sdraw_capture_view.imageOutput).toBe(true)
       expect(start.tools.sdraw_update.imageOutput).toBeUndefined()
       await handlers.execTool('sdraw_update', { id: 'shape-1' })

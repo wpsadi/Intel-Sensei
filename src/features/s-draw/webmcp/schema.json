@@ -958,7 +958,7 @@
     },
     {
       "name": "sdraw_capture_view",
-      "description": "Inspect a rendered image of the drawing or selection. Use to understand images and spatial layout, or visually verify an edit.",
+      "description": "View the actual drawing as a PNG image. Use after creating or editing to inspect text fit, arrow routing and overlaps before finishing. Capture the whole sheet for context or specific elements for a readable close-up without changing the human selection.",
       "inputSchema": {
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "type": "object",
@@ -966,10 +966,28 @@
           "scope": {
             "default": "all",
             "type": "string",
-            "enum": ["all", "selection"]
+            "enum": ["all", "selection", "elements"]
+          },
+          "ids": {
+            "description": "Element IDs to view when scope is elements; includes their bound labels",
+            "minItems": 1,
+            "maxItems": 100,
+            "type": "array",
+            "items": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 100
+            }
+          },
+          "maxSize": {
+            "default": 1600,
+            "description": "Longest image edge in pixels; use a close-up when labels are too small",
+            "type": "integer",
+            "minimum": 800,
+            "maximum": 2400
           }
         },
-        "required": ["scope"],
+        "required": ["scope", "maxSize"],
         "additionalProperties": false
       },
       "annotations": {

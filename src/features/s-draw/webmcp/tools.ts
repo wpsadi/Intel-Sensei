@@ -25,8 +25,8 @@ const api = getDrawApi
 const state = () => useDrawStore.getState()
 const revision = () => getSceneVersion(api().getSceneElementsIncludingDeleted())
 const selectedIds = () => Object.keys(api().getAppState().selectedElementIds).filter((id) => api().getAppState().selectedElementIds[id])
-function selectionScope(elements = api().getSceneElements()) {
-  const ids = new Set(selectedIds())
+function selectionScope(elements = api().getSceneElements(), initialIds = selectedIds()) {
+  const ids = new Set(initialIds)
   let changed = true
   while (changed) {
     changed = false
@@ -506,11 +506,15 @@ export async function executeDrawTool(name: Name, input: unknown, signal?: Abort
     }
     case 'sdraw_capture_view': {
       const a = args as z.infer<typeof schemas.sdraw_capture_view>
+      if (a.scope === 'elements' && !a.ids?.length)
+        throw new Error('Provide element IDs for an elements close-up, or choose all or selection.')
+      if (a.scope !== 'elements' && a.ids) throw new Error('Choose elements scope when supplying IDs, or omit IDs for all or selection.')
+      if (a.ids) a.ids.forEach(findElement)
       const sheetId = state().activeId
       const sceneRevision = revision()
-      const selected = selectionScope()
+      const selected = a.scope === 'elements' ? selectionScope(api().getSceneElements(), a.ids) : selectionScope()
       const elements =
-        a.scope === 'selection'
+        a.scope !== 'all'
           ? api()
               .getSceneElements()
               .filter(
@@ -519,12 +523,13 @@ export async function executeDrawTool(name: Name, input: unknown, signal?: Abort
               )
           : api().getSceneElements()
       if (!elements.length) throw new Error('No drawing elements to capture. Draw something or choose an existing selection first.')
+      const appState = api().getAppState()
       const blob = await exportToBlob({
         elements,
-        appState: api().getAppState(),
+        appState: { ...appState, exportWithDarkMode: appState.theme === 'dark', exportBackground: true },
         files: api().getFiles(),
         mimeType: 'image/png',
-        maxWidthOrHeight: 1200,
+        maxWidthOrHeight: a.maxSize,
       })
       signal?.throwIfAborted()
       const dataURL = await new Promise<string>((resolve, reject) => {
@@ -533,6 +538,7 @@ export async function executeDrawTool(name: Name, input: unknown, signal?: Abort
         reader.onerror = () => reject(new Error('Drawing capture could not be read. Try again.'))
         reader.readAsDataURL(blob)
       })
+      signal?.throwIfAborted()
       return {
         content: [
           { type: 'image', data: dataURL.split(',')[1], mimeType: 'image/png' },
