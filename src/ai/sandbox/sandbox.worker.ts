@@ -51,7 +51,9 @@ function waitForSwiftMessage(worker: Worker, predicate: (message: SwiftLatexMess
         // The engine reports initialization failures as a message instead of
         // raising a Worker error. Do not leave the command waiting for the
         // sandbox timeout in that case.
-        if (event.data.result !== 'failed') return
+        // Compilation failures carry `cmd: compile` and are returned to the
+        // caller so it can preserve the TeX log and non-zero exit code.
+        if (event.data.result !== 'failed' || event.data.cmd === 'compile') return
         worker.removeEventListener('message', onMessage)
         worker.removeEventListener('error', onError)
         reject(new Error([event.data.log?.trim(), `SwiftLaTeX exited with status ${event.data.status ?? 'unknown'}`].filter(Boolean).join('\n')))
