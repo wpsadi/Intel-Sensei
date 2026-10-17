@@ -211,6 +211,20 @@ export function AgentPanel() {
   const selNames = selection.map((id) => nodes[id]?.name).filter(Boolean)
   const last = chat?.messages.at(-1)
   const generating = !!chat && !!live[chat.id]
+  const liveTranscriptIds = useRef({ user: '', assistant: '' })
+  const onLiveTranscript = (role: 'user' | 'assistant' | 'thought', text: string) => {
+    if (!chat?.id || role === 'thought') return
+    const id = liveTranscriptIds.current[role] || crypto.randomUUID()
+    liveTranscriptIds.current[role] = id
+    void chatsRepo.get(chat.id).then((saved) => {
+      if (!saved) return
+      const existing = saved.messages.find((message) => message.id === id)
+      const next = existing
+        ? saved.messages.map((message) => (message.id === id ? { ...message, text: `${message.text}${text}` } : message))
+        : [...saved.messages, { id, role, text, createdAt: Date.now() }]
+      void chatsRepo.put({ ...saved, messages: next, updatedAt: Date.now() })
+    })
+  }
   const asking = useAsking(chat?.id ?? null)
   const todos = [...(chat?.messages ?? [])].reverse().find((m) => m.todos)?.todos
   // The list stays up while there is work left; the question form takes its place while the agent waits for answers.
@@ -408,6 +422,8 @@ export function AgentPanel() {
           historyScope={docId}
           liveScope={`${docId}:${viewedId ?? 'new'}`}
           liveSession={`s3d-${docId}`}
+          liveHistory={chat?.messages.map((message) => `${message.role === 'user' ? 'User' : 'Sensei'}: ${message.text}`).join('\n')}
+          onLiveTranscript={onLiveTranscript}
           streaming={generating}
           onStop={() => chat && stopAgent(chat.id)}
           placeholder={

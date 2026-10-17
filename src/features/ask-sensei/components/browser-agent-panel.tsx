@@ -27,6 +27,7 @@ export function BrowserAgentPanel({ page, profile }: { page: string | null; prof
   const [searchParams, setSearchParams] = useSearchParams()
   const chatId = searchParams.get('chatId')
   const endRef = React.useRef<HTMLDivElement>(null)
+  const liveIds = React.useRef({ user: '', assistant: '' })
   const messages = chatId ? (messagesByChat[chatId] ?? []) : []
   const streamingId = chatId ? streamingByChat[chatId] : undefined
   const streaming = !!streamingId
@@ -55,6 +56,16 @@ export function BrowserAgentPanel({ page, profile }: { page: string | null; prof
     const id = await sendMessage(chatId, text, undefined, profile)
     if (id) selectChat(id)
   }
+  const onLiveTranscript = React.useCallback(
+    (role: 'user' | 'assistant' | 'thought', text: string) => {
+      if (!chatId || role === 'thought') return
+      const messageId = liveIds.current[role] || crypto.randomUUID()
+      liveIds.current[role] = messageId
+      const current = useAskSenseiStore.getState().messages[chatId]?.find((message) => message.id === messageId)?.content ?? ''
+      void useAskSenseiStore.getState().saveCallMessage(chatId, messageId, role, current + text)
+    },
+    [chatId],
+  )
 
   return (
     <section className="flex h-full min-h-0 flex-col text-sm">
@@ -147,6 +158,8 @@ export function BrowserAgentPanel({ page, profile }: { page: string | null; prof
           history={messages.filter((message) => message.role === 'user').map((message) => message.content)}
           liveScope={`${page ?? 'browser'}:${chatId ?? 'new'}`}
           liveSession={`browser-${chatId ?? 'widget'}`}
+          liveHistory={messages.map((message) => `${message.role === 'user' ? 'User' : 'Sensei'}: ${message.content}`).join('\n')}
+          onLiveTranscript={onLiveTranscript}
         />
       </div>
     </section>

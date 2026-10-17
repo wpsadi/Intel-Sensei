@@ -116,6 +116,20 @@ export function SenseiWidget({ fileId, chatId, onChatChange, title = 'SDraw', co
   const missingChat = !!chatId && historyLoaded && !chat
   const busy = !!chat && !!live[chat.id]
   const messages = chat?.messages ?? []
+  const liveTranscriptIds = useRef({ user: '', assistant: '' })
+  const onLiveTranscript = (role: 'user' | 'assistant' | 'thought', text: string) => {
+    if (!chatId || role === 'thought') return
+    const id = liveTranscriptIds.current[role] || crypto.randomUUID()
+    liveTranscriptIds.current[role] = id
+    void drawChats.get(fileId, chatId).then((saved) => {
+      if (!saved) return
+      const existing = saved.messages.find((message) => message.id === id)
+      const next = existing
+        ? saved.messages.map((message) => (message.id === id ? { ...message, content: `${message.content}${text}` } : message))
+        : [...saved.messages, { id, role, content: text }]
+      void drawChats.put({ ...saved, messages: next, updatedAt: Date.now() })
+    })
+  }
   const supported = hasDrawWebMCP()
   const send = (text: string) => {
     if (chatId && !chat) return
@@ -332,6 +346,8 @@ export function SenseiWidget({ fileId, chatId, onChatChange, title = 'SDraw', co
                 autoFocus
                 liveScope={`${fileId}:${chatId ?? 'new'}`}
                 liveSession={drawSandboxSession(fileId)}
+                liveHistory={messages.map((message) => `${message.role === 'user' ? 'User' : 'Sensei'}: ${message.content}`).join('\n')}
+                onLiveTranscript={onLiveTranscript}
                 toolbarStart={
                   <ContextRing
                     used={

@@ -4,7 +4,7 @@ import { describe, expect, it } from 'vitest'
 import { thinkingSummary } from '@/ai/providers'
 
 describe('OpenAI chat continuation', () => {
-  it('sends unstored reasoning content instead of a server-side item reference', async () => {
+  it('sends unstored reasoning content without requesting encrypted reasoning output', async () => {
     let request: Record<string, unknown> = {}
     const provider = createOpenAI({
       apiKey: 'test-key',
@@ -30,7 +30,7 @@ describe('OpenAI chat continuation', () => {
             {
               type: 'reasoning',
               text: 'Earlier reasoning',
-              providerOptions: { openai: { itemId: 'rs_unstored', reasoningEncryptedContent: 'encrypted-reasoning' } },
+              providerOptions: { openai: { itemId: 'rs_unstored' } },
             },
           ],
         },
@@ -38,15 +38,13 @@ describe('OpenAI chat continuation', () => {
       providerOptions: thinkingSummary('openai') as Parameters<typeof model.doGenerate>[0]['providerOptions'],
     })
     expect(request.reasoning).toMatchObject({ summary: 'auto' })
-    expect(request.store).toBe(false)
-    expect(request.include).toContain('reasoning.encrypted_content')
+    expect(request.store).toBe(true)
+    expect(request.include).toBeUndefined()
     expect(request.input).toEqual([
       { role: 'user', content: [{ type: 'input_text', text: 'Continue' }] },
       {
-        type: 'reasoning',
+        type: 'item_reference',
         id: 'rs_unstored',
-        encrypted_content: 'encrypted-reasoning',
-        summary: [{ type: 'summary_text', text: 'Earlier reasoning' }],
       },
     ])
   })

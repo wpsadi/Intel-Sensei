@@ -55,6 +55,21 @@ export function SenseiWidget() {
   const endRef = useRef<HTMLDivElement>(null)
   const chat = (viewedId && live[viewedId]) || (chats.find((c) => c.id === viewedId) ?? null)
   const messages = chat?.messages ?? []
+  const liveTranscriptIds = useRef({ user: '', assistant: '' })
+  const onLiveTranscript = (role: 'user' | 'assistant' | 'thought', text: string) => {
+    if (!viewedId || role === 'thought') return
+    const messageRole = role
+    const id = liveTranscriptIds.current[messageRole] || crypto.randomUUID()
+    liveTranscriptIds.current[messageRole] = id
+    void widgetChatsRepo.get(viewedId).then((saved) => {
+      if (!saved) return
+      const existing = saved.messages.find((message) => message.id === id)
+      const next = existing
+        ? saved.messages.map((message) => (message.id === id ? { ...message, content: `${message.content}${text}` } : message))
+        : [...saved.messages, { id, role: messageRole, content: text }]
+      void widgetChatsRepo.put({ ...saved, messages: next, updatedAt: Date.now() })
+    })
+  }
   const usage = [...messages].reverse().find((m) => m.contextTokens)
   const busy = !!chat && !!live[chat.id]
   const anyBusy = Object.keys(live).length > 0
@@ -189,6 +204,8 @@ export function SenseiWidget() {
               autoFocus={open}
               liveScope={`${currentPageId ?? 'note'}:${viewedId ?? 'new'}`}
               liveSession={`note-${currentPageId ?? 'widget'}`}
+              liveHistory={messages.map((message) => `${message.role === 'user' ? 'User' : 'Sensei'}: ${message.content}`).join('\n')}
+              onLiveTranscript={onLiveTranscript}
               toolbarStart={
                 <div className="mr-auto">
                   <ContextRing

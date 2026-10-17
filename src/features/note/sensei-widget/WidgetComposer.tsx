@@ -42,6 +42,8 @@ export function WidgetComposer({
   historyScope,
   liveScope,
   liveSession,
+  liveHistory,
+  onLiveTranscript,
 }: {
   onSend: (text: string) => void
   streaming: boolean
@@ -60,6 +62,8 @@ export function WidgetComposer({
   /** Scope for the embedded Gemini Live call; changing it ends the previous call. */
   liveScope?: string | null
   liveSession?: string
+  liveHistory?: string
+  onLiveTranscript?: (role: 'user' | 'assistant' | 'thought', text: string) => void
 }) {
   const [draft, setDraft] = useState('')
   const [caret, setCaret] = useState(0)
@@ -233,7 +237,7 @@ export function WidgetComposer({
           />
           <ComposerToolbar className="h-9 justify-end">
             {toolbarStart}
-            <DedicatedLiveCall scope={liveScope ?? null} session={liveSession} />
+            <DedicatedLiveCall scope={liveScope ?? null} session={liveSession} history={liveHistory} onTranscript={onLiveTranscript} />
             <ComposerActions>
               <ComposerVoiceButton active={false} aria-label="Start voice input" onClick={() => void startVoice()} />
               <ComposerSend

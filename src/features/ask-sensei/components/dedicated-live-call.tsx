@@ -13,7 +13,12 @@ type DedicatedLiveState = 'idle' | 'connecting' | 'live'
  * A small, scoped Gemini Live call for embedded widgets. Its audio lifecycle belongs to `scope`; changing the
  * document, page or chat calls stop before the old scope can leak into the next one.
  */
-export function useDedicatedLiveCall(scope: string | null, session = scope ?? 'widget') {
+export function useDedicatedLiveCall(
+  scope: string | null,
+  session = scope ?? 'widget',
+  history = '',
+  onTranscript?: (role: 'user' | 'assistant' | 'thought', text: string) => void,
+) {
   const [state, setState] = useState<DedicatedLiveState>('idle')
   const [muted, setMuted] = useState(false)
   const call = useRef<LiveCall | null>(null)
@@ -44,8 +49,11 @@ export function useDedicatedLiveCall(scope: string | null, session = scope ?? 'w
           if (error) toast.error(error)
         } else setState('live')
       },
-      onTranscript: () => {},
+      history,
       tools: createGeneralTools({ session }),
+      onTranscript: (role, piece) => {
+        onTranscript?.(role, piece)
+      },
       instructions:
         'You are the dedicated voice assistant inside an embedded Sensei widget. Keep responses concise and conversational. Stay focused on the document or drawing currently open in this widget. Do not claim an edit happened unless a tool confirms it.',
     })
@@ -70,8 +78,18 @@ export function useDedicatedLiveCall(scope: string | null, session = scope ?? 'w
 }
 
 /** Compact in-widget Gemini Live control with an audio-reactive aurora, never a page-level overlay. */
-export function DedicatedLiveCall({ scope, session }: { scope: string | null; session?: string }) {
-  const live = useDedicatedLiveCall(scope, session)
+export function DedicatedLiveCall({
+  scope,
+  session,
+  history,
+  onTranscript,
+}: {
+  scope: string | null
+  session?: string
+  history?: string
+  onTranscript?: (role: 'user' | 'assistant' | 'thought', text: string) => void
+}) {
+  const live = useDedicatedLiveCall(scope, session, history, onTranscript)
   const aurora = useRef<HTMLDivElement>(null)
   const level = live.level
 
@@ -110,7 +128,7 @@ export function DedicatedLiveCall({ scope, session }: { scope: string | null; se
   return (
     <div
       ref={aurora}
-      className="relative flex items-center gap-0.5 rounded-full border border-primary/30 bg-primary/5 px-0.5 shadow-[0_0_calc(12px+24px*var(--live-level))_hsl(var(--primary)/.35)]"
+      className="relative flex items-center gap-0.5 rounded-full border border-primary/30 bg-primary/5 px-0.5 shadow-[0_0_calc(12px+24px*var(--live-level))_hsl(var(--primary)/.35)] [--live-level:0]"
     >
       <span
         className={cn('pointer-events-none absolute inset-0 rounded-full opacity-70 blur-md', live.state === 'live' && 'animate-pulse')}
