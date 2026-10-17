@@ -134,6 +134,7 @@ export class LiveCall {
         ...(LIVE_MODEL.includes('extended-thinking') && { thinkingConfig: { thinkingLevel: ThinkingLevel.MEDIUM, includeThoughts: true } }),
         systemInstruction:
           "You are Sensei, a friendly, general-purpose assistant on a live voice call. Help with the user's request across topics; do not steer the conversation toward studying unless asked. Keep replies short and conversational, because they are spoken aloud. After a tool call, carry on from where you stopped: never say again what you already said. Do not use tools for a plain answer.\n\n" +
+          'Call endCall when the user asks to hang up, disconnect or end the call, or clearly says goodbye and is finished. It disconnects immediately. Do not end the call just because you completed an answer, are waiting on a tool, or the user is quiet.\n\n' +
           currentTimePrompt() +
           (this.options.instructions ? `\n\n${this.options.instructions}` : '') +
           ((this.options.history ?? '')
@@ -143,6 +144,12 @@ export class LiveCall {
         tools: [
           {
             functionDeclarations: [
+              {
+                name: 'endCall',
+                description:
+                  'Hang up this voice call immediately when the user asks to end it or clearly says goodbye. Stops the microphone, audio playback and background work.',
+                parametersJsonSchema: { type: 'object', properties: {} },
+              },
               // Each tool's own description and zod input schema become the Live API's function declaration.
               ...Object.entries(this.options.tools ?? {}).map(([name, item]) => {
                 const { $schema: _schema, ...parametersJsonSchema } = z.toJSONSchema(item.inputSchema as z.ZodType)
@@ -259,7 +266,6 @@ export class LiveCall {
       this.runningTools.get(id)?.abort.abort()
       this.runningTools.delete(id)
     }
-    if (message.toolCall?.functionCalls?.length) this.handleToolCalls(message.toolCall.functionCalls)
     // The user started talking over the model, so drop the voice that is still queued.
     if (message.serverContent?.interrupted) {
       this.playing.forEach((source) => source.stop())
@@ -274,6 +280,8 @@ export class LiveCall {
       if (part.thought && part.text) this.options.onTranscript('thought', part.text)
       else if (part.inlineData?.data) this.play(fromBase64Pcm(part.inlineData.data))
     }
+    // Save any last words in this message before an endCall closes and finalizes the conversation.
+    if (message.toolCall?.functionCalls?.length) this.handleToolCalls(message.toolCall.functionCalls)
   }
 
   /**
@@ -281,6 +289,10 @@ export class LiveCall {
    * not hold up a quick one. A non-blocking tool's result is added when the model is idle, so it never cuts in on speech.
    */
   private handleToolCalls(calls: NonNullable<LiveServerMessage['toolCall']>['functionCalls'] & {}) {
+    if (calls.some((call) => call.name === 'endCall')) {
+      void this.stop()
+      return
+    }
     for (const call of calls) {
       void (async () => {
         const base = { id: call.id ?? crypto.randomUUID(), name: call.name ?? '', args: (call.args ?? {}) as Record<string, unknown> }

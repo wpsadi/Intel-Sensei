@@ -20,9 +20,11 @@ function setup(fail = false, nonBlocking = true) {
     return result
   })
   const onTool = vi.fn()
+  const onChange = vi.fn()
+  const onTranscript = vi.fn()
   const call = new LiveCall({
-    onChange: vi.fn(),
-    onTranscript: vi.fn(),
+    onChange,
+    onTranscript,
     onTool,
     tools: { deepAnswer: tool({ inputSchema: z.object({}), execute }) as Tool },
     nonBlocking: nonBlocking ? ['deepAnswer'] : [],
@@ -33,7 +35,7 @@ function setup(fail = false, nonBlocking = true) {
   connection.session = session as unknown as Session
   const receive = (message: object) => connection.handleMessage(message as LiveServerMessage)
   receive({ toolCall: { functionCalls: [{ id: 'task', name: 'deepAnswer', args: {} }] } })
-  return { call, session, receive, finish, onTool, signal: () => signal }
+  return { call, session, receive, finish, onTool, onChange, onTranscript, execute, signal: () => signal }
 }
 
 const progress = { stage: 'working' as const, summary: 'Comparing burger places.' }
@@ -117,5 +119,52 @@ describe('live background tool progress', () => {
     finish('Done')
     await settle()
     expect(session.sendToolResponse.mock.lastCall?.[0].functionResponses[0]).not.toHaveProperty('willContinue')
+  })
+})
+
+describe('ending a call from the model', () => {
+  it('hangs up, aborts background work, and retains the final transcript', async () => {
+    const { call, session, receive, finish, signal, onChange, onTranscript, execute } = setup()
+    const stopMic = vi.fn()
+    const stopAudio = vi.fn()
+    const closeInput = vi.fn(async () => {})
+    const closeOutput = vi.fn(async () => {})
+    Object.assign(call, {
+      mic: { getTracks: () => [{ stop: stopMic }] },
+      inputContext: { close: closeInput },
+      outputContext: { close: closeOutput },
+      playing: new Set([{ stop: stopAudio }]),
+    })
+    const order: string[] = []
+    onTranscript.mockImplementation(() => order.push('transcript'))
+    onChange.mockImplementation(() => order.push('idle'))
+    receive({
+      serverContent: { outputTranscription: { text: 'Goodbye.' } },
+      toolCall: {
+        functionCalls: [
+          { id: 'end', name: 'endCall', args: {} },
+          { id: 'another-task', name: 'deepAnswer', args: {} },
+        ],
+      },
+    })
+    await settle()
+    expect(session.close).toHaveBeenCalledOnce()
+    expect(stopMic).toHaveBeenCalledOnce()
+    expect(stopAudio).toHaveBeenCalledOnce()
+    expect(closeInput).toHaveBeenCalledOnce()
+    expect(closeOutput).toHaveBeenCalledOnce()
+    expect(signal()?.aborted).toBe(true)
+    expect(onTranscript).toHaveBeenCalledWith('assistant', 'Goodbye.')
+    expect(onChange).toHaveBeenCalledWith('idle', undefined)
+    expect(order).toEqual(['transcript', 'idle'])
+    expect(execute).toHaveBeenCalledOnce()
+
+    finish('Late result')
+    await settle()
+    call.reportToolProgress('task', progress)
+    receive({ toolCall: { functionCalls: [{ id: 'end-again', name: 'endCall', args: {} }] } })
+    expect(session.sendToolResponse).not.toHaveBeenCalled()
+    expect(session.close).toHaveBeenCalledOnce()
+    expect(onChange).toHaveBeenCalledOnce()
   })
 })
