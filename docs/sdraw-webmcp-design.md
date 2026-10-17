@@ -169,7 +169,7 @@ Variations: chat and terminal both open; window positioning on small screens; te
 
 ## Consolidation and verification obligations
 
-The isolated journeys justify `sdraw_get_document`, `sdraw_list_sheets`, `sdraw_read_elements`, `sdraw_read_element_field`, `sdraw_add_files`, `sdraw_create_elements`, `sdraw_update_elements`, `sdraw_delete_elements`, `sdraw_select_elements`, `sdraw_manage_sheets`, `sdraw_delete_sheet`, `sdraw_capture_view`, `sdraw_set_view`, `sdraw_read_guide`, and `sdraw_export_scene`. All names fit the 30-character budget. Final schema names must match implementation exactly.
+The isolated journeys justify `sdraw_get_document`, `sdraw_list_sheets`, `sdraw_read_elements`, `sdraw_read_element_field`, `sdraw_add_files`, `sdraw_create_elements`, `sdraw_update_elements`, `sdraw_delete_elements`, `sdraw_select_elements`, `sdraw_manage_sheets`, `sdraw_delete_sheet`, `sdraw_capture_view`, `sdraw_set_view`, and `sdraw_export_scene`. All names fit the 30-character budget. Final schema names must match implementation exactly.
 
 - Pure document/element reads declare `readOnlyHint: true`. Outputs with sheet names, text, or other user content declare `untrustedContentHint: true`, even when loaded from local storage. Static guide output is trusted system guidance.
 - View, selection, and sheet switching mutate UI state and do not declare read-only. Routine reversible edits omit consequential hints. Permanent deletion needs its own correctly annotated action or an implementation with recoverability; a single polymorphic tool cannot accurately mark only one action consequential through a constant annotation.
@@ -198,3 +198,5 @@ Starting state: user supplies or the sandbox generates a local image data URL. U
 ### Journey 7 continuation: native local formats
 
 `sdraw_export_scene` accepts native `.excalidraw`, SVG, and PNG formats using native Excalidraw serialization/export helpers. User: “Download an editable copy.” Agent intent: preserve the scene's native editability. Invocation: `sdraw_export_scene({format:"excalidraw"})`. Mock response: `{"status":"downloaded","format":"excalidraw","name":"Architecture.excalidraw"}`. UI reaction: native editable scene downloads locally with binary files. Agent response: “Downloaded the editable drawing.” For PNG, image bytes are downloaded locally and never returned inline to the model. Export failures remain errors. Self-critique: choose native format for “editable”; ask only when the requested output purpose does not establish a format.
+
+The chat agent uses the bundled terminal CLI instead of exposing these operations as a second model tool set. The CLI still consumes the registered operations. The old large-drawing guide tool and separate diagram skills have been retired in favor of `/sdraw-cli`.

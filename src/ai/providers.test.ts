@@ -37,6 +37,7 @@ describe('OpenAI chat continuation', () => {
       ],
       providerOptions: thinkingSummary('openai') as Parameters<typeof model.doGenerate>[0]['providerOptions'],
     })
+    expect(request.reasoning).toMatchObject({ summary: 'auto' })
     expect(request.store).toBe(false)
     expect(request.include).toContain('reasoning.encrypted_content')
     expect(request.input).toEqual([

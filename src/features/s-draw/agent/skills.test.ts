@@ -20,9 +20,9 @@ beforeEach(() => vi.clearAllMocks())
 const options = { toolCallId: 'test', messages: [], context: {} }
 
 describe('default SDraw skills', () => {
-  it('ships valid, uniquely named skills with the drawing and large-scene workflows', () => {
+  it('ships valid, uniquely named skills with the CLI workflow', () => {
     const names = DEFAULT_DRAW_SKILLS.map((skill) => skill.name)
-    expect(names).toEqual(['excalidraw-diagram', 'sdraw-large-drawing', 'sdraw-cli'])
+    expect(names).toEqual(['sdraw-cli'])
     expect(new Set(names).size).toBe(names.length)
     for (const skill of DEFAULT_DRAW_SKILLS) {
       expect(skill.description).toBeTruthy()
@@ -31,7 +31,7 @@ describe('default SDraw skills', () => {
   })
 
   it('expands a default command locally and preserves its request', async () => {
-    const result = await applyDrawSkillCommand('/excalidraw-diagram explain auth\nInclude a failure path')
+    const result = await applyDrawSkillCommand('/sdraw-cli explain auth\nInclude a failure path')
     expect(result).toContain('User request: explain auth\nInclude a failure path')
     expect(result).toContain(DEFAULT_DRAW_SKILLS[0].body)
     expect(shared.apply).not.toHaveBeenCalled()
@@ -45,7 +45,7 @@ describe('default SDraw skills', () => {
 
   it('loads defaults through use_skill without accessing the installed-skill store', async () => {
     const tools = createDrawSkillTools()
-    const result = await tools.use_skill.execute!({ name: '/excalidraw-diagram' }, options)
+    const result = await tools.use_skill.execute!({ name: '/sdraw-cli' }, options)
     expect(result).toContain(DEFAULT_DRAW_SKILLS[0].body)
     expect(shared.load).not.toHaveBeenCalled()
   })
@@ -56,8 +56,8 @@ describe('default SDraw skills', () => {
   })
 
   it('searches bundled and installed skills together', async () => {
-    const result = await createDrawSkillTools().find_skill.execute!({ query: 'diagram' }, options)
-    expect(result).toContain('[SDraw default] excalidraw-diagram')
+    const result = await createDrawSkillTools().find_skill.execute!({ query: 'terminal' }, options)
+    expect(result).toContain('[SDraw default] sdraw-cli')
     expect(result).toContain('[installed] review')
   })
 })

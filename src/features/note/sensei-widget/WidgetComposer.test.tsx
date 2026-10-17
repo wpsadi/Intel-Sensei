@@ -75,11 +75,11 @@ describe('shared widget composer', () => {
     mount({
       suggest: () => ({
         title: 'SDraw skills',
-        items: [{ id: 'skill-excalidraw-diagram', label: '/excalidraw-diagram', insert: '/excalidraw-diagram' }],
+        items: [{ id: 'skill-sdraw-cli', label: '/sdraw-cli', insert: '/sdraw-cli' }],
       }),
     })
     fireEvent.change(input(), { target: { value: '/', selectionStart: 1 } })
-    expect(screen.getByRole('option', { name: '/excalidraw-diagram' })).toBeTruthy()
+    expect(screen.getByRole('option', { name: '/sdraw-cli' })).toBeTruthy()
     expect(screen.queryByRole('option', { name: /No skills yet/ })).toBeNull()
     expect(screen.queryByRole('button', { name: 'Choose skill' })).toBeNull()
   })

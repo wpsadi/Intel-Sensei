@@ -1,9 +1,11 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { z } from 'zod'
 
 const mocks = vi.hoisted(() => ({
   put: vi.fn().mockResolvedValue(undefined),
   stream: vi.fn(),
-  browserCall: vi.fn().mockResolvedValue({ content: [{ type: 'text', text: '{"updated":1}' }] }),
+  terminalCall: vi.fn().mockResolvedValue({ output: '{"updated":1}', code: 0 }),
+  browserLoad: vi.fn(),
   sandbox: vi.fn().mockReturnValue({}),
   release: vi.fn(),
   fileId: 'file-a',
@@ -28,12 +30,7 @@ vi.mock('./skills', async (importOriginal) => ({
   createDrawSkillTools: () => ({}),
 }))
 vi.mock('@/ai/worker/client', () => ({ streamInWorker: mocks.stream }))
-vi.mock('./webmcp', () => ({
-  loadDrawTools: async () => [
-    { name: 'sdraw_update', description: 'Edit', schema: {}, call: mocks.browserCall },
-    { name: 'sdraw_capture_view', description: 'Preview', schema: {}, call: mocks.browserCall },
-  ],
-}))
+vi.mock('./webmcp', () => ({ loadDrawTools: mocks.browserLoad }))
 
 import { SEND_MODE } from '@/ai/send-mode'
 import { useSendQueue } from '@/ai/send-queue'
@@ -42,6 +39,10 @@ import { drawSandboxSession, disposeDrawSensei, sendDrawSensei, useDrawRuns } fr
 
 beforeEach(() => {
   vi.clearAllMocks()
+  mocks.sandbox.mockReturnValue({
+    terminal: { inputSchema: z.object({ command: z.string() }), execute: mocks.terminalCall },
+    view_image: { inputSchema: z.object({ path: z.string() }), execute: vi.fn() },
+  })
   SEND_MODE.value = 'queue'
   useSendQueue.setState({ items: {} })
   mocks.fileId = 'file-a'
@@ -52,23 +53,23 @@ describe('drawing agent', () => {
   it('rejects late drawing mutations after leaving the app', async () => {
     mocks.stream.mockImplementation(async (_start, handlers) => {
       disposeDrawSensei()
-      expect(() => handlers.execTool('sdraw_update', { id: 'shape-1' })).toThrow()
+      expect(() => handlers.execTool('terminal', { command: 'sdraw apply --request changes.json' })).toThrow()
       return { messages: [], aborted: true }
     })
     await sendDrawSensei('Edit selected shape', null, () => 'selection shape-1', 'file-a')
-    expect(mocks.browserCall).not.toHaveBeenCalled()
+    expect(mocks.terminalCall).not.toHaveBeenCalled()
     expect(useDrawRuns.getState().live).toEqual({})
   })
-  it('streams the configured provider with whole-file context and uses browser tools', async () => {
+  it('streams the configured provider with whole-file context and exposes drawing only through the CLI', async () => {
     mocks.stream.mockImplementation(async (start, handlers) => {
       expect(start.instructions).toContain('selected IDs: shape-1; sheet B: 400 elements')
-      expect(start.instructions).toContain('Only browser WebMCP may read or mutate drawings')
-      expect(start.instructions).toContain('Use sdraw_capture_view to inspect image content')
-      expect(start.instructions).toContain('you MUST call it and inspect the latest result before reporting completion')
+      expect(start.instructions).toContain('through the terminal tool')
+      expect(start.instructions).toContain('run sdraw check and sdraw view')
       expect(start.instructions).toContain('capture again after the final layout change')
-      expect(start.tools.sdraw_capture_view.imageOutput).toBe(true)
-      expect(start.tools.sdraw_update.imageOutput).toBeUndefined()
-      await handlers.execTool('sdraw_update', { id: 'shape-1' })
+      expect(start.tools.view_image.imageOutput).toBe(true)
+      expect(Object.keys(start.tools).some((name) => name.startsWith('sdraw_'))).toBe(false)
+      expect(() => handlers.execTool('sdraw_update', {})).toThrow('Unknown tool')
+      await handlers.execTool('terminal', { command: 'sdraw apply --request changes.json' })
       handlers.onPart({ type: 'text-delta', text: 'Updated selected shape.' })
       return { messages: [], aborted: false }
     })
@@ -76,7 +77,8 @@ describe('drawing agent', () => {
     await sendDrawSensei('Make this blue', null, () => 'selected IDs: shape-1; sheet B: 400 elements', 'file-a', select)
     expect(select).toHaveBeenCalledWith(mocks.put.mock.calls[0][0].id)
     expect(mocks.put.mock.calls[0][0].fileId).toBe('file-a')
-    expect(mocks.browserCall).toHaveBeenCalledWith({ id: 'shape-1' })
+    expect(mocks.terminalCall).toHaveBeenCalledWith({ command: 'sdraw apply --request changes.json' }, expect.any(Object))
+    expect(mocks.browserLoad).not.toHaveBeenCalled()
     expect(mocks.sandbox).toHaveBeenCalledWith({ session: drawSandboxSession('file-a') })
     const state = useDrawRuns.getState()
     expect(state.live).toEqual({})
@@ -88,11 +90,11 @@ describe('drawing agent', () => {
   it('rejects drawing calls after the active file changes', async () => {
     mocks.stream.mockImplementation(async (_start, handlers) => {
       mocks.fileId = 'file-b'
-      expect(() => handlers.execTool('sdraw_update', {})).toThrow('drawing file changed')
+      expect(() => handlers.execTool('terminal', { command: 'sdraw status' })).toThrow('drawing file changed')
       return { messages: [], aborted: false }
     })
     await sendDrawSensei('Draw', null, () => 'file-a', 'file-a')
-    expect(mocks.browserCall).not.toHaveBeenCalled()
+    expect(mocks.terminalCall).not.toHaveBeenCalled()
   })
 
   it('preserves provider failures as visible persisted chat errors', async () => {
@@ -116,16 +118,17 @@ describe('drawing skills and pending input', () => {
     expect(Object.values(useDrawRuns.getState().recent)[0].messages[0].content).toBe('/diagram draw a flow')
   })
 
-  it('loads the bundled diagram skill without installing it and applies its defaults', async () => {
+  it('loads the bundled CLI skill without installing it and applies its defaults', async () => {
     mocks.stream.mockImplementation(async (start) => {
-      expect(start.instructions).toContain('Default SDraw skill /excalidraw-diagram')
-      expect(start.instructions).toContain('Default SDraw skill /sdraw-large-drawing')
-      expect(start.messages[0].content).toContain('The user ran /excalidraw-diagram')
+      expect(start.instructions).toContain('Default SDraw skill /sdraw-cli')
+      expect(start.instructions).not.toContain('Default SDraw skill /excalidraw-diagram')
+      expect(start.instructions).not.toContain('Default SDraw skill /sdraw-large-drawing')
+      expect(start.messages[0].content).toContain('The user ran /sdraw-cli')
       expect(start.messages[0].content).toContain('User request: map the checkout flow')
       return { messages: [], aborted: false }
     })
-    await sendDrawSensei('/excalidraw-diagram map the checkout flow', null, () => 'sheet', 'file-a')
-    expect(Object.values(useDrawRuns.getState().recent)[0].messages[0].content).toBe('/excalidraw-diagram map the checkout flow')
+    await sendDrawSensei('/sdraw-cli map the checkout flow', null, () => 'sheet', 'file-a')
+    expect(Object.values(useDrawRuns.getState().recent)[0].messages[0].content).toBe('/sdraw-cli map the checkout flow')
   })
 
   it('runs queued messages in order after the active reply', async () => {

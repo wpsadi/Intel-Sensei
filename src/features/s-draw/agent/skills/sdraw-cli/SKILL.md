@@ -5,7 +5,7 @@ description: Use SDraw's bundled sdraw/excalidraw terminal command for revision-
 
 # SDraw terminal CLI
 
-The drawing file's terminal includes `sdraw` (`excalidraw` is an alias). The same command works through the agent's `terminal` tool. It adapts the discovery → native drawing operations → read-back → image review workflow from https://github.com/zsviczian/obsidian-excalidraw-cli to the browser's registered SDraw tools. It does not require a separate installation or a running Obsidian app.
+The drawing file's terminal includes `sdraw` (`excalidraw` is an alias). The agent uses this command through its `terminal` tool for all drawing actions. Direct `sdraw_` tool calls are not exposed to the chat model. It adapts the discovery → native drawing operations → read-back → image review workflow from https://github.com/zsviczian/obsidian-excalidraw-cli to the browser's registered SDraw tools. It does not require a separate installation or a running Obsidian app.
 
 The complete upstream kit is bundled at `/home/user/bundled/obsidian-excalidraw-cli`, including its license, docs, scripts, examples, and tests. Run `sdraw kit` to locate it. The pinned revision is `11d020f28d2a0ddabd1559038ea2b978f47e667a`. Upstream `node scripts/*.mjs`, `obsidian`, EA scripting, vault paths and write receipts belong to desktop Obsidian and are not executable interfaces in this browser terminal. Use the SDraw dialect below for live drawings; do not pretend desktop commands work here. The SDraw adapter is bundled separately from the unmodified AGPL-3.0-only source kit.
 
@@ -18,12 +18,14 @@ Inspect exact schemas before writes:
 ```sh
 sdraw schema create
 sdraw schema apply
-sdraw schema sdraw_capture_view
+sdraw schema view
 sdraw read --json '{"query":"API","limit":5}'
 sdraw sheets
 ```
 
 `--json` takes an inline JSON object; `--request` reads a prepared JSON file instead. Paths are relative to `/home/user`, even after a shell `cd`. Quote inline JSON with single quotes. Run each CLI invocation separately: pipes, redirects and command substitution are not supported within it. Prepare data with the ordinary shell, Python or `write_file` before calling the CLI.
+
+For large scenes, search labels or use selection/region scope with bounded pages. Follow pagination until the relevant region is understood. Read complete properties with `sdraw call sdraw_read_element_field` when summaries truncate them. Inspect one section at a time, preserving unrelated work; obtain fresh status and revision after a sheet switch or human change.
 
 ## Create and edit
 

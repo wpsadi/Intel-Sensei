@@ -189,7 +189,6 @@ export const schemas = {
       .describe('Longest image edge in pixels; use a close-up when labels are too small'),
   }),
   sdraw_export_scene: z.object({ format: z.enum(['excalidraw', 'svg', 'png']), scope: z.enum(['all', 'selection']).default('all') }),
-  sdraw_read_guide: z.object({ offset: z.number().int().nonnegative().default(0) }),
 }
 
 export const descriptions: Record<keyof typeof schemas, string> = {
@@ -217,8 +216,6 @@ export const descriptions: Record<keyof typeof schemas, string> = {
   sdraw_capture_view:
     'View the actual drawing as a PNG image. Use after creating or editing to inspect text fit, arrow routing and overlaps before finishing. Capture the whole sheet for context or specific elements for a readable close-up without changing the human selection.',
   sdraw_export_scene: 'Download the drawing as a native editable file, SVG or PNG. Use when the user requests a local export.',
-  sdraw_read_guide:
-    'Read the large-drawing skill in bounded pages. Use when the file or selection is too large to inspect in a single context.',
 }
 
 const reading = new Set([
@@ -227,7 +224,6 @@ const reading = new Set([
   'sdraw_list_sheets',
   'sdraw_read_elements',
   'sdraw_read_element_field',
-  'sdraw_read_guide',
   'sdraw_capture_view',
 ])
 const userContent = new Set([

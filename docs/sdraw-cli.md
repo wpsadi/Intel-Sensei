@@ -15,7 +15,7 @@ sdraw kit
 
 Inspect the action schema and current sheet revision before creating request files. `--request` paths are relative to `/home/user`; alternatively use `--json` with a quoted JSON object. Commands run standalone: prepare JSON with ordinary shell/Python or `write_file`, then invoke the CLI. `sdraw call sdraw_TOOL` exposes other registered SDraw actions with the same options.
 
-The adapter invokes the registered WebMCP drawing tools, preserving native labels, arrow bindings, revision checks, undo and PGlite persistence. It requires the drawing workspace and WebMCP consumer to be available. Commands are scoped to their drawing file, recorded in terminal history, and excluded from reset/reload replay to prevent duplicate edits. After a conflict or uncertain result, inspect the current scene before writing again.
+The chat agent receives the terminal and image viewer rather than a duplicate set of direct drawing tools. The adapter invokes the registered WebMCP drawing operations, preserving native labels, arrow bindings, revision checks, undo and PGlite persistence. It requires the drawing workspace and WebMCP consumer to be available. Commands are scoped to their drawing file, recorded in terminal history, and excluded from reset/reload replay to prevent duplicate edits. After a conflict or uncertain result, inspect the current scene before writing again.
 
 `view` saves a theme-aware PNG and returns its exact sandbox path. The agent must open it with `view_image`, repair visible defects, and recapture after changes. Preview files are temporary and need recapturing after a terminal reset. `export` uses SDraw’s browser download operation rather than writing a sandbox file.
 

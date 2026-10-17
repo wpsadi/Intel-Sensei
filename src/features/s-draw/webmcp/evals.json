@@ -2,47 +2,99 @@
   {
     "name": "Inspect before adding a diagram",
     "messages": [
-      { "role": "user", "type": "message", "content": "Draw a simple flowchart on this sheet, preserving the existing drawing." }
+      {
+        "role": "user",
+        "type": "message",
+        "content": "Draw a simple flowchart on this sheet, preserving the existing drawing."
+      }
     ],
-    "expectedCall": [{ "functionName": "sdraw_get_document", "arguments": {} }]
+    "expectedCall": [
+      {
+        "functionName": "sdraw_get_document",
+        "arguments": {}
+      }
+    ]
   },
   {
     "name": "Focus an edit on selected content",
     "messages": [
-      { "role": "user", "type": "message", "content": "I selected one region. Inspect only my selection before changing its labels." }
+      {
+        "role": "user",
+        "type": "message",
+        "content": "I selected one region. Inspect only my selection before changing its labels."
+      }
     ],
-    "expectedCall": [{ "functionName": "sdraw_read_elements", "arguments": { "scope": "selection" } }]
+    "expectedCall": [
+      {
+        "functionName": "sdraw_read_elements",
+        "arguments": {
+          "scope": "selection"
+        }
+      }
+    ]
   },
   {
-    "name": "Read skill for oversized canvas",
+    "name": "Create another drawing sheet",
     "messages": [
       {
         "role": "user",
         "type": "message",
-        "content": "This drawing has thousands of elements. Load the large-drawing skill first so you can inspect it in sections."
+        "content": "Create a new drawing sheet called Architecture."
       }
     ],
-    "expectedCall": [{ "functionName": "sdraw_read_guide", "arguments": {} }]
-  },
-  {
-    "name": "Create another drawing sheet",
-    "messages": [{ "role": "user", "type": "message", "content": "Create a new drawing sheet called Architecture." }],
-    "expectedCall": [{ "functionName": "sdraw_manage_sheets", "arguments": { "action": "create", "name": "Architecture" } }]
+    "expectedCall": [
+      {
+        "functionName": "sdraw_manage_sheets",
+        "arguments": {
+          "action": "create",
+          "name": "Architecture"
+        }
+      }
+    ]
   },
   {
     "name": "Export native editable document",
-    "messages": [{ "role": "user", "type": "message", "content": "Download the whole current drawing as an editable Excalidraw file." }],
-    "expectedCall": [{ "functionName": "sdraw_export_scene", "arguments": { "format": "excalidraw", "scope": "all" } }]
+    "messages": [
+      {
+        "role": "user",
+        "type": "message",
+        "content": "Download the whole current drawing as an editable Excalidraw file."
+      }
+    ],
+    "expectedCall": [
+      {
+        "functionName": "sdraw_export_scene",
+        "arguments": {
+          "format": "excalidraw",
+          "scope": "all"
+        }
+      }
+    ]
   },
   {
     "name": "Reconcile a stale revision",
     "messages": [
-      { "role": "user", "type": "message", "content": "Make that rectangle blue." },
+      {
+        "role": "user",
+        "type": "message",
+        "content": "Make that rectangle blue."
+      },
       {
         "role": "model",
         "type": "functioncall",
         "name": "sdraw_update_elements",
-        "arguments": { "sheetId": "sheet-a", "expectedRevision": 3, "updates": [{ "id": "box", "patch": { "backgroundColor": "blue" } }] }
+        "arguments": {
+          "sheetId": "sheet-a",
+          "expectedRevision": 3,
+          "updates": [
+            {
+              "id": "box",
+              "patch": {
+                "backgroundColor": "blue"
+              }
+            }
+          ]
+        }
       },
       {
         "role": "user",
@@ -56,7 +108,12 @@
         }
       }
     ],
-    "expectedCall": [{ "functionName": "sdraw_get_document", "arguments": {} }]
+    "expectedCall": [
+      {
+        "functionName": "sdraw_get_document",
+        "arguments": {}
+      }
+    ]
   },
   {
     "name": "Find layout defects before repairing a diagram",
@@ -67,7 +124,12 @@
         "content": "The text is outside its box and several arrows overlap. Check this sheet for layout defects before fixing it."
       }
     ],
-    "expectedCall": [{ "functionName": "sdraw_check_layout", "arguments": {} }]
+    "expectedCall": [
+      {
+        "functionName": "sdraw_check_layout",
+        "arguments": {}
+      }
+    ]
   },
   {
     "name": "View the rendered drawing before finishing",
@@ -78,7 +140,14 @@
         "content": "View the drawing you just made as an image and check text and arrow overlaps before finishing."
       }
     ],
-    "expectedCall": [{ "functionName": "sdraw_capture_view", "arguments": { "scope": "all" } }]
+    "expectedCall": [
+      {
+        "functionName": "sdraw_capture_view",
+        "arguments": {
+          "scope": "all"
+        }
+      }
+    ]
   },
   {
     "name": "Inspect a created node without changing selection",
@@ -89,6 +158,14 @@
         "content": "Show yourself a close-up image of process-a to check its label without changing my selection."
       }
     ],
-    "expectedCall": [{ "functionName": "sdraw_capture_view", "arguments": { "scope": "elements", "ids": ["process-a"] } }]
+    "expectedCall": [
+      {
+        "functionName": "sdraw_capture_view",
+        "arguments": {
+          "scope": "elements",
+          "ids": ["process-a"]
+        }
+      }
+    ]
   }
 ]
