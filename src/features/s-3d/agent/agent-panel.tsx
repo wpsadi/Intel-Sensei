@@ -211,18 +211,26 @@ export function AgentPanel() {
   const selNames = selection.map((id) => nodes[id]?.name).filter(Boolean)
   const last = chat?.messages.at(-1)
   const generating = !!chat && !!live[chat.id]
-  const liveTranscriptIds = useRef({ user: '', assistant: '' })
+  const liveTranscript = useRef<{ role: 'user' | 'assistant' | null; id: string }>({ role: null, id: '' })
+  useEffect(() => {
+    liveTranscript.current = { role: null, id: '' }
+  }, [chat?.id])
   const onLiveTranscript = (role: 'user' | 'assistant' | 'thought', text: string) => {
     if (!chat?.id || role === 'thought') return
-    const id = liveTranscriptIds.current[role] || crypto.randomUUID()
-    liveTranscriptIds.current[role] = id
+    if (liveTranscript.current.role !== role) liveTranscript.current = { role, id: crypto.randomUUID() }
+    const id = liveTranscript.current.id
     void chatsRepo.get(chat.id).then((saved) => {
       if (!saved) return
       const existing = saved.messages.find((message) => message.id === id)
       const next = existing
         ? saved.messages.map((message) => (message.id === id ? { ...message, text: `${message.text}${text}` } : message))
         : [...saved.messages, { id, role, text, createdAt: Date.now() }]
-      void chatsRepo.put({ ...saved, messages: next, updatedAt: Date.now() })
+      const updated = { ...saved, messages: next, updatedAt: Date.now() }
+      void chatsRepo.put(updated)
+      useAgentRun.setState((state) => {
+        const liveChat = state.live[chat.id]
+        return liveChat ? { live: { ...state.live, [chat.id]: updated }, saved: state.saved + 1 } : state
+      })
     })
   }
   const asking = useAsking(chat?.id ?? null)

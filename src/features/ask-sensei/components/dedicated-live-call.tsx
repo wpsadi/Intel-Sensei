@@ -4,6 +4,7 @@ import { toast } from 'sonner'
 
 import { LiveCall } from '@/ai/inference/call'
 import { createGeneralTools } from '@/ai/tools/general'
+import type { Tool } from 'ai'
 import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
 
@@ -18,6 +19,8 @@ export function useDedicatedLiveCall(
   session = scope ?? 'widget',
   history = '',
   onTranscript?: (role: 'user' | 'assistant' | 'thought', text: string) => void,
+  tools?: Record<string, Tool>,
+  instructions?: string,
 ) {
   const [state, setState] = useState<DedicatedLiveState>('idle')
   const [muted, setMuted] = useState(false)
@@ -50,12 +53,19 @@ export function useDedicatedLiveCall(
         } else setState('live')
       },
       history,
-      tools: createGeneralTools({ session }),
+      // Embedded Live must see the same app-specific tools as the text agent. The generic
+      // sandbox tools remain available everywhere; callers can add page controls (for example
+      // SBrowse's computer tool) through `tools`.
+      tools: { ...createGeneralTools({ session }), ...tools },
       onTranscript: (role, piece) => {
         onTranscript?.(role, piece)
       },
-      instructions:
+      instructions: [
         'You are the dedicated voice assistant inside an embedded Sensei widget. Keep responses concise and conversational. Stay focused on the document or drawing currently open in this widget. Do not claim an edit happened unless a tool confirms it.',
+        instructions,
+      ]
+        .filter(Boolean)
+        .join('\n\n'),
     })
     call.current = instance
     try {
@@ -83,28 +93,38 @@ export function DedicatedLiveCall({
   session,
   history,
   onTranscript,
+  tools,
+  instructions,
 }: {
   scope: string | null
   session?: string
   history?: string
   onTranscript?: (role: 'user' | 'assistant' | 'thought', text: string) => void
+  /** App-specific tools and live page instructions, kept in parity with the text agent. */
+  tools?: Record<string, Tool>
+  instructions?: string
 }) {
-  const live = useDedicatedLiveCall(scope, session, history, onTranscript)
+  const live = useDedicatedLiveCall(scope, session, history, onTranscript, tools, instructions)
   const aurora = useRef<HTMLDivElement>(null)
   const level = live.level
 
   useEffect(() => {
     if (live.state !== 'live') return
+    const root = document.documentElement
     let frame = 0
     let smooth = 0
     const tick = () => {
       const volume = level()
       smooth = volume > smooth ? volume : smooth * 0.9 + volume * 0.1
       aurora.current?.style.setProperty('--live-level', smooth.toFixed(3))
+      root.style.setProperty('--call-level', smooth.toFixed(3))
       frame = requestAnimationFrame(tick)
     }
     frame = requestAnimationFrame(tick)
-    return () => cancelAnimationFrame(frame)
+    return () => {
+      cancelAnimationFrame(frame)
+      root.style.removeProperty('--call-level')
+    }
   }, [live.state, level])
 
   // A widget without a live scope has no Gemini Live session to attach to.
@@ -126,13 +146,19 @@ export function DedicatedLiveCall({
     )
 
   return (
-    <div
-      ref={aurora}
-      className="relative flex items-center gap-0.5 rounded-full border border-primary/30 bg-primary/5 px-0.5 shadow-[0_0_calc(12px+24px*var(--live-level))_hsl(var(--primary)/.35)] [--live-level:0]"
-    >
+    <>
+      <div
+        aria-hidden
+        className="pointer-events-none fixed inset-x-0 bottom-0 z-40 h-[38vh] opacity-[calc(.18+.5*var(--call-level))] blur-2xl"
+        style={{ background: 'radial-gradient(ellipse 70% 80% at 50% 100%, #dbeafe 0%, #60a5fa 32%, #2563eb 62%, transparent 100%)' }}
+      />
+      <div
+        ref={aurora}
+        className="relative z-50 flex items-center gap-0.5 rounded-full border border-blue-400/40 bg-blue-500/10 px-0.5 shadow-[0_0_calc(12px+24px*var(--live-level))_rgb(37_99_235_/_0.42)] [--live-level:0]"
+      >
       <span
         className={cn('pointer-events-none absolute inset-0 rounded-full opacity-70 blur-md', live.state === 'live' && 'animate-pulse')}
-        style={{ background: 'radial-gradient(circle, hsl(var(--primary) / calc(.15 + .45 * var(--live-level))) 0%, transparent 72%)' }}
+        style={{ background: 'radial-gradient(circle, rgb(59 130 246 / calc(.18 + .52 * var(--live-level))) 0%, rgb(37 99 235 / .08) 45%, transparent 72%)' }}
       />
       <Button
         variant="ghost"
@@ -154,6 +180,7 @@ export function DedicatedLiveCall({
       >
         {live.state === 'connecting' ? <Phone /> : <PhoneOff />}
       </Button>
-    </div>
+      </div>
+    </>
   )
 }

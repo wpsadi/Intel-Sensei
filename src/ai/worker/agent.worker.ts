@@ -54,6 +54,45 @@ function estimateTokens(messages: ModelMessage[]) {
   return Math.ceil(chars / 4) + files * 1500
 }
 
+/**
+ * OpenAI Responses may return provider item ids on reasoning/tool parts. Those ids are only valid when the
+ * provider persists the response; OpenAI-compatible proxies often force `store: false`, which makes the next
+ * continuation fail with "Item ... not found". Keep the actual content and encrypted reasoning, but never send
+ * a server-side item reference back as part of our client-owned history.
+ */
+function withoutOpenAIItemReferences(messages: ModelMessage[]): ModelMessage[] {
+  const clean = (value: unknown) => {
+    if (!Array.isArray(value)) return value
+    return value.map((part) => {
+      if (!part || typeof part !== 'object') return part
+      const item = part as { providerOptions?: Record<string, unknown>; providerMetadata?: Record<string, unknown> }
+      const providerOptions = item.providerOptions?.openai
+      const providerMetadata = item.providerMetadata?.openai
+      const strip = (options: unknown) => {
+        if (!options || typeof options !== 'object') return options
+        const { itemId: _itemId, ...rest } = options as Record<string, unknown>
+        return rest
+      }
+      return {
+        ...(part as object),
+        ...(item.providerOptions && {
+          providerOptions: {
+            ...(item.providerOptions as Record<string, unknown>),
+            ...(providerOptions ? { openai: strip(providerOptions) } : {}),
+          },
+        }),
+        ...(item.providerMetadata && {
+          providerMetadata: {
+            ...(item.providerMetadata as Record<string, unknown>),
+            ...(providerMetadata ? { openai: strip(providerMetadata) } : {}),
+          },
+        }),
+      }
+    })
+  }
+  return messages.map((message) => (Array.isArray(message.content) ? { ...message, content: clean(message.content) as never } : message))
+}
+
 /** A message as plain text for the summarizer: files left out, long tool output cut. */
 function asTranscript(m: ModelMessage) {
   const parts =
@@ -172,6 +211,7 @@ async function runPass(msg: Extract<ToWorker, { type: 'start' }>) {
       : (messages.map((m, i) =>
           i === messages.length - 1 ? { ...m, providerOptions: { ...m.providerOptions, ...ephemeral } } : m,
         ) as ModelMessage[])
+  const prepareProviderHistory = (messages: ModelMessage[]) => (msg.provider === 'openai' ? withoutOpenAIItemReferences(messages) : messages)
   const prepareMessages = async ({
     messages: stepMessages,
     steps,
@@ -188,18 +228,18 @@ async function runPass(msg: Extract<ToWorker, { type: 'start' }>) {
       latest = messages
       for (const { id } of arrived) part({ type: 'steered', id })
     }
-    if (!limit) return { messages: withCache(messages) }
+    if (!limit) return { messages: withCache(prepareProviderHistory(messages)) }
     const last = steps.at(-1)?.usage
     const used = Math.max(last ? (last.inputTokens ?? 0) + (last.outputTokens ?? 0) : 0, estimateTokens(messages))
     if (used < limit * 0.8) {
       if (latest) latest = messages
-      return { messages: withCache(messages) }
+      return { messages: withCache(prepareProviderHistory(messages)) }
     }
     const next = await compact(model, messages, controller.signal, (u) => part({ type: 'spend', ...u }))
     const after = estimateTokens(next)
     part({ type: 'compacted', beforeTokens: used, afterTokens: after })
     latest = next
-    return { messages: withCache(next) }
+    return { messages: withCache(prepareProviderHistory(next)) }
   }
   try {
     const agent = new ToolLoopAgent({

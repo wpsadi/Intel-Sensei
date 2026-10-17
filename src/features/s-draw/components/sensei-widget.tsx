@@ -116,19 +116,36 @@ export function SenseiWidget({ fileId, chatId, onChatChange, title = 'SDraw', co
   const missingChat = !!chatId && historyLoaded && !chat
   const busy = !!chat && !!live[chat.id]
   const messages = chat?.messages ?? []
-  const liveTranscriptIds = useRef({ user: '', assistant: '' })
+  const liveTranscript = useRef<{ role: 'user' | 'assistant' | null; id: string }>({ role: null, id: '' })
+  const voiceChatId = useRef<string | null>(chatId)
+  const voiceChat = useRef<IDrawChat | null>(chat)
+  useEffect(() => {
+    liveTranscript.current = { role: null, id: '' }
+    voiceChatId.current = chatId
+    voiceChat.current = chat
+  }, [chatId])
   const onLiveTranscript = (role: 'user' | 'assistant' | 'thought', text: string) => {
-    if (!chatId || role === 'thought') return
-    const id = liveTranscriptIds.current[role] || crypto.randomUUID()
-    liveTranscriptIds.current[role] = id
-    void drawChats.get(fileId, chatId).then((saved) => {
-      if (!saved) return
-      const existing = saved.messages.find((message) => message.id === id)
+    if (role === 'thought') return
+    const idForTranscript = voiceChatId.current ?? crypto.randomUUID()
+    if (!voiceChatId.current) {
+      voiceChatId.current = idForTranscript
+      onChatChange(idForTranscript)
+    }
+    if (liveTranscript.current.role !== role) liveTranscript.current = { role, id: crypto.randomUUID() }
+    const id = liveTranscript.current.id
+    const apply = (saved: IDrawChat | undefined) => {
+      const base = voiceChat.current ?? saved ?? { id: idForTranscript, fileId, title: 'Voice call', messages: [], updatedAt: Date.now() }
+      const existing = base.messages.find((message) => message.id === id)
       const next = existing
-        ? saved.messages.map((message) => (message.id === id ? { ...message, content: `${message.content}${text}` } : message))
-        : [...saved.messages, { id, role, content: text }]
-      void drawChats.put({ ...saved, messages: next, updatedAt: Date.now() })
-    })
+        ? base.messages.map((message) => (message.id === id ? { ...message, content: `${message.content}${text}` } : message))
+        : [...base.messages, { id, role, content: text }]
+      const updated = { ...base, messages: next, updatedAt: Date.now() }
+      voiceChat.current = updated
+      void drawChats.put(updated)
+      useDrawRuns.setState((state) => ({ ...state, saved: state.saved + 1 }))
+    }
+    if (voiceChat.current) apply(voiceChat.current)
+    else void drawChats.get(fileId, idForTranscript).then(apply)
   }
   const supported = hasDrawWebMCP()
   const send = (text: string) => {

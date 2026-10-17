@@ -55,19 +55,27 @@ export function SenseiWidget() {
   const endRef = useRef<HTMLDivElement>(null)
   const chat = (viewedId && live[viewedId]) || (chats.find((c) => c.id === viewedId) ?? null)
   const messages = chat?.messages ?? []
-  const liveTranscriptIds = useRef({ user: '', assistant: '' })
+  const liveTranscript = useRef<{ role: 'user' | 'assistant' | null; id: string }>({ role: null, id: '' })
+  useEffect(() => {
+    liveTranscript.current = { role: null, id: '' }
+  }, [viewedId])
   const onLiveTranscript = (role: 'user' | 'assistant' | 'thought', text: string) => {
     if (!viewedId || role === 'thought') return
     const messageRole = role
-    const id = liveTranscriptIds.current[messageRole] || crypto.randomUUID()
-    liveTranscriptIds.current[messageRole] = id
+    if (liveTranscript.current.role !== messageRole) liveTranscript.current = { role: messageRole, id: crypto.randomUUID() }
+    const id = liveTranscript.current.id
     void widgetChatsRepo.get(viewedId).then((saved) => {
       if (!saved) return
       const existing = saved.messages.find((message) => message.id === id)
       const next = existing
         ? saved.messages.map((message) => (message.id === id ? { ...message, content: `${message.content}${text}` } : message))
         : [...saved.messages, { id, role: messageRole, content: text }]
-      void widgetChatsRepo.put({ ...saved, messages: next, updatedAt: Date.now() })
+      const updated = { ...saved, messages: next, updatedAt: Date.now() }
+      void widgetChatsRepo.put(updated)
+      useSenseiRuns.setState((state) => {
+        const liveChat = state.live[viewedId]
+        return liveChat ? { live: { ...state.live, [viewedId]: updated }, saved: state.saved + 1 } : state
+      })
     })
   }
   const usage = [...messages].reverse().find((m) => m.contextTokens)
