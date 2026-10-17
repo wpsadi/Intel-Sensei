@@ -155,7 +155,7 @@ export function SenseiWidget() {
                     <ChatReasoning
                       reasoning={m.reasoning}
                       steps={m.steps}
-                      isStreaming={busy && m === messages.at(-1) && !m.content}
+                      isStreaming={busy && m === messages.at(-1)}
                       duration={m.reasoningSeconds}
                       defaultOpen={false}
                       className="mb-0"
@@ -165,13 +165,9 @@ export function SenseiWidget() {
                       <div id={`tts-${m.id}`}>
                         <Markdown>{m.content}</Markdown>
                       </div>
-                    ) : (
-                      !m.error &&
-                      busy &&
-                      m === messages.at(-1) &&
-                      !m.reasoning &&
-                      !m.steps?.length &&
-                      !m.searches?.length && <TypingDots className="h-3" />
+                    ) : null}
+                    {!m.error && busy && m === messages.at(-1) && !m.reasoning && !m.steps?.length && !m.searches?.length && (
+                      <TypingDots className="h-3" />
                     )}
                     {m.error && <p className="rounded-md bg-destructive/10 px-2 py-1 text-xs text-destructive">{m.error}</p>}
                     {m.content && !(busy && m === messages.at(-1)) && <ReplyActions text={m.content} speakId={`tts-${m.id}`} />}

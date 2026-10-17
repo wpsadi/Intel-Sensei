@@ -64,6 +64,8 @@ export interface CallToolEvent {
   args: Record<string, unknown>
   status: 'running' | 'done' | 'failed'
   error?: string
+  /** A compact tool result, so the transcript can show call → result before the next thought. */
+  result?: string
 }
 
 /** What a live call needs from the page. */
@@ -88,6 +90,11 @@ export interface LiveCallOptions {
  * One live voice call with Gemini, straight from the browser using the user's own key.
  * Mic audio goes up as it is spoken, and the model's voice plays back as it arrives.
  */
+const summarizeToolResult = (value: unknown) => {
+  const text = typeof value === 'string' ? value : JSON.stringify(value)
+  return text && text.length > 1200 ? `${text.slice(0, 1200)}…` : text
+}
+
 export class LiveCall {
   private session: Session | null = null
   private mic: MediaStream | null = null
@@ -376,7 +383,7 @@ export class LiveCall {
             }),
           }
           if (abort.signal.aborted) return
-          this.options.onTool?.({ ...base, status: 'done' })
+          this.options.onTool?.({ ...base, status: 'done', result: summarizeToolResult(response.output) })
         } catch (error) {
           if (abort.signal.aborted) return
           const message = error instanceof Error ? error.message : 'The tool failed'

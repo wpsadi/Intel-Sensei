@@ -196,7 +196,7 @@ export function Conversation({
                         <ChatReasoning
                           reasoning={message.reasoning}
                           steps={message.steps ?? message.parts?.flatMap((part) => (part.type === 'steps' ? part.steps : []))}
-                          isStreaming={isStreaming && !message.content}
+                          isStreaming={isStreaming}
                           duration={message.reasoningSeconds ?? message.workedSeconds}
                           toolCount={!message.steps?.length}
                           className="mb-3"
@@ -227,7 +227,7 @@ export function Conversation({
                     ) : (
                       <>
                         {isReply && message.searches?.length ? <ChatSearches searches={message.searches} /> : null}
-                        {isReply && message.plan && <ChatPlanCard plan={message.plan} isStreaming={isStreaming && !message.content} />}
+                        {isReply && message.plan && <ChatPlanCard plan={message.plan} isStreaming={isStreaming} />}
                         <Markdown>{message.content}</Markdown>
                       </>
                     )}

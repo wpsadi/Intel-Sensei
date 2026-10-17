@@ -167,7 +167,7 @@ export function useLiveCall(chatId: string | null, onChatOpened: (id: string) =>
         name: event.name,
         label,
         status: event.status,
-        detail: event.status === 'failed' ? event.error : detail,
+        detail: event.status === 'failed' ? event.error : (event.result ?? detail),
         at,
       }
       const last = turn.parts.at(-1)

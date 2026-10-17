@@ -111,7 +111,7 @@ export function BrowserAgentPanel({ page, profile }: { page: string | null; prof
                       <ChatReasoning
                         reasoning={message.reasoning}
                         steps={message.steps}
-                        isStreaming={isStreaming && !message.content}
+                        isStreaming={isStreaming}
                         duration={message.reasoningSeconds ?? message.workedSeconds}
                         toolCount={!message.steps?.length}
                         defaultOpen={false}

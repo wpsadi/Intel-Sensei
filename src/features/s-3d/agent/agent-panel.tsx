@@ -314,7 +314,7 @@ export function AgentPanel() {
                   toolCount={false}
                   reasoning={m.reasoning}
                   steps={m.steps}
-                  isStreaming={generating && m === last && !m.text}
+                  isStreaming={generating && m === last}
                   duration={m.reasoningSeconds}
                   defaultOpen={false}
                   className="mb-0"

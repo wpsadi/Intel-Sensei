@@ -416,7 +416,7 @@ async function runSensei({
             id: part.toolCallId,
             name: part.toolName,
             label: stepLabel(part.toolName),
-            detail: failed ? 'Failed' : previous?.detail,
+            detail: failed ? 'Failed' : asText(part.output).slice(0, 1200) || previous?.detail,
             status: failed ? 'failed' : 'done',
           })
         } else if (part.type === 'tool-error') {

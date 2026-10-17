@@ -78,6 +78,10 @@ const secs = (ms: number) => (ms < 1000 ? `${Math.round(ms)}ms` : `${(ms / 1000)
 
 /** Tool names as plain words for the steps list, e.g. "add_frame" → "Add frame". */
 const stepLabel = (name: string) => name.charAt(0).toUpperCase() + name.slice(1).replace(/_/g, ' ')
+const resultDetail = (value: unknown) => {
+  const text = typeof value === 'string' ? value : JSON.stringify(value)
+  return text && text.length > 1200 ? `${text.slice(0, 1200)}…` : text
+}
 
 /**
  * Agent runs live here, outside the panel, so it keeps going when the panel unmounts (e.g. switching to the
@@ -587,7 +591,13 @@ export async function runAgent(
                 if (part.type === 'tool-call')
                   setStep({ id: `v${round}-${part.toolCallId}`, name: part.toolName, label: label(part.toolName), status: 'running' })
                 else if (part.type === 'tool-result')
-                  setStep({ id: `v${round}-${part.toolCallId}`, name: part.toolName, label: label(part.toolName), status: 'done' })
+                  setStep({
+                    id: `v${round}-${part.toolCallId}`,
+                    name: part.toolName,
+                    label: label(part.toolName),
+                    detail: resultDetail(part.output),
+                    status: 'done',
+                  })
                 else if (part.type === 'tool-error')
                   setStep({
                     id: `v${round}-${part.toolCallId}`,
@@ -722,7 +732,13 @@ export async function runAgent(
                 setStep({ id: part.toolCallId, name: part.toolName, label: stepLabel(part.toolName), status: 'running' })
               } else if (part.type === 'tool-result') {
                 logAnswered(part.toolName, part.toolCallId)
-                setStep({ id: part.toolCallId, name: part.toolName, label: stepLabel(part.toolName), status: 'done' })
+                setStep({
+                  id: part.toolCallId,
+                  name: part.toolName,
+                  label: stepLabel(part.toolName),
+                  detail: resultDetail(part.output),
+                  status: 'done',
+                })
               } else if (part.type === 'tool-error') {
                 logAnswered(part.toolName, part.toolCallId, part.error)
                 setStep({ id: part.toolCallId, name: part.toolName, label: stepLabel(part.toolName), detail: part.error, status: 'failed' })

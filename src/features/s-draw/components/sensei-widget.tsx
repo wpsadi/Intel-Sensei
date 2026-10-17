@@ -294,7 +294,7 @@ export function SenseiWidget({ fileId, chatId, onChatChange, title = 'SDraw', co
                       <ChatReasoning
                         reasoning={message.reasoning}
                         steps={message.steps}
-                        isStreaming={busy && message === messages.at(-1) && !message.content}
+                        isStreaming={busy && message === messages.at(-1)}
                         defaultOpen={false}
                       />
                       {message.content && <Markdown>{message.content}</Markdown>}
@@ -303,7 +303,7 @@ export function SenseiWidget({ fileId, chatId, onChatChange, title = 'SDraw', co
                           {message.error}
                         </p>
                       )}
-                      {busy && message === messages.at(-1) && !message.content && !message.reasoning && !message.steps?.length && (
+                      {!message.error && busy && message === messages.at(-1) && !message.reasoning && !message.steps?.length && (
                         <TypingDots />
                       )}
                     </div>
