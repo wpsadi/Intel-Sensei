@@ -4,7 +4,7 @@ import { describe, expect, it } from 'vitest'
 import { thinkingSummary } from '@/ai/providers'
 
 describe('OpenAI chat continuation', () => {
-  it('sends unstored reasoning content without requesting encrypted reasoning output', async () => {
+  it('does not request encrypted reasoning output', async () => {
     let request: Record<string, unknown> = {}
     const provider = createOpenAI({
       apiKey: 'test-key',
@@ -24,28 +24,14 @@ describe('OpenAI chat continuation', () => {
     await model.doGenerate({
       prompt: [
         { role: 'user', content: [{ type: 'text', text: 'Continue' }] },
-        {
-          role: 'assistant',
-          content: [
-            {
-              type: 'reasoning',
-              text: 'Earlier reasoning',
-              providerOptions: { openai: { itemId: 'rs_unstored' } },
-            },
-          ],
-        },
       ],
       providerOptions: thinkingSummary('openai') as Parameters<typeof model.doGenerate>[0]['providerOptions'],
     })
-    expect(request.reasoning).toMatchObject({ summary: 'auto' })
-    expect(request.store).toBe(true)
+    expect(request.reasoning).toBeUndefined()
+    expect(request.store).toBeUndefined()
     expect(request.include).toBeUndefined()
     expect(request.input).toEqual([
       { role: 'user', content: [{ type: 'input_text', text: 'Continue' }] },
-      {
-        type: 'item_reference',
-        id: 'rs_unstored',
-      },
     ])
   })
 })
