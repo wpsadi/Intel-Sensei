@@ -114,6 +114,82 @@ beforeEach(() => {
 })
 
 describe('drawing inspection and bounded traversal', () => {
+  it('paginates layout findings, filters selected issues and preserves the scene', async () => {
+    elements = [
+      shape('box'),
+      shape('bad-label', { type: 'text', text: 'Overflow', x: 80, y: 10, width: 90, height: 20, containerId: 'box' }),
+      shape('one', {
+        type: 'arrow',
+        x: 0,
+        y: 200,
+        points: [
+          [0, 0],
+          [100, 0],
+        ],
+        startBinding: null,
+        endBinding: null,
+      }),
+      shape('two', {
+        type: 'arrow',
+        x: 0,
+        y: 200,
+        points: [
+          [20, 0],
+          [120, 0],
+        ],
+        startBinding: null,
+        endBinding: null,
+      }),
+    ]
+    const first = await call('sdraw_check_layout', { limit: 1 })
+    expect(first).toMatchObject({ items: [{ kind: 'label_outside_box', ids: ['bad-label', 'box'] }], nextOffset: 1, complete: true })
+    const second = await call('sdraw_check_layout', { offset: 1 })
+    expect(second).toMatchObject({ items: [{ kind: 'arrows_overlap', ids: ['one', 'two'] }], nextOffset: null })
+    expect(JSON.stringify(second).length).toBeLessThanOrEqual(1500)
+    appState.selectedElementIds = { box: true }
+    expect(await call('sdraw_check_layout', { scope: 'selection' })).toMatchObject({
+      items: [{ kind: 'label_outside_box' }],
+      totalCount: 1,
+    })
+    expect(await call('sdraw_check_layout', { scope: 'region', region: { x: -5, y: 180, width: 150, height: 50 } })).toMatchObject({
+      items: [{ kind: 'arrows_overlap' }],
+      totalCount: 1,
+    })
+    expect(updateScene).not.toHaveBeenCalled()
+  })
+
+  it('finds boxes by their bound labels and reads arrow relationships without changing the drawing', async () => {
+    elements = [
+      shape('a'),
+      shape('b', { x: 300 }),
+      shape('label', { type: 'text', text: 'Service', containerId: 'a' }),
+      shape('edge', {
+        type: 'arrow',
+        points: [
+          [0, 0],
+          [200, 50],
+        ],
+        startBinding: { elementId: 'a' },
+        endBinding: { elementId: 'b' },
+        startArrowhead: 'arrow',
+        endArrowhead: null,
+      }),
+    ]
+    const matches = await call('sdraw_read_elements', { query: 'Service' })
+    expect(matches).toMatchObject({
+      items: [
+        { id: 'a', label: 'Service' },
+        { id: 'label', containerId: 'a' },
+      ],
+    })
+    const edge = await call('sdraw_read_elements', { query: 'edge' })
+    expect(edge).toMatchObject({
+      items: [{ id: 'edge', start: { elementId: 'a', arrowhead: 'arrow' }, end: { elementId: 'b', arrowhead: null } }],
+    })
+    expect(JSON.stringify(edge).length).toBeLessThanOrEqual(1500)
+    expect(updateScene).not.toHaveBeenCalled()
+  })
+
   it('reports live content and selected scope rather than the stale persisted sheet', async () => {
     appState.selectedElementIds = { existing: true }
     expect(await call('sdraw_get_document', {})).toMatchObject({

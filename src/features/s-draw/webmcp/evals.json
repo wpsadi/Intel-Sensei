@@ -57,5 +57,16 @@
       }
     ],
     "expectedCall": [{ "functionName": "sdraw_get_document", "arguments": {} }]
+  },
+  {
+    "name": "Find layout defects before repairing a diagram",
+    "messages": [
+      {
+        "role": "user",
+        "type": "message",
+        "content": "The text is outside its box and several arrows overlap. Check this sheet for layout defects before fixing it."
+      }
+    ],
+    "expectedCall": [{ "functionName": "sdraw_check_layout", "arguments": {} }]
   }
 ]

@@ -121,6 +121,11 @@ export const schemas = {
     region: bounds.optional(),
     query: z.string().max(200).optional(),
   }),
+  sdraw_check_layout: z.object({
+    ...page,
+    scope: z.enum(['all', 'selection', 'region']).default('all'),
+    region: bounds.optional(),
+  }),
   sdraw_read_element_field: z.object({
     id,
     field: z.string().min(1).max(40),
@@ -182,9 +187,11 @@ export const descriptions: Record<keyof typeof schemas, string> = {
     'Inspect the active drawing, revision, selection and whole-workspace counts. Use before editing to identify the current sheet and focused region.',
   sdraw_list_sheets: 'List drawing sheets with their sizes. Use to find another sheet or inspect a large workspace in pages.',
   sdraw_read_elements:
-    'Read drawing elements in bounded pages, optionally within the human selection, a region or matching text. Use to understand content and locate edit targets.',
+    'Read drawing elements with bound labels and connector endpoints, bindings and arrowheads in bounded pages. Use to understand boxes, arrow direction and edit targets; filter by selection, region or text.',
   sdraw_read_element_field:
     'Read a complete element property in small JSON text chunks. Use for long labels, freehand points, bindings or other details omitted from summaries.',
+  sdraw_check_layout:
+    'Find labels outside boxes, unbound box text, arrows passing through content and overlapping or crossing connectors. Use after drawing or moving elements, then repair unintended issues and verify a rendered capture. Checks are advisory and paginated.',
   sdraw_create_elements:
     'Draw native Excalidraw shapes, text, arrows, images and frames while preserving the existing scene. Use when asked to add a diagram or drawing.',
   sdraw_update_elements:
@@ -205,6 +212,7 @@ export const descriptions: Record<keyof typeof schemas, string> = {
 }
 
 const reading = new Set([
+  'sdraw_check_layout',
   'sdraw_get_document',
   'sdraw_list_sheets',
   'sdraw_read_elements',
@@ -213,6 +221,7 @@ const reading = new Set([
   'sdraw_capture_view',
 ])
 const userContent = new Set([
+  'sdraw_check_layout',
   'sdraw_get_document',
   'sdraw_list_sheets',
   'sdraw_read_elements',

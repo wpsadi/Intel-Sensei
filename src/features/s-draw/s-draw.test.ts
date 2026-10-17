@@ -98,4 +98,36 @@ describe('S Draw workspace', () => {
     expect(context.elementCount).toBe(1200)
     expect(context.truncated).toBe(true)
   })
+
+  it('includes the same labels and arrow relationships in the initial agent context', async () => {
+    await useDrawStore.getState().hydrate()
+    const elements = [
+      { ...element('box'), type: 'rectangle' },
+      { ...element('label', 'Database'), containerId: 'box' },
+      {
+        ...element('edge'),
+        type: 'arrow',
+        points: [
+          [0, 0],
+          [40, 30],
+        ],
+        startBinding: { elementId: 'box' },
+        endBinding: null,
+        startArrowhead: null,
+        endArrowhead: 'arrow',
+      },
+    ] as unknown as ExcalidrawElement[]
+    setDrawApi({
+      getSceneElements: () => elements,
+      getAppState: () => ({ selectedElementIds: { box: true } }),
+    } as unknown as ExcalidrawImperativeAPI)
+    const context = JSON.parse(getDrawContext())
+    expect(context.elements[0]).toMatchObject({ label: 'Database' })
+    expect(context.elements[2]).toMatchObject({
+      start: { elementId: 'box', arrowhead: null },
+      end: { elementId: null, arrowhead: 'arrow' },
+    })
+    expect(context.selection.elements[0]).toMatchObject({ label: 'Database' })
+    expect(context.relationshipGuidance).toContain('proximity or crossing alone does not establish a connection')
+  })
 })

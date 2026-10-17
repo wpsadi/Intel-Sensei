@@ -19,6 +19,8 @@ vi.mock('@excalidraw/excalidraw', () => ({
 }))
 vi.mock('../s-draw.db', () => ({ readDrawWorkspace: vi.fn(), writeDrawWorkspace: vi.fn().mockResolvedValue(undefined) }))
 
+import type { ExcalidrawElement } from '@excalidraw/excalidraw/element/types'
+
 import { setDrawApi } from '../bridge'
 import { useDrawStore } from '../s-draw.store'
 import { DrawTools } from './draw-tools'
@@ -131,11 +133,68 @@ describe('S Draw browser tool registration', () => {
     expect(JSON.parse(result.content[0].text)).toMatchObject({ sheetId: 'a', name: 'Drawing', elementCount: 0 })
   })
 
+  it('exposes arrow endpoints and heads through the registered browser callback', async () => {
+    const edge = {
+      id: 'edge',
+      type: 'arrow',
+      x: 0,
+      y: 0,
+      width: 100,
+      height: 0,
+      angle: 0,
+      version: 1,
+      groupIds: [],
+      points: [
+        [0, 0],
+        [100, 0],
+      ],
+      startBinding: null,
+      endBinding: null,
+      startArrowhead: null,
+      endArrowhead: 'arrow',
+    } as unknown as ExcalidrawElement
+    setDrawApi({
+      getSceneElements: () => [edge],
+      getAppState: () => ({ selectedElementIds: {} }),
+    } as unknown as ExcalidrawImperativeAPI)
+    render(<DrawTools />)
+    const result = await call('sdraw_read_elements', {})
+    expect(result.isError).not.toBe(true)
+    expect(JSON.parse(result.content[0].text)).toMatchObject({
+      items: [
+        {
+          id: 'edge',
+          start: { elementId: null, point: [0, 0], arrowhead: null },
+          end: { elementId: null, point: [100, 0], arrowhead: 'arrow' },
+        },
+      ],
+    })
+  })
+
   it('normalizes schema failures into explicit browser tool errors', async () => {
     render(<DrawTools />)
     const result = await call('sdraw_update_elements', { sheetId: 'a', expectedRevision: 0, updates: [] })
     expect(result.isError).toBe(true)
     expect(result.content[0].text).toMatch(/updates|small|at least/i)
+  })
+
+  it('reports overflowing labels through the registered layout-check callback', async () => {
+    const elements = [
+      { id: 'box', type: 'rectangle', x: 0, y: 0, width: 100, height: 50, angle: 0 },
+      { id: 'label', type: 'text', text: 'Too wide', x: 80, y: 10, width: 80, height: 20, angle: 0, containerId: 'box' },
+    ] as unknown as ExcalidrawElement[]
+    setDrawApi({
+      getSceneElements: () => elements,
+      getAppState: () => ({ selectedElementIds: {} }),
+    } as unknown as ExcalidrawImperativeAPI)
+    render(<DrawTools />)
+    const result = await call('sdraw_check_layout', {})
+    expect(result.isError).not.toBe(true)
+    expect(JSON.parse(result.content[0].text)).toMatchObject({
+      items: [{ kind: 'label_outside_box', ids: ['label', 'box'] }],
+      complete: true,
+    })
+    expect(registered.get('sdraw_check_layout')?.annotations).toMatchObject({ readOnlyHint: true, untrustedContentHint: true })
   })
 
   it('returns an actionable error while the canvas is changing sheets', async () => {

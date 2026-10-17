@@ -44,7 +44,7 @@
     },
     {
       "name": "sdraw_read_elements",
-      "description": "Read drawing elements in bounded pages, optionally within the human selection, a region or matching text. Use to understand content and locate edit targets.",
+      "description": "Read drawing elements with bound labels and connector endpoints, bindings and arrowheads in bounded pages. Use to understand boxes, arrow direction and edit targets; filter by selection, region or text.",
       "inputSchema": {
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "type": "object",
@@ -90,6 +90,60 @@
           "query": {
             "type": "string",
             "maxLength": 200
+          }
+        },
+        "required": ["offset", "limit", "scope"],
+        "additionalProperties": false
+      },
+      "annotations": {
+        "readOnlyHint": true,
+        "untrustedContentHint": true
+      }
+    },
+    {
+      "name": "sdraw_check_layout",
+      "description": "Find labels outside boxes, unbound box text, arrows passing through content and overlapping or crossing connectors. Use after drawing or moving elements, then repair unintended issues and verify a rendered capture. Checks are advisory and paginated.",
+      "inputSchema": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "type": "object",
+        "properties": {
+          "offset": {
+            "default": 0,
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          },
+          "limit": {
+            "default": 5,
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 10
+          },
+          "scope": {
+            "default": "all",
+            "type": "string",
+            "enum": ["all", "selection", "region"]
+          },
+          "region": {
+            "type": "object",
+            "properties": {
+              "x": {
+                "type": "number"
+              },
+              "y": {
+                "type": "number"
+              },
+              "width": {
+                "type": "number",
+                "minimum": 0
+              },
+              "height": {
+                "type": "number",
+                "minimum": 0
+              }
+            },
+            "required": ["x", "y", "width", "height"],
+            "additionalProperties": false
           }
         },
         "required": ["offset", "limit", "scope"],

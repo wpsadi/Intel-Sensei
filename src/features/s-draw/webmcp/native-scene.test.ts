@@ -244,6 +244,11 @@ describe('native Excalidraw scene operations', () => {
     expect(arrow).toMatchObject({ startBinding: { elementId: 'source' }, endBinding: { elementId: 'target' } })
   })
 
+  it('accepts a native labeled flow without treating its own labels or endpoint boxes as obstructions', async () => {
+    const { checkDrawLayout } = await import('../layout-check')
+    expect(checkDrawLayout(diagram())).toMatchObject({ issues: [], complete: true })
+  })
+
   it('restores common defaults and renders explicitly normalized freehand and embed elements', () => {
     const elements = native.restoreElements(
       [

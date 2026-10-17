@@ -1,6 +1,7 @@
 import type { ExcalidrawImperativeAPI } from '@excalidraw/excalidraw/types'
 
 import { useDrawStore } from './s-draw.store'
+import { DRAW_RELATIONSHIP_GUIDANCE, createSceneSummary } from './scene-summary'
 
 let drawApi: ExcalidrawImperativeAPI | null = null
 let apiSheetId: string | null = null
@@ -29,17 +30,7 @@ export function getDrawContext(): string {
   const sheet = sheets.find((item) => item.id === activeId)
   const elements = api?.getSceneElements() ?? sheet?.scene.elements.filter((element) => !element.isDeleted) ?? []
   const selectedIds = Object.keys(api?.getAppState().selectedElementIds ?? {}).filter((id) => api?.getAppState().selectedElementIds[id])
-  const summary = elements.map((element) => ({
-    id: element.id,
-    type: element.type,
-    x: element.x,
-    y: element.y,
-    width: element.width,
-    height: element.height,
-    angle: element.angle,
-    ...('text' in element ? { text: element.text.slice(0, 500) } : {}),
-    ...(element.frameId ? { frameId: element.frameId } : {}),
-  }))
+  const summary = elements.map(createSceneSummary(elements))
   const focusIds = new Set(selectedIds)
   let expanded = true
   while (expanded) {
@@ -94,6 +85,7 @@ export function getDrawContext(): string {
     guidance: selectedIds.length
       ? 'The user selected these elements as the focus. Preserve other elements unless asked to change them.'
       : 'Consider the whole active sheet. Preserve existing content unless asked to replace it.',
+    relationshipGuidance: DRAW_RELATIONSHIP_GUIDANCE,
     largeDrawingGuidance:
       'For truncated drawings, use the S Draw skill and WebMCP tools to inspect sheets and regions in bounded pages before editing. Element summaries omit image data; use scene tools for details.',
   }
