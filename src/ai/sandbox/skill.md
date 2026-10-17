@@ -14,6 +14,14 @@ Before guessing at an unfamiliar task, call `lookup_capability` with a query pre
 6. **Get files you need.** A public https file: `curl -o name.ext "https://..."` (quote links with & or ?). Pure-Python packages: `pip install name`. Python packages bundled with Pyodide such as numpy and pandas load by themselves when a script imports them.
 7. **Scanned PDFs and pictures.** `pdftotext` shows "(no text on this page...)" for a scan: extract the page with `pdfimages -f 3 -l 3 file.pdf page` and look at `page-3-1.jpg` with `view_image`. Do not invent content. For a vector chart or drawing that `pdfimages` cannot extract, you may `pip install pymupdf` and render the page yourself in a script (a big download: only when really needed).
 
+## LaTeX PDFs
+
+Use `latex --check file.tex` to validate source. When the user needs a PDF,
+run `latex --enable-swiftlatex` once, then `latex --swiftlatex file.tex`.
+SwiftLaTeX runs as a browser WASM worker and writes `file.pdf` beside the
+source. It downloads missing TeX packages from its TeX Live endpoint, so a
+network or content blocking error is reported as a compilation failure.
+
 ## When a download fails with a CORS error
 
 Downloads run in the browser, so a site that does not allow other websites to fetch it (common on government and university sites, such as ncert.nic.in) fails with a CORS message. Do not retry the same link. Go in this order:

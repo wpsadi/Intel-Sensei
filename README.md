@@ -31,7 +31,9 @@ Configure provider keys in **Settings → AI providers**. Sensei calls the selec
 
 Terminal agents expose `lookup_capability` for tasks they do not recognize. The `wiu` prefix is optional routing metadata for that lookup; it is removed before keyword or embedding search. Built-in entries cover LaTeX source validation, Python Excel workbooks, and Python PowerPoint workbooks. PowerPoint requests for LaTeX Beamer slides are routed to the LaTeX capability. Installed skills are searched semantically when a Gemini key is configured and fall back to keyword matching when it is not. Embeddings are created lazily and stored in the local PGlite `memory_vectors` table.
 
-The terminal's `latex --check file.tex` command validates balanced braces and `\begin`/`\end` environments. `lookup_capability` accepts `wiu enable SwiftLaTeX` as a lookup query, but `wiu` is metadata rather than a shell command. SwiftLaTeX is a browser WASM worker, not a Pyodide package, so it does not compile a PDF until that separate runtime integration is added.
+The terminal's `latex --check file.tex` command validates balanced braces and `\begin`/`\end` environments. To compile a PDF in this browser, run `latex --enable-swiftlatex` once and then `latex --swiftlatex file.tex`; the command writes `file.pdf` beside the source. `lookup_capability` accepts `wiu enable SwiftLaTeX` as a lookup query, but `wiu` is metadata rather than a shell command.
+
+The browser compiler uses the official SwiftLaTeX PdfTeX WASM runtime shipped in `public/swiftlatex` (EPL-2.0 or GPL-2.0 with the Classpath Exception; see `NOTICE.md`). It fetches missing TeX packages from SwiftLaTeX's configured TeX Live endpoint as needed.
 
 For pgvector, `<=>` returns cosine distance. Sensei reports cosine similarity as `1 - distance`, clamped to `[-1, 1]`: identical vectors score `1`, orthogonal vectors score about `0`, and opposite vectors score `-1`. Queries are ordered by ascending distance, and the database worker pages through matches so app scope filtering does not hide relevant results.
 

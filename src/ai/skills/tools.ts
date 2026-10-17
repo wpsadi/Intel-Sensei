@@ -14,7 +14,7 @@ const BUILTIN_CAPABILITIES = [
     name: 'terminal-latex',
     description: 'Write and validate LaTeX source in the browser terminal.',
     terms: ['latex', 'tex', 'swiftlatex', 'equation', 'typeset'],
-    body: 'Use `write_file` to save a `.tex` file, then run `latex --check file.tex` (or `tex --check file.tex`). To check the optional compiler path, call `lookup_capability` with `wiu enable SwiftLaTeX`; `wiu` is lookup metadata, not a shell command. This Pyodide runtime does not include the SwiftLaTeX compiler or a native TeX-to-PDF engine, and no `pip install` command can enable it because SwiftLaTeX requires a browser WASM worker. Do not claim that a PDF was compiled until that separate runtime integration is installed.',
+    body: 'Use `write_file` to save a `.tex` file, then run `latex --check file.tex` (or `tex --check file.tex`) to validate it. To compile a PDF in this browser, call `lookup_capability` with `wiu enable SwiftLaTeX`, run `latex --enable-swiftlatex`, then run `latex --swiftlatex file.tex`. The compiler runs in a browser WASM worker and writes `file.pdf` beside the source. `wiu` is lookup metadata, not a shell command.',
   },
   {
     name: 'terminal-excel',

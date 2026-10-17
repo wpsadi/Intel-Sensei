@@ -310,7 +310,11 @@ export async function runShellCommand(command: string, signal?: AbortSignal, ctx
   }
   if (!ctx.replay) emit({ phase: 'start', op })
   try {
-    const result = (await sessionOf(session).call({ op: 'shell', command }, signal, [], ctx.replay)) as ExecResult
+    // SwiftLaTeX runs in a nested browser worker rather than in Pyodide. Keep
+    // its commands on the same terminal event stream while routing them to the
+    // bridge in sandbox.worker.ts.
+    const swift = /^(?:\s*)(?:latex|tex)\s+(?:--enable-swiftlatex|--swiftlatex|--compile)\b/i.test(command)
+    const result = (await sessionOf(session).call({ op: swift ? 'swiftlatex' : 'shell', command }, signal, [], ctx.replay)) as ExecResult
     if (!ctx.replay) emit({ phase: 'end', op: { ...op, output: result.output, code: result.code, cwd: result.cwd } })
     return result
   } catch (error) {

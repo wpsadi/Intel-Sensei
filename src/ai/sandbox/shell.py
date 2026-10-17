@@ -673,8 +673,13 @@ def c_latex(args, stdin):
         return (
             "LaTeX is available as a source workflow in this browser terminal.\n"
             "Usage: latex --check file.tex\n"
-            "Generate .tex with Python (or pip install pylatex); a native TeX/PDF compiler is not bundled in Pyodide.\n"
+            "Use latex --enable-swiftlatex, then latex --swiftlatex file.tex to compile a PDF in the browser.\n"
+            "Without SwiftLaTeX, generate .tex with Python (or pip install pylatex) and compile it outside the browser.\n"
         )
+    if args[0] == "--enable-swiftlatex":
+        return "SwiftLaTeX is enabled. Compile a source file with: latex --swiftlatex file.tex\n"
+    if args[0] in ("--swiftlatex", "--compile"):
+        raise Fail("SwiftLaTeX PDF compilation is available through the browser terminal bridge; run latex --enable-swiftlatex first")
     check = args[0] in ("--check", "-c")
     path = args[1] if check and len(args) > 1 else (args[0] if not check else None)
     if not path:
@@ -695,7 +700,7 @@ def c_latex(args, stdin):
             raise Fail(f"{path}: \\begin/\\end environments do not match")
     if stack:
         raise Fail(f"{path}: \\begin/\\end environments do not match")
-    return f"{path}: LaTeX source looks balanced ({len(text)} characters). Use a TeX engine outside Pyodide to compile it.\n"
+    return f"{path}: LaTeX source looks balanced ({len(text)} characters). Run latex --enable-swiftlatex, then latex --swiftlatex {path} to compile a PDF.\n"
 
 
 async def run_code(code, namespace):
