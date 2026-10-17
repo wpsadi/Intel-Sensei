@@ -145,6 +145,8 @@ export function BrowserAgentPanel({ page, profile }: { page: string | null; prof
           placeholder="Ask Sensei about this page…"
           chatId={chatId}
           history={messages.filter((message) => message.role === 'user').map((message) => message.content)}
+          liveScope={`${page ?? 'browser'}:${chatId ?? 'new'}`}
+          liveSession={`browser-${chatId ?? 'widget'}`}
         />
       </div>
     </section>

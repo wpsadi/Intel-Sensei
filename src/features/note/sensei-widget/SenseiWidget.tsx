@@ -191,6 +191,8 @@ export function SenseiWidget() {
               streaming={busy}
               onStop={() => chat && stopSensei(chat.id)}
               autoFocus={open}
+              liveScope={`${currentPageId ?? 'note'}:${viewedId ?? 'new'}`}
+              liveSession={`note-${currentPageId ?? 'widget'}`}
               toolbarStart={
                 <div className="mr-auto">
                   <ContextRing

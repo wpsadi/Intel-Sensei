@@ -406,6 +406,8 @@ export function AgentPanel() {
           history={history}
           chatId={chat?.id}
           historyScope={docId}
+          liveScope={`${docId}:${viewedId ?? 'new'}`}
+          liveSession={`s3d-${docId}`}
           streaming={generating}
           onStop={() => chat && stopAgent(chat.id)}
           placeholder={

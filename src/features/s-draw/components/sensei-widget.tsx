@@ -330,6 +330,8 @@ export function SenseiWidget({ fileId, chatId, onChatChange, title = 'SDraw', co
                 disabled={!supported || (!!chatId && !chat)}
                 onStop={() => chat && stopDrawSensei(chat.id)}
                 autoFocus
+                liveScope={`${fileId}:${chatId ?? 'new'}`}
+                liveSession={drawSandboxSession(fileId)}
                 toolbarStart={
                   <ContextRing
                     used={

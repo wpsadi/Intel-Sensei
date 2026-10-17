@@ -16,6 +16,7 @@ import { type ComposerSuggestion, triggerAt } from '@/components/assistant-ui/el
 import { mono } from '@/components/assistant-ui/elements/surfaces'
 import { Button } from '@/components/ui/button'
 import { ScrollArea } from '@/components/ui/scroll-area'
+import { DedicatedLiveCall } from '@/features/ask-sensei/components/dedicated-live-call'
 import { formatElapsed, useVoiceNote } from '@/features/ask-sensei/components/use-voice-note'
 import { skillSuggestions } from '@/features/skills/suggest'
 import { useInputHistory } from '@/hooks/use-input-history'
@@ -39,6 +40,8 @@ export function WidgetComposer({
   history = [],
   chatId,
   historyScope,
+  liveScope,
+  liveSession,
 }: {
   onSend: (text: string) => void
   streaming: boolean
@@ -54,6 +57,9 @@ export function WidgetComposer({
   history?: string[]
   chatId?: string | null
   historyScope?: string
+  /** Scope for the embedded Gemini Live call; changing it ends the previous call. */
+  liveScope?: string | null
+  liveSession?: string
 }) {
   const [draft, setDraft] = useState('')
   const [caret, setCaret] = useState(0)
@@ -227,6 +233,7 @@ export function WidgetComposer({
           />
           <ComposerToolbar className="h-9 justify-end">
             {toolbarStart}
+            <DedicatedLiveCall scope={liveScope ?? null} session={liveSession} />
             <ComposerActions>
               <ComposerVoiceButton active={false} aria-label="Start voice input" onClick={() => void startVoice()} />
               <ComposerSend
