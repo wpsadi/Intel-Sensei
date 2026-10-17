@@ -1,6 +1,6 @@
 import { type Tool, asSchema } from 'ai'
 
-import { SANDBOX_INSTRUCTIONS, createSandboxTools } from '@/ai/sandbox/tools'
+import { SANDBOX_INSTRUCTIONS, type SandboxToolOptions, createSandboxTools } from '@/ai/sandbox/tools'
 import { createScrapeTool } from '@/ai/tools/scrape'
 import { createSearchTool } from '@/ai/tools/search'
 import type { ToolSpec } from '@/ai/worker/protocol'
@@ -12,10 +12,10 @@ export const GENERAL_INSTRUCTIONS = `${SANDBOX_INSTRUCTIONS}\n\nWeb: webSearch f
  * The tools every agent can use whatever app it lives in: web search and scraping, and the sandbox with its terminal and
  * Python. App-specific tools (the canvas, notes) come on top of these.
  */
-export const createGeneralTools = (): Record<string, Tool> => ({
+export const createGeneralTools = (options: SandboxToolOptions = {}): Record<string, Tool> => ({
   webSearch: createSearchTool(),
-  scrape: createScrapeTool(),
-  ...createSandboxTools(),
+  scrape: createScrapeTool(options.session),
+  ...createSandboxTools(options),
 })
 
 /** Tools that run on the main thread for an agent whose model runs in the worker: their specs, and a way to call them. */

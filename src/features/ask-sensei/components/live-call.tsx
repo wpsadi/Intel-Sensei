@@ -13,6 +13,7 @@ import {
   episodicMemory,
   memoryPrompt,
 } from '@/ai/memory'
+import { holdSandbox, warmSandbox } from '@/ai/sandbox/client'
 import { SKILLS_INSTRUCTIONS, createSkillTools, skillsPrompt } from '@/ai/skills/tools'
 import { DEEP_ANSWER_INSTRUCTIONS, createDeepAnswerTool } from '@/ai/tools/deep-answer'
 import { GENERAL_INSTRUCTIONS, createGeneralTools } from '@/ai/tools/general'
@@ -194,9 +195,11 @@ export function useLiveCall(chatId: string | null, onChatOpened: (id: string) =>
 
     const pad = createScratchpad(chat, uid())
     padRef.current = pad
+    let releaseSandbox: (() => void) | undefined
     const call = new LiveCall({
       onChange: (next, error) => {
         if (next === 'idle') {
+          releaseSandbox?.()
           finishTurn()
           if (padRef.current) disposeScratchpad(padRef.current)
           padRef.current = null
@@ -211,6 +214,10 @@ export function useLiveCall(chatId: string | null, onChatOpened: (id: string) =>
       onTranscript: addPiece,
       history,
       tools: {
+        ...createGeneralTools({
+          session: chat,
+          attachments: () => (useAskSenseiStore.getState().messages[chat] ?? []).flatMap((message) => message.attachments ?? []),
+        }),
         webSearch: createSearchTool((search) =>
           changeReply((turn) => {
             const last = turn.parts.at(-1)
@@ -232,7 +239,6 @@ export function useLiveCall(chatId: string | null, onChatOpened: (id: string) =>
           (todos) => changeReply((turn) => void (turn.todos = todos ?? undefined)),
           currentTodos(useAskSenseiStore.getState().messages[chat] ?? []),
         ),
-        ...createGeneralTools(),
         ...createSkillTools(),
         deepAnswer: createDeepAnswerTool({
           chatId: chat,
@@ -282,6 +288,8 @@ export function useLiveCall(chatId: string | null, onChatOpened: (id: string) =>
     })
     callRef.current = call
     try {
+      releaseSandbox = holdSandbox(chat)
+      warmSandbox(chat)
       await call.start()
     } catch (error) {
       await call.stop()
