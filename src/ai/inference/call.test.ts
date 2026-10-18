@@ -277,3 +277,27 @@ describe('live tool declarations', () => {
     expect(byName.zodTool).not.toHaveProperty('behavior')
   })
 })
+
+describe('live call greeting', () => {
+  const callWith = () => {
+    const call = new LiveCall({ onChange: vi.fn(), onTranscript: vi.fn() })
+    const session = { sendRealtimeInput: vi.fn(), close: vi.fn() }
+    const connection = call as unknown as { session: Session; stopped: boolean; greet: () => void }
+    connection.session = session as unknown as Session
+    return { connection, session }
+  }
+
+  it('speaks first with a hidden prompt once the call is ready', () => {
+    const { connection, session } = callWith()
+    connection.greet()
+    expect(session.sendRealtimeInput).toHaveBeenCalledTimes(1)
+    expect(session.sendRealtimeInput.mock.calls[0][0].text).toMatch(/Greet the user first/)
+  })
+
+  it('does not greet a call that already ended', () => {
+    const { connection, session } = callWith()
+    connection.stopped = true
+    connection.greet()
+    expect(session.sendRealtimeInput).not.toHaveBeenCalled()
+  })
+})

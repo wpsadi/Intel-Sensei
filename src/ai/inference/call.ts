@@ -36,6 +36,9 @@ export async function toolDeclarations(tools: Record<string, Tool> = {}, nonBloc
 /** Gemini Live takes 16 kHz mono PCM in and sends 24 kHz mono PCM back. */
 const INPUT_RATE = 16000
 const OUTPUT_RATE = 24000
+/** Sent once the call is ready, so Sensei greets first. It is never shown as something the user said. */
+const GREETING_PROMPT =
+  '[The call just connected. Greet the user first with one short, warm sentence in the language of the conversation so far, or English if there is none, then stop and wait for them. If this call continues an earlier chat, welcome them back instead. Do not use tools yet.]'
 /** A failed farewell response must not leave the microphone and call open indefinitely. */
 const FAREWELL_TIMEOUT_MS = 20_000
 
@@ -199,6 +202,13 @@ export class LiveCall {
     })
 
     await this.startMicrophone()
+    this.greet()
+  }
+
+  /** Sensei speaks first: a hidden prompt, not a user message, so the call opens with a greeting instead of silence. */
+  private greet() {
+    if (this.stopped) return
+    this.session?.sendRealtimeInput({ text: GREETING_PROMPT })
   }
 
   /** Muting turns the mic track off, so silence goes up instead of speech. */
