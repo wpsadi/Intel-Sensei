@@ -9,7 +9,7 @@ import { useAskSenseiStore } from '@/features/ask-sensei/ask-sensei.store'
 
 import { useLiveCall } from './live-call'
 
-const mock = vi.hoisted(() => ({ options: null as LiveCallOptions | null, release: vi.fn(), sent: vi.fn() }))
+const mock = vi.hoisted(() => ({ options: null as LiveCallOptions | null, release: vi.fn(), sent: vi.fn(), dead: false }))
 vi.mock('@/ai/inference/call', () => ({
   LiveCall: class {
     constructor(options: LiveCallOptions) {
@@ -22,7 +22,9 @@ vi.mock('@/ai/inference/call', () => ({
       mock.options!.onChange('idle')
     }
     sendText(text: string) {
+      if (mock.dead) return false
       mock.sent(text)
+      return true
     }
   },
 }))
@@ -72,6 +74,7 @@ const run = async (name: string, input: unknown) =>
 beforeEach(() => {
   vi.clearAllMocks()
   mock.options = null
+  mock.dead = false
 })
 
 describe('live call workspace parity', () => {
@@ -129,6 +132,25 @@ describe('live call workspace parity', () => {
       // Plain typed text is unchanged.
       act(() => result.current.sendText('hello'))
       expect(mock.sent).toHaveBeenLastCalledWith('hello')
+    } finally {
+      unmount()
+    }
+  })
+
+  it('reports a dead call instead of swallowing typed text, and ends it so the composer leaves call mode', async () => {
+    const saveCallMessage = vi.fn(async () => {})
+    vi.mocked(useAskSenseiStore.getState).mockReturnValue({ messages: {}, saveCallMessage } as never)
+    const { result, unmount } = renderHook(() => useLiveCall('chat', vi.fn()))
+    try {
+      await act(() => result.current.start())
+      mock.dead = true
+      let sent = true
+      await act(async () => {
+        sent = result.current.sendText('hello?')
+      })
+      expect(sent).toBe(false)
+      expect(saveCallMessage).not.toHaveBeenCalled()
+      expect(result.current.state).toBe('idle')
     } finally {
       unmount()
     }

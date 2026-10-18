@@ -129,8 +129,13 @@ export function useDedicatedLiveCall(scope: string | null, options: DedicatedLiv
   }
   /** Typed text goes into the call and into the chat as its own message. */
   const sendText = (text: string, files: ChatAttachment[] = []) => {
-    call.current?.sendText(withAttachmentNote(text || 'I attached some files.', files))
+    // A dead call must not swallow the message: the caller sends it as a normal chat message instead.
+    if (!call.current?.sendText(withAttachmentNote(text || 'I attached some files.', files))) {
+      void call.current?.stop()
+      return false
+    }
     transcript.current?.('user', text, true, files)
+    return true
   }
   /** How loud Sensei's voice is, 0 to 1. */
   const level = useCallback(() => call.current?.level() ?? 0, [])

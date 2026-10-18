@@ -165,7 +165,8 @@ export function ChatComposer({
     const text = draft.trim()
     if (inCall) {
       if ((!text && !attachments.length) || call.state !== 'live') return
-      call.sendText(text, attachments)
+      // The call may have died without the page knowing; then the message goes out as a normal chat message.
+      if (!call.sendText(text, attachments)) onSend(text, attachments)
       setAttachments([])
     } else {
       if (!text && !attachments.length) return

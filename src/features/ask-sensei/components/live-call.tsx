@@ -320,7 +320,11 @@ export function useLiveCall(chatId: string | null, onChatOpened: (id: string) =>
     const note = attachments.length
       ? `[The user attached ${names}. The files are in your sandbox home folder under those names: read them with the terminal or Python before you answer about them.${text ? '' : ' They sent no message with them, so briefly say what you see and ask what they want done.'}]`
       : ''
-    callRef.current?.sendText([text, note].filter(Boolean).join('\n\n'))
+    // A dead call must not swallow the message: the caller sends it as a normal chat message instead.
+    if (!callRef.current?.sendText([text, note].filter(Boolean).join('\n\n'))) {
+      void callRef.current?.stop()
+      return false
+    }
     finishTurn()
     if (chatRef.current) {
       const turn = turnOf('user')
@@ -329,6 +333,7 @@ export function useLiveCall(chatId: string | null, onChatOpened: (id: string) =>
       saveTurn(turn)
     }
     finishTurn()
+    return true
   }
 
   return { state, muted, start, end, setMuted, sendText }

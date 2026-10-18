@@ -4,7 +4,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import type { LiveCallOptions } from '@/ai/inference/call'
 
-const mock = vi.hoisted(() => ({ options: null as LiveCallOptions | null, progress: vi.fn() }))
+const mock = vi.hoisted(() => ({ options: null as LiveCallOptions | null, progress: vi.fn(), dead: false }))
 vi.mock('@/ai/inference/call', () => ({
   LiveCall: class {
     constructor(options: LiveCallOptions) {
@@ -15,6 +15,9 @@ vi.mock('@/ai/inference/call', () => ({
     }
     async stop() {
       mock.options!.onChange('idle')
+    }
+    sendText() {
+      return !mock.dead
     }
     reportToolProgress(id: string, progress: unknown) {
       mock.progress(id, progress)
@@ -28,6 +31,7 @@ import { reportLiveProgress, useDedicatedLiveCall } from './dedicated-live-call'
 beforeEach(() => {
   vi.clearAllMocks()
   mock.options = null
+  mock.dead = false
 })
 
 describe('dedicated live call', () => {
@@ -49,6 +53,22 @@ describe('dedicated live call', () => {
     expect(onTool).toHaveBeenNthCalledWith(1, expect.objectContaining({ id: 'c1', name: 'terminal', status: 'running' }))
     expect(onTool).toHaveBeenNthCalledWith(2, expect.objectContaining({ id: 'c1', status: 'done', detail: 'no issues' }))
     expect(onTool).toHaveBeenNthCalledWith(3, expect.objectContaining({ id: 'c2', status: 'failed', detail: 'canvas not ready' }))
+    unmount()
+  })
+
+  it('reports a dead call instead of swallowing typed text, and ends it', async () => {
+    const transcript = vi.fn()
+    const { result, unmount } = renderHook(() => useDedicatedLiveCall('scope', { onTranscript: transcript }))
+    await act(() => result.current.start())
+    expect(result.current.sendText('hi')).toBe(true)
+    mock.dead = true
+    let sent = true
+    await act(async () => {
+      sent = result.current.sendText('hello?')
+    })
+    expect(sent).toBe(false)
+    expect(transcript).toHaveBeenCalledTimes(1)
+    expect(result.current.state).toBe('idle')
     unmount()
   })
 

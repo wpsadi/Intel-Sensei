@@ -148,12 +148,14 @@ export function WidgetComposer({
     if (inCall) {
       // During a call, typing talks to the call instead of starting a text reply.
       if ((!text && !files.attachments.length) || live.state !== 'live') return
-      sentFiles.current.push(...files.attachments)
-      live.sendText(text, files.attachments)
-      files.clear()
-      setDraft('')
-      recall.reset()
-      return
+      if (live.sendText(text, files.attachments)) {
+        sentFiles.current.push(...files.attachments)
+        files.clear()
+        setDraft('')
+        recall.reset()
+        return
+      }
+      // The call died without the page knowing: the message goes out as a normal text message instead.
     }
     if ((!text && !files.attachments.length) || disabled) return
     if (streaming && files.attachments.length) {

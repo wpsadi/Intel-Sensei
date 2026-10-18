@@ -228,9 +228,15 @@ export class LiveCall {
     this.mic?.getAudioTracks().forEach((track) => (track.enabled = !muted))
   }
 
-  /** Sends typed text into the call; Sensei answers it out loud. */
+  /** Sends typed text into the call; Sensei answers it out loud. False when the call is gone, so the caller can send it another way. */
   sendText(text: string) {
-    this.session?.sendRealtimeInput({ text })
+    if (this.stopped || !this.session) return false
+    try {
+      this.session.sendRealtimeInput({ text })
+      return true
+    } catch {
+      return false
+    }
   }
 
   /** Adds a milestone to the pending tool, letting Live speak when idle while the agent keeps working. */
@@ -273,18 +279,24 @@ export class LiveCall {
     this.ending = null
     this.runningTools.forEach((running) => running.abort.abort())
     this.runningTools.clear()
-    this.session?.close()
-    this.session = null
-    this.mic?.getTracks().forEach((track) => track.stop())
-    this.mic = null
-    this.playing.forEach((source) => source.stop())
-    this.playing.clear()
-    await Promise.all([this.inputContext?.close(), this.outputContext?.close()])
-    this.inputContext = null
-    this.outputContext = null
-    this.voiceAnalyser = null
-    this.voiceOut = null
-    this.options.onChange('idle', error)
+    try {
+      this.session?.close()
+      this.mic?.getTracks().forEach((track) => track.stop())
+      this.playing.forEach((source) => source.stop())
+      // allSettled: a context the browser already closed rejects, and that must not stop the call from reporting idle.
+      await Promise.allSettled([this.inputContext?.close(), this.outputContext?.close()])
+    } catch {
+      // Cleanup is best effort; the call is over either way.
+    } finally {
+      this.session = null
+      this.mic = null
+      this.playing.clear()
+      this.inputContext = null
+      this.outputContext = null
+      this.voiceAnalyser = null
+      this.voiceOut = null
+      this.options.onChange('idle', error)
+    }
   }
 
   private async startMicrophone() {
