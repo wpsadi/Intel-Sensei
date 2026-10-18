@@ -12,6 +12,8 @@ vi.mock('@/features/ask-sensei/components/use-voice-note', () => ({
   useVoiceNote: () => ({ mode: 'text' }),
   formatElapsed: () => '',
 }))
+vi.mock('@/features/note/db/media', () => ({ putMedia: vi.fn(async (_file: Blob, name: string) => `media:${name}`), deleteMedia: vi.fn() }))
+vi.mock('@/ai/sandbox/attachments', () => ({ warmForFiles: vi.fn() }))
 vi.mock('@/components/ui/scroll-area', () => ({ ScrollArea: ({ children }: { children: ReactNode }) => <div>{children}</div> }))
 
 import { WidgetComposer } from './WidgetComposer'
@@ -47,6 +49,37 @@ describe('shared widget composer', () => {
     expect(screen.getByRole('button', { name: 'Send message' }).className).not.toContain('invisible')
   })
 
+  it('has no attach button unless the widget allows files', () => {
+    mount()
+    expect(screen.queryByRole('button', { name: 'Add attachment' })).toBeNull()
+    cleanup()
+    mount({ attachable: true })
+    expect(screen.getByRole('button', { name: 'Add attachment' })).toBeTruthy()
+  })
+
+  it('attaches a pasted file, shows it by name, and sends it with the message', async () => {
+    const send = vi.fn()
+    mount({ onSend: send, attachable: true })
+    const file = new File(['hi'], 'notes.txt', { type: 'text/plain' })
+    fireEvent.paste(input(), { clipboardData: { items: [{ kind: 'file', getAsFile: () => file }], getData: () => '' } })
+    expect(await screen.findByText('notes.txt')).toBeTruthy()
+    // Files alone are enough to send, and the list empties once they are sent.
+    fireEvent.keyDown(input(), { key: 'Enter' })
+    expect(send).toHaveBeenCalledWith('', [expect.objectContaining({ name: 'notes.txt', src: 'media:notes.txt' })])
+    expect(screen.queryByText('notes.txt')).toBeNull()
+  })
+
+  it('keeps files in the box while a reply is running, because a message sent then would drop them', async () => {
+    const send = vi.fn()
+    mount({ onSend: send, attachable: true, streaming: true })
+    const file = new File(['hi'], 'notes.txt', { type: 'text/plain' })
+    fireEvent.paste(input(), { clipboardData: { items: [{ kind: 'file', getAsFile: () => file }], getData: () => '' } })
+    await screen.findByText('notes.txt')
+    fireEvent.keyDown(input(), { key: 'Enter' })
+    expect(send).not.toHaveBeenCalled()
+    expect(screen.getByText('notes.txt')).toBeTruthy()
+  })
+
   it('has no call button when the widget has no live scope', () => {
     mount()
     expect(screen.queryByRole('button', { name: 'Start live call' })).toBeNull()
@@ -61,7 +94,7 @@ describe('shared widget composer', () => {
     expect(input().value).toBe('/diagram ')
     expect(send).not.toHaveBeenCalled()
     fireEvent.keyDown(input(), { key: 'Enter' })
-    expect(send).toHaveBeenCalledWith('/diagram')
+    expect(send).toHaveBeenCalledWith('/diagram', [])
   })
 
   it('uses slash without adding a skills button', () => {

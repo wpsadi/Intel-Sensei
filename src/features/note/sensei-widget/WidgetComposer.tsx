@@ -1,12 +1,14 @@
 import { AudioLines, Mic, MicOff, PhoneOff, X } from 'lucide-react'
 import type { Tool } from 'ai'
-import { type KeyboardEvent, type ReactNode, useEffect, useRef, useState } from 'react'
+import { type KeyboardEvent, type ReactNode, useCallback, useEffect, useRef, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
+import { toast } from 'sonner'
 
 import { useInstalledSkills } from '@/ai/skills/skills'
 import {
   Composer,
   ComposerActions,
+  ComposerAttachButton,
   ComposerBar,
   ComposerSend,
   ComposerToolbar,
@@ -19,7 +21,9 @@ import { Button } from '@/components/ui/button'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { useDedicatedLiveCall } from '@/features/ask-sensei/components/dedicated-live-call'
 import { useLiveAuroraDrive } from '@/features/ask-sensei/components/live-aurora'
+import { AttachmentChips, useAttachments } from '@/features/ask-sensei/components/use-attachments'
 import { formatElapsed, useVoiceNote } from '@/features/ask-sensei/components/use-voice-note'
+import type { ChatAttachment } from '@/features/note/db/types'
 import { skillSuggestions } from '@/features/skills/suggest'
 import { useInputHistory } from '@/hooks/use-input-history'
 import { cn } from '@/lib/utils'
@@ -49,8 +53,11 @@ export function WidgetComposer({
   liveTools,
   liveInstructions,
   onLiveActive,
+  attachable,
+  attachSession,
+  liveAttachments,
 }: {
-  onSend: (text: string) => void
+  onSend: (text: string, attachments: ChatAttachment[]) => void
   streaming: boolean
   onStop: () => void
   autoFocus?: boolean
@@ -69,11 +76,17 @@ export function WidgetComposer({
   liveSession?: string
   liveHistory?: string
   /** Receives what is said in the call. `whole` marks a complete message, such as typed text. */
-  onLiveTranscript?: (role: 'user' | 'assistant' | 'thought', text: string, whole?: boolean) => void
+  onLiveTranscript?: (role: 'user' | 'assistant' | 'thought', text: string, whole?: boolean, attachments?: ChatAttachment[]) => void
   liveTools?: Record<string, Tool>
   liveInstructions?: string
   /** Tells the widget when a call starts or ends. */
   onLiveActive?: (active: boolean) => void
+  /** Shows an attach button: files are put in the sandbox for Sensei to read, and shown as names (there is no viewer yet). */
+  attachable?: boolean
+  /** The sandbox the files are prepared in. Leave out for the default one. */
+  attachSession?: string
+  /** The files already attached in this chat, for a live call to find in its sandbox. */
+  liveAttachments?: () => ChatAttachment[]
 }) {
   const [draft, setDraft] = useState('')
   const [caret, setCaret] = useState(0)
@@ -91,7 +104,18 @@ export function WidgetComposer({
     })
   const { mode, seconds, levels, startVoice, finishVoice, cancelVoice } = useVoiceNote(draft, setDraft)
   const inputRef = useRef<HTMLTextAreaElement>(null)
-  const live = useDedicatedLiveCall(liveScope ?? null, liveSession, liveHistory, onLiveTranscript, liveTools, liveInstructions)
+  const files = useAttachments(attachSession)
+  // Files sent from here during a call are not in the host's chat yet when the sandbox looks for them.
+  const sentFiles = useRef<ChatAttachment[]>([])
+  const liveFiles = useRef(liveAttachments)
+  useEffect(() => {
+    liveFiles.current = liveAttachments
+  })
+  const callFiles = useCallback(
+    () => [...new Map([...(liveFiles.current?.() ?? []), ...sentFiles.current].map((file) => [file.src, file])).values()],
+    [],
+  )
+  const live = useDedicatedLiveCall(liveScope ?? null, liveSession, liveHistory, onLiveTranscript, liveTools, liveInstructions, callFiles)
   const inCall = live.state !== 'idle'
   // The panel around this composer glows while the call runs, and follows Sensei's voice.
   useLiveAuroraDrive(inCall, live.level)
@@ -109,14 +133,22 @@ export function WidgetComposer({
     const text = draft.trim()
     if (inCall) {
       // During a call, typing talks to the call instead of starting a text reply.
-      if (!text || live.state !== 'live') return
-      live.sendText(text)
+      if ((!text && !files.attachments.length) || live.state !== 'live') return
+      sentFiles.current.push(...files.attachments)
+      live.sendText(text, files.attachments)
+      files.clear()
       setDraft('')
       recall.reset()
       return
     }
-    if (!text || disabled) return
-    onSend(text)
+    if ((!text && !files.attachments.length) || disabled) return
+    if (streaming && files.attachments.length) {
+      // A message sent while a reply runs only joins it as text, so the files would be lost.
+      toast('Files can be sent once the reply has finished')
+      return
+    }
+    onSend(text, files.attachments)
+    files.clear()
     setDraft('')
     recall.reset()
   }
@@ -205,12 +237,13 @@ export function WidgetComposer({
     )
   }
 
-  const hasText = draft.trim().length > 0
+  const hasText = draft.trim().length > 0 || files.attachments.length > 0
 
   if (inCall) {
     return (
       <Composer className="max-w-none">
         <ComposerBar>
+          {attachable && <AttachmentChips attachments={files.attachments} onRemove={files.remove} />}
           <textarea
             ref={inputRef}
             rows={1}
@@ -219,6 +252,7 @@ export function WidgetComposer({
               setDraft(event.target.value)
               recall.reset()
             }}
+            onPaste={attachable ? (event) => files.onPaste(event, (text) => setDraft((value) => value + text)) : undefined}
             onKeyDown={(event) => {
               if (event.nativeEvent.isComposing || recall.onKeyDown(event)) return
               if (event.key === 'Enter' && !event.shiftKey) {
@@ -231,6 +265,7 @@ export function WidgetComposer({
             className="field-sizing-content max-h-36 min-h-11 w-full resize-none bg-transparent px-3 pt-2.5 text-sm outline-none placeholder:text-muted-foreground"
           />
           <ComposerToolbar className="h-9 justify-end">
+            {attachable && <ComposerAttachButton className={toolbarStart ? undefined : 'mr-auto'} onClick={files.pick} />}
             {toolbarStart}
             <ComposerActions>
               <Button
@@ -293,10 +328,12 @@ export function WidgetComposer({
       )}
       <Composer className="max-w-none">
         <ComposerBar>
+          {attachable && <AttachmentChips attachments={files.attachments} onRemove={files.remove} />}
           <textarea
             ref={inputRef}
             rows={1}
             value={draft}
+            onPaste={attachable ? (event) => files.onPaste(event, (text) => setDraft((value) => value + text)) : undefined}
             onChange={(event) => {
               setDraft(event.target.value)
               setCaret(event.target.selectionStart)
@@ -314,6 +351,7 @@ export function WidgetComposer({
             className="field-sizing-content max-h-36 min-h-11 w-full resize-none bg-transparent px-3 pt-2.5 text-sm outline-none placeholder:text-muted-foreground"
           />
           <ComposerToolbar className="h-9 justify-end">
+            {attachable && <ComposerAttachButton className={toolbarStart ? undefined : 'mr-auto'} onClick={files.pick} />}
             {toolbarStart}
             <ComposerActions>
               <ComposerVoiceButton active={false} aria-label="Start voice input" onClick={() => void startVoice()} />

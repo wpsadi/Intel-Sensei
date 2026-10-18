@@ -28,14 +28,8 @@ import { skillSuggestions } from '@/features/skills/suggest'
 import { useInputHistory } from '@/hooks/use-input-history'
 import { cn } from '@/lib/utils'
 
+import { PASTE_ATTACH_BYTES, PASTE_ATTACH_LINES, attachmentKind, formatSize } from './use-attachments'
 import { formatElapsed, useVoiceNote } from './use-voice-note'
-
-/** Pasted text longer than this many lines, or bigger than this many bytes, goes in as a text attachment instead of filling the box. */
-const PASTE_ATTACH_LINES = 30
-const PASTE_ATTACH_BYTES = 8 * 1024
-
-const formatSize = (bytes: number) =>
-  bytes < 1024 ? `${bytes} B` : bytes < 1024 ** 2 ? `${(bytes / 1024).toFixed(1)} KB` : `${(bytes / 1024 ** 2).toFixed(1)} MB`
 
 /** The files `@` can point at: names that start with what is typed first, then names that contain it. */
 function fileSuggestions(names: string[], query: string): ComposerSuggestion[] {
@@ -45,7 +39,6 @@ function fileSuggestions(names: string[], query: string): ComposerSuggestion[] {
   return [...starts, ...contains].slice(0, 30).map((name) => ({ id: `file-${name}`, label: name, insert: `@${name}` }))
 }
 
-const attachmentKind = (type: string) => (type.startsWith('image/') ? 'image' : type.startsWith('text/') ? 'text' : 'archive')
 
 /**
  * Message input: type, dictate, or start a live call. A voice note is sent to Gemini for transcription and the
@@ -171,8 +164,9 @@ export function ChatComposer({
   const send = () => {
     const text = draft.trim()
     if (inCall) {
-      if (!text || call.state !== 'live') return
-      call.sendText(text)
+      if ((!text && !attachments.length) || call.state !== 'live') return
+      call.sendText(text, attachments)
+      setAttachments([])
     } else {
       if (!text && !attachments.length) return
       onSend(text, attachments)
@@ -225,6 +219,17 @@ export function ChatComposer({
     return (
       <Composer className="max-w-none">
         <ComposerBar>
+          {attachments.length > 0 && (
+            <ComposerAttachments className="px-2 pt-2">
+              {attachments.map((item) => (
+                <ComposerAttachmentChip
+                  key={item.src}
+                  attachment={{ name: item.name, meta: formatSize(item.size), state: 'done', kind: attachmentKind(item.type) }}
+                  onRemove={() => removeAttachment(item.src)}
+                />
+              ))}
+            </ComposerAttachments>
+          )}
           <textarea
             rows={1}
             value={draft}
@@ -233,11 +238,13 @@ export function ChatComposer({
               recall.reset()
             }}
             onKeyDown={handleKeyDown}
+            onPaste={handlePaste}
             placeholder={call.state === 'connecting' ? 'Connecting…' : 'Talk, or type to Sensei'}
             aria-label="Type during the call"
             className="field-sizing-content max-h-48 min-h-11 w-full resize-none bg-transparent px-3 pt-2.5 text-[15px] outline-none placeholder:text-muted-foreground"
           />
-          <ComposerToolbar className="h-9 justify-end">
+          <ComposerToolbar className="h-9 justify-between">
+            <ComposerAttachButton onClick={pickFiles} />
             <ComposerActions>
               <Button
                 variant={call.muted ? 'secondary' : 'ghost'}

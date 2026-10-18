@@ -27,3 +27,10 @@ export function withFileMentions(text: string, names: readonly string[]) {
   if (!files.length) return text
   return `${text}\n\n[The user pointed at these files with @: ${files.map((name) => `"${name}"`).join(', ')}. They are in your sandbox home folder under these names: read them with the terminal and Python, and look at a picture with view_image.]`
 }
+
+/** Tells the model which files came with a message and where to read them. The files themselves are in the sandbox. */
+export function withAttachmentNote(text: string, attachments: readonly { name: string }[] = []) {
+  if (!attachments.length) return text
+  const names = attachments.map((file) => `"${file.name}"`).join(', ')
+  return `${text}\n\n[The user attached ${names}. They are in your sandbox home folder under these names: read them with the terminal and Python, and look at a picture with view_image.]`.trim()
+}

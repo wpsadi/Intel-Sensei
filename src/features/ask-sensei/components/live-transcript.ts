@@ -1,10 +1,14 @@
 import { useEffect, useRef, useState } from 'react'
 
+import type { ChatAttachment } from '@/features/note/db/types'
+
 /** One side's words in the call so far, under the id of the chat message that holds them. */
 export interface TranscriptTurn {
   id: string
   role: 'user' | 'assistant'
   text: string
+  /** Files attached to a typed message. */
+  attachments?: ChatAttachment[]
 }
 
 /**
@@ -37,16 +41,17 @@ export function createLiveTranscript(write: (turn: TranscriptTurn) => void | Pro
 
   return {
     /** Adds a piece. `whole` marks a complete message, such as typed text, so it never merges into the turn around it. */
-    push(kind: 'user' | 'assistant' | 'thought', piece: string, whole = false) {
+    push(kind: 'user' | 'assistant' | 'thought', piece: string, whole = false, attachments?: ChatAttachment[]) {
       // Thinking is not part of what was said.
       if (kind === 'thought') return
       if (whole) current = null
       // Blank transcription, such as the mic hearing silence, must not cut the other side's turn in two.
-      if (!piece.trim() && current?.role !== kind) return
+      if (!piece.trim() && !attachments?.length && current?.role !== kind) return
       current = {
         id: current?.role === kind ? current.id : crypto.randomUUID(),
         role: kind,
         text: `${current?.role === kind ? current.text : ''}${piece}`,
+        ...(attachments?.length && { attachments }),
       }
       latest = current
       void flush()

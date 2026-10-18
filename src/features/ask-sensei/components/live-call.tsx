@@ -25,7 +25,7 @@ import { currentTodos, messageText } from '@/ai/utils/messages'
 import { describeToolCall } from '@/ai/utils/tool-steps'
 import { useAskSenseiStore } from '@/features/ask-sensei/ask-sensei.store'
 import { uid } from '@/features/note/db/changes'
-import type { ChatPart, ChatTodoList } from '@/features/note/db/types'
+import type { ChatAttachment, ChatPart, ChatTodoList } from '@/features/note/db/types'
 
 /** Replaces the item with the same id, or adds it at the end. */
 const upsertById = <T extends { id: string }>(items: T[], item: T) =>
@@ -44,6 +44,8 @@ interface CallTurn {
   parts: ChatPart[]
   /** The to-do list Sensei made during this reply. It is pinned above the input rather than shown in the reply. */
   todos?: ChatTodoList
+  /** Files the user attached to this message during the call. */
+  attachments?: ChatAttachment[]
 }
 
 /** CSS variable on <html> holding how loud the call is (0 to 1). The page's aurora scales with it. */
@@ -106,8 +108,9 @@ export function useLiveCall(chatId: string | null, onChatOpened: (id: string) =>
     if (!chat) return
     const text = contentOf(turn)
     const thoughts = turn.thoughts.trim() || undefined
-    const extras = turn.role === 'assistant' ? { parts: turn.parts, todos: turn.todos } : undefined
-    if (text || thoughts || turn.parts.length)
+    const extras =
+      turn.role === 'assistant' ? { parts: turn.parts, todos: turn.todos } : turn.attachments?.length ? { attachments: turn.attachments } : undefined
+    if (text || thoughts || turn.parts.length || turn.attachments?.length)
       void useAskSenseiStore.getState().saveCallMessage(chat, turn.id, turn.role, text, thoughts, extras)
   }
 
@@ -308,11 +311,23 @@ export function useLiveCall(chatId: string | null, onChatOpened: (id: string) =>
     setMutedState(next)
   }
 
-  /** Typed text goes into the call and into the chat as its own message. */
-  const sendText = (text: string) => {
-    callRef.current?.sendText(text)
+  /**
+   * Typed text goes into the call and into the chat as its own message. Attached files are saved with that message, so the
+   * sandbox mounts them like any attachment, and Sensei is told they are there and where to read them.
+   */
+  const sendText = (text: string, attachments: ChatAttachment[] = []) => {
+    const names = attachments.map((file) => file.name).join(', ')
+    const note = attachments.length
+      ? `[The user attached ${names}. The files are in your sandbox home folder under those names: read them with the terminal or Python before you answer about them.${text ? '' : ' They sent no message with them, so briefly say what you see and ask what they want done.'}]`
+      : ''
+    callRef.current?.sendText([text, note].filter(Boolean).join('\n\n'))
     finishTurn()
-    addPiece('user', text)
+    if (chatRef.current) {
+      const turn = turnOf('user')
+      turn.text = text
+      turn.attachments = attachments.length ? attachments : undefined
+      saveTurn(turn)
+    }
     finishTurn()
   }
 

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import { mentionedFiles, withFileMentions } from './file-mentions'
+import { mentionedFiles, withAttachmentNote, withFileMentions } from './file-mentions'
 
 const names = ['report.pdf', 'report', 'Pasted text 2.txt', 'data.csv']
 
@@ -24,5 +24,19 @@ describe('@file mentions', () => {
     expect(text).toContain('open @data.csv')
     expect(text).toContain('"data.csv"')
     expect(text).toContain('sandbox home folder')
+  })
+})
+
+describe('attachment note', () => {
+  it('names the files and says where to read them, and leaves a message without files alone', () => {
+    expect(withAttachmentNote('summarise', [])).toBe('summarise')
+    const note = withAttachmentNote('summarise', [{ name: 'report.pdf' }, { name: 'data.csv' }])
+    expect(note).toContain('summarise')
+    expect(note).toContain('"report.pdf", "data.csv"')
+    expect(note).toContain('sandbox home folder')
+  })
+
+  it('works for a message that is only files', () => {
+    expect(withAttachmentNote('', [{ name: 'a.txt' }])).toMatch(/^\[The user attached "a\.txt"/)
   })
 })

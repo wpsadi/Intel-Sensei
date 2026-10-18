@@ -4,6 +4,8 @@ import { toast } from 'sonner'
 
 import { LiveCall } from '@/ai/inference/call'
 import { createGeneralTools } from '@/ai/tools/general'
+import { withAttachmentNote } from '@/ai/utils/file-mentions'
+import type { ChatAttachment } from '@/features/note/db/types'
 
 type DedicatedLiveState = 'idle' | 'connecting' | 'live'
 
@@ -16,9 +18,11 @@ export function useDedicatedLiveCall(
   scope: string | null,
   session = scope ?? 'widget',
   history = '',
-  onTranscript?: (role: 'user' | 'assistant' | 'thought', text: string, whole?: boolean) => void,
+  onTranscript?: (role: 'user' | 'assistant' | 'thought', text: string, whole?: boolean, attachments?: ChatAttachment[]) => void,
   tools?: Record<string, Tool>,
   instructions?: string,
+  /** The files attached to this chat so far; they are put in the sandbox before each command. */
+  attachments?: () => ChatAttachment[],
 ) {
   const [state, setState] = useState<DedicatedLiveState>('idle')
   const [muted, setMuted] = useState(false)
@@ -59,7 +63,7 @@ export function useDedicatedLiveCall(
       // Embedded Live must see the same app-specific tools as the text agent. The generic
       // sandbox tools remain available everywhere; callers can add page controls (for example
       // SBrowse's computer tool) through `tools`.
-      tools: { ...createGeneralTools({ session }), ...tools },
+      tools: { ...createGeneralTools({ session, attachments }), ...tools },
       onTranscript: (role, piece) => transcript.current?.(role, piece),
       instructions: [
         'You are the dedicated voice assistant inside an embedded Sensei widget. Keep responses concise and conversational. Stay focused on the document or drawing currently open in this widget. Do not claim an edit happened unless a tool confirms it.',
@@ -85,9 +89,9 @@ export function useDedicatedLiveCall(
     setMuted(next)
   }
   /** Typed text goes into the call and into the chat as its own message. */
-  const sendText = (text: string) => {
-    call.current?.sendText(text)
-    transcript.current?.('user', text, true)
+  const sendText = (text: string, files: ChatAttachment[] = []) => {
+    call.current?.sendText(withAttachmentNote(text || 'I attached some files.', files))
+    transcript.current?.('user', text, true, files)
   }
   /** How loud Sensei's voice is, 0 to 1. */
   const level = useCallback(() => call.current?.level() ?? 0, [])

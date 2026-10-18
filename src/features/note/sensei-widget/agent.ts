@@ -13,12 +13,13 @@ import { SKILLS_INSTRUCTIONS, createSkillTools, skillsPrompt } from '@/ai/skills
 import { createScrapeTool } from '@/ai/tools/scrape'
 import { createSearchTool, upsertSearch } from '@/ai/tools/search'
 import { currentTimePrompt } from '@/ai/utils/current-time'
+import { withAttachmentNote } from '@/ai/utils/file-mentions'
 import { thinkingOnly } from '@/ai/utils/thinking'
 import { type ToolSpec, streamInWorker } from '@/ai/worker/client'
 import { SNOTE_AGENT_CONTEXT_LIMIT } from '@/constants/ai'
 
 import { widgetChatsRepo } from '../db/repo'
-import type { ChatSearch, ChatToolStep, WidgetChat, WidgetMessage } from '../db/types'
+import type { ChatAttachment, ChatSearch, ChatToolStep, WidgetChat, WidgetMessage } from '../db/types'
 import { type NoteToolContext, buildNoteTools } from '../webmcp/note-tools'
 import { createPasteFileTool } from './paste-file'
 
@@ -181,9 +182,9 @@ async function save(c: WidgetChat) {
 }
 
 /** Starts a reply in `base` (a new chat when null) and shows it. */
-export async function sendSensei(text: string, base: WidgetChat | null, noteTitle: string | undefined) {
+export async function sendSensei(text: string, base: WidgetChat | null, noteTitle: string | undefined, attachments: ChatAttachment[] = []) {
   const question = text.trim()
-  if (!question) return
+  if (!question && !attachments.length) return
   // A reply is running: the message waits for it, or steers it (Settings → Chat).
   if (base && useSenseiRuns.getState().live[base.id]) {
     submitWhileBusy(base.id, { text: question }, steerers.get(base.id))
@@ -191,8 +192,11 @@ export async function sendSensei(text: string, base: WidgetChat | null, noteTitl
   }
   const picked = AI_MODELS.chat
   const assistantId = crypto.randomUUID()
-  const current = base ?? { id: crypto.randomUUID(), title: question.slice(0, 40), messages: [], updatedAt: Date.now() }
-  const history: WidgetMessage[] = [...current.messages, { id: crypto.randomUUID(), role: 'user', content: question }]
+  const current = base ?? { id: crypto.randomUUID(), title: (question || attachments[0].name).slice(0, 40), messages: [], updatedAt: Date.now() }
+  const history: WidgetMessage[] = [
+    ...current.messages,
+    { id: crypto.randomUUID(), role: 'user', content: question, ...(attachments.length && { attachments }) },
+  ]
   let c: WidgetChat = { ...current, messages: [...history, { id: assistantId, role: 'assistant', content: '' }], updatedAt: Date.now() }
   const patch = (p: Partial<WidgetMessage>) => {
     c = { ...c, messages: c.messages.map((m) => (m.id === assistantId ? { ...m, ...p } : m)) }
@@ -247,9 +251,11 @@ export async function sendSensei(text: string, base: WidgetChat | null, noteTitl
         : []),
       ...history
         .slice(current.summary ? history.findIndex((m) => m.id === current.summary!.uptoId) + 1 : 0)
-        .filter((m) => m.content)
-        .map((m) => ({ role: m.role, content: m.content })),
+        .filter((m) => m.content || m.attachments?.length)
+        .map((m) => ({ role: m.role, content: withAttachmentNote(m.content, m.attachments) })),
     ],
+    // Every file attached in this chat, so the sandbox has them before each command.
+    attachments: () => c.messages.flatMap((m) => m.attachments ?? []),
     noteTitle,
     onText: (soFar) => {
       // Thinking is over once the first words arrive.
@@ -292,6 +298,7 @@ async function runSensei({
   onRun,
   onSteered,
   messages,
+  attachments,
   noteTitle,
   onText,
   onReasoning,
@@ -305,6 +312,7 @@ async function runSensei({
   onRun: (run: { steer: (id: string, text: string) => void }) => void
   onSteered: (id: string) => void
   messages: ModelMessage[]
+  attachments: () => ChatAttachment[]
   noteTitle?: string
   onText: (soFar: string) => void
   onReasoning: (soFar: string) => void
@@ -326,7 +334,7 @@ async function runSensei({
   }
   // The sandbox runs here too, like web search: a terminal and Python, and pasting a sandbox file into a note.
   const localTools: Record<string, Tool> = {
-    ...createSandboxTools({ transfer: true }),
+    ...createSandboxTools({ transfer: true, attachments }),
     ...createFirecrawlMcpTools(),
     scrape: createScrapeTool(),
     paste_file: createPasteFileTool(),

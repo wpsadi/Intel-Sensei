@@ -15,6 +15,8 @@ import { createDeepAnswerTool } from '@/ai/tools/deep-answer'
 import { READ_CHAT_INSTRUCTIONS, createReadChatTool, historyTail, snapshotOf } from '@/ai/tools/read-chat'
 import { LiveAurora } from '@/features/ask-sensei/components/live-aurora'
 import { useLiveChatScope, useLiveTranscript } from '@/features/ask-sensei/components/live-transcript'
+import { SentAttachments } from '@/features/ask-sensei/components/use-attachments'
+import type { ChatAttachment } from '@/features/note/db/types'
 import { Markdown } from '@/features/ask-sensei/components/markdown'
 import { WidgetComposer } from '@/features/note/sensei-widget/WidgetComposer'
 import { WorkedFor } from '@/features/s-3d/agent/worked-for'
@@ -55,8 +57,8 @@ export function BrowserAgentPanel({ page, profile }: { page: string | null; prof
     endRef.current?.scrollIntoView({ behavior: 'smooth', block: 'end' })
   }, [messages.length, lastMessageContent])
 
-  const send = async (text: string) => {
-    const id = await sendMessage(chatId, text, undefined, profile)
+  const send = async (text: string, attachments?: ChatAttachment[]) => {
+    const id = await sendMessage(chatId, text, attachments?.length ? attachments : undefined, profile)
     if (id) selectChat(id)
   }
   const liveScope = useLiveChatScope(chatId)
@@ -74,7 +76,7 @@ export function BrowserAgentPanel({ page, profile }: { page: string | null; prof
       selectChat(id)
     }
     callChat.current = id
-    await store.saveCallMessage(id, turn.id, turn.role, turn.text)
+    await store.saveCallMessage(id, turn.id, turn.role, turn.text, undefined, turn.attachments ? { attachments: turn.attachments } : undefined)
   })
   const onLiveActive = (active: boolean) => {
     if (active) return
@@ -179,11 +181,12 @@ export function BrowserAgentPanel({ page, profile }: { page: string | null; prof
                     <p className="px-1 text-xs text-muted-foreground" role="status" aria-label="Sensei is replying">
                       <Shimmer duration={1}>Working…</Shimmer>
                     </p>
-                  ) : assistant && !message.content ? null : (
+                  ) : assistant && !message.content ? null : message.content || assistant ? (
                     <Bubble variant={assistant ? 'muted' : 'default'}>
                       {assistant ? <Markdown>{message.content}</Markdown> : <span className="whitespace-pre-wrap">{message.content}</span>}
                     </Bubble>
-                  )}
+                  ) : null}
+                  {!assistant && <SentAttachments attachments={message.attachments} />}
                 </MessageContent>
               </Message>
             )
@@ -195,7 +198,10 @@ export function BrowserAgentPanel({ page, profile }: { page: string | null; prof
       <div className="shrink-0 border-t p-2">
         <QueuedMessages chatId={chatId} />
         <WidgetComposer
-          onSend={(text) => void send(text)}
+          onSend={(text, attachments) => void send(text, attachments)}
+          attachable
+          attachSession={chatId ?? undefined}
+          liveAttachments={() => (useAskSenseiStore.getState().messages[activeChat() ?? ''] ?? []).flatMap((message) => message.attachments ?? [])}
           streaming={streaming}
           onStop={() => stopReply(chatId)}
           placeholder="Ask Sensei about this page…"

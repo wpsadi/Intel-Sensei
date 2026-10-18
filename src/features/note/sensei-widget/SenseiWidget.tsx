@@ -26,10 +26,11 @@ import { ChatReasoning } from '@/features/ask-sensei/components/chat-reasoning'
 import { ChatSearches } from '@/features/ask-sensei/components/chat-searches'
 import { LiveAurora } from '@/features/ask-sensei/components/live-aurora'
 import { useLiveChatScope, useLiveTranscript } from '@/features/ask-sensei/components/live-transcript'
+import { SentAttachments } from '@/features/ask-sensei/components/use-attachments'
 import { Markdown } from '@/features/ask-sensei/components/markdown'
 
 import { widgetChatsRepo } from '../db/repo'
-import type { WidgetChat } from '../db/types'
+import type { ChatAttachment, WidgetChat } from '../db/types'
 import { pageTitle } from '../editor/nodes/page-utils'
 import { useNoteStore } from '../note.store'
 import { compactSenseiChat, createNoteLiveTools, noteScreenMap, sendSensei, setNoteContext, stopSensei, useSenseiRuns } from './agent'
@@ -78,7 +79,7 @@ export function SenseiWidget() {
     const known = chat.messages.some((message) => message.id === turn.id)
     const messages = known
       ? chat.messages.map((message) => (message.id === turn.id ? { ...message, content: turn.text } : message))
-      : [...chat.messages, { id: turn.id, role: turn.role, content: turn.text }]
+      : [...chat.messages, { id: turn.id, role: turn.role, content: turn.text, ...(turn.attachments && { attachments: turn.attachments }) }]
     const updated = { ...chat, messages, updatedAt: Date.now() }
     voiceChat.current = updated
     // Shown before it is stored, so the words stream onto the screen as they are spoken.
@@ -122,7 +123,7 @@ export function SenseiWidget() {
     endRef.current?.scrollIntoView({ block: 'end' })
   }, [open])
 
-  const send = (text: string) => void sendSensei(text, chat, noteTitle)
+  const send = (text: string, attachments: ChatAttachment[] = []) => void sendSensei(text, chat, noteTitle, attachments)
 
   return (
     <div className="fixed right-4 bottom-4 z-50 flex flex-col items-end gap-3">
@@ -201,7 +202,8 @@ export function SenseiWidget() {
               {messages.map((m) =>
                 m.role === 'user' ? (
                   <div key={m.id} className="group/user flex flex-col items-end">
-                    <UserBubble text={m.content} />
+                    {m.content && <UserBubble text={m.content} />}
+                    <SentAttachments attachments={m.attachments} />
                     <CopyMessage text={m.content} />
                   </div>
                 ) : (
@@ -248,6 +250,8 @@ export function SenseiWidget() {
               liveInstructions={[noteScreenMap(noteTitle), READ_CHAT_INSTRUCTIONS].join('\n\n')}
               onLiveTranscript={transcript.push}
               onLiveActive={onLiveActive}
+              attachable
+              liveAttachments={() => messages.flatMap((message) => message.attachments ?? [])}
               toolbarStart={
                 <div className="mr-auto">
                   <ContextRing

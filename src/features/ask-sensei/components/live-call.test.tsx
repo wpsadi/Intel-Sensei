@@ -9,7 +9,7 @@ import { useAskSenseiStore } from '@/features/ask-sensei/ask-sensei.store'
 
 import { useLiveCall } from './live-call'
 
-const mock = vi.hoisted(() => ({ options: null as LiveCallOptions | null, release: vi.fn() }))
+const mock = vi.hoisted(() => ({ options: null as LiveCallOptions | null, release: vi.fn(), sent: vi.fn() }))
 vi.mock('@/ai/inference/call', () => ({
   LiveCall: class {
     constructor(options: LiveCallOptions) {
@@ -20,6 +20,9 @@ vi.mock('@/ai/inference/call', () => ({
     }
     async stop() {
       mock.options!.onChange('idle')
+    }
+    sendText(text: string) {
+      mock.sent(text)
     }
   },
 }))
@@ -105,6 +108,30 @@ describe('live call workspace parity', () => {
     await act(() => result.current.end())
     expect(mock.release).toHaveBeenCalledOnce()
     unmount()
+  })
+
+  it('saves files attached during the call with the message and tells Sensei where to read them', async () => {
+    const saveCallMessage = vi.fn(async () => {})
+    vi.mocked(useAskSenseiStore.getState).mockReturnValue({ messages: {}, saveCallMessage } as never)
+    const { result, unmount } = renderHook(() => useLiveCall('chat', vi.fn()))
+    try {
+      await act(() => result.current.start())
+      const file = { src: 'snote-media:menu', name: 'menu.pdf', type: 'application/pdf', size: 10 }
+      act(() => result.current.sendText('What does it say?', [file]))
+      expect(saveCallMessage).toHaveBeenLastCalledWith('chat', 'turn', 'user', 'What does it say?', undefined, { attachments: [file] })
+      expect(mock.sent).toHaveBeenLastCalledWith(expect.stringMatching(/What does it say\?[\s\S]*attached menu\.pdf[\s\S]*sandbox home folder/))
+
+      // Files with no words still become a message, and Sensei is asked to say what it sees.
+      act(() => result.current.sendText('', [file]))
+      expect(saveCallMessage).toHaveBeenLastCalledWith('chat', 'turn', 'user', '', undefined, { attachments: [file] })
+      expect(mock.sent).toHaveBeenLastCalledWith(expect.stringContaining('ask what they want done'))
+
+      // Plain typed text is unchanged.
+      act(() => result.current.sendText('hello'))
+      expect(mock.sent).toHaveBeenLastCalledWith('hello')
+    } finally {
+      unmount()
+    }
   })
 
   it('keeps the live search callback and saves scraped files in the visible chat workspace', async () => {

@@ -79,7 +79,7 @@ describe('drawing agent', () => {
     expect(mocks.put.mock.calls[0][0].fileId).toBe('file-a')
     expect(mocks.terminalCall).toHaveBeenCalledWith({ command: 'sdraw apply --request changes.json' }, expect.any(Object))
     expect(mocks.browserLoad).not.toHaveBeenCalled()
-    expect(mocks.sandbox).toHaveBeenCalledWith({ session: drawSandboxSession('file-a') })
+    expect(mocks.sandbox).toHaveBeenCalledWith({ session: drawSandboxSession('file-a'), attachments: expect.any(Function) })
     const state = useDrawRuns.getState()
     expect(state.live).toEqual({})
     expect(Object.values(state.recent)[0].messages.at(-1)?.content).toBe('Updated selected shape.')

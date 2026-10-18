@@ -281,6 +281,8 @@ export interface WidgetMessage {
   id: string
   role: 'user' | 'assistant'
   content: string
+  /** Files the user attached to this message. They are put in the sandbox for Sensei; they have no viewer yet. */
+  attachments?: ChatAttachment[]
   reasoning?: string
   /** Seconds Sensei thought before its first words. */
   reasoningSeconds?: number

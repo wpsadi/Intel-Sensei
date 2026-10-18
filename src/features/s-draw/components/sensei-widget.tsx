@@ -12,6 +12,8 @@ import { UserBubble } from '@/components/user-bubble'
 import { ChatReasoning } from '@/features/ask-sensei/components/chat-reasoning'
 import { LiveAurora } from '@/features/ask-sensei/components/live-aurora'
 import { useLiveChatScope, useLiveTranscript } from '@/features/ask-sensei/components/live-transcript'
+import { SentAttachments } from '@/features/ask-sensei/components/use-attachments'
+import type { ChatAttachment } from '@/features/note/db/types'
 import { Markdown } from '@/features/ask-sensei/components/markdown'
 import { TerminalPanel } from '@/features/ask-sensei/terminal/terminal-panel'
 import { WidgetComposer } from '@/features/note/sensei-widget/WidgetComposer'
@@ -152,7 +154,7 @@ export function SenseiWidget({ fileId, chatId, onChatChange, title = 'SDraw', co
     const known = base.messages.some((message) => message.id === turn.id)
     const messages = known
       ? base.messages.map((message) => (message.id === turn.id ? { ...message, content: turn.text } : message))
-      : [...base.messages, { id: turn.id, role: turn.role, content: turn.text }]
+      : [...base.messages, { id: turn.id, role: turn.role, content: turn.text, ...(turn.attachments && { attachments: turn.attachments }) }]
     const updated = { ...base, messages, updatedAt: Date.now() }
     voiceChat.current = updated
     // Shown before it is stored, so the words stream onto the screen as they are spoken. A finished text reply is
@@ -183,12 +185,12 @@ export function SenseiWidget({ fileId, chatId, onChatChange, title = 'SDraw', co
     transcript.reset()
   }
   const supported = hasDrawWebMCP()
-  const send = (text: string) => {
+  const send = (text: string, attachments: ChatAttachment[] = []) => {
     if (chatId && !chat) return
     const sheetId = useDrawStore.getState().activeId
-    void sendDrawSensei(text, chat, context, fileId, onChatChange)
+    void sendDrawSensei(text, chat, context, fileId, onChatChange, attachments)
       .then(() => {
-        if (!busy) return titleDrawSheet(fileId, sheetId, text, true)
+        if (!busy && text) return titleDrawSheet(fileId, sheetId, text, true)
       })
       .catch(() => {})
   }
@@ -353,8 +355,9 @@ export function SenseiWidget({ fileId, chatId, onChatChange, title = 'SDraw', co
                 )}
                 {messages.map((message) =>
                   message.role === 'user' ? (
-                    <div key={message.id} className="flex justify-end">
-                      <UserBubble text={message.content} />
+                    <div key={message.id} className="flex flex-col items-end">
+                      {message.content && <UserBubble text={message.content} />}
+                      <SentAttachments attachments={message.attachments} />
                     </div>
                   ) : (
                     <div key={message.id} className="mr-3 text-sm">
@@ -404,6 +407,9 @@ export function SenseiWidget({ fileId, chatId, onChatChange, title = 'SDraw', co
                 liveInstructions={[DRAW_LIVE_INSTRUCTIONS, READ_CHAT_INSTRUCTIONS].join('\n\n')}
                 onLiveTranscript={transcript.push}
                 onLiveActive={onLiveActive}
+                attachable
+                attachSession={drawSandboxSession(fileId)}
+                liveAttachments={() => messages.flatMap((message) => message.attachments ?? [])}
                 toolbarStart={
                   <ContextRing
                     used={
