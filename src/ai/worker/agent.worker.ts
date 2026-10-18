@@ -14,6 +14,8 @@ import {
   tool,
 } from 'ai'
 
+import { MAX_AGENT_STEPS, stepNotice } from '../agent-limits'
+import { createStepTimer } from '../step-timing'
 import { catalogOf, createToolSelector, lastUserText } from '../tools/selector'
 import type { FromWorker, StreamPart, ToWorker } from './protocol'
 
@@ -246,10 +248,21 @@ async function runPass(msg: Extract<ToWorker, { type: 'start' }>) {
     latest = next
     return { messages: withCache(prepareProviderHistory(next)) }
   }
+  // Each request has a step budget (this run, plus the runs before it for an agent that works in passes).
+  const budget = msg.stepBudget ?? { used: 0, max: Math.min(msg.maxSteps ?? MAX_AGENT_STEPS, MAX_AGENT_STEPS) }
+  const timer = createStepTimer('worker')
+  let stepsDone = 0
+  const withInstructions = (text: string) => (cache && text ? { role: 'system' as const, content: text, providerOptions: ephemeral } : text)
   try {
     const agent = new ToolLoopAgent({
       model,
-      prepareStep: async (args: { messages: ModelMessage[]; steps: { usage?: { inputTokens?: number; outputTokens?: number } }[] }) => {
+      onStepFinish: () => timer.finished(stepsDone++),
+      prepareStep: async (args: {
+        messages: ModelMessage[]
+        steps: { usage?: { inputTokens?: number; outputTokens?: number } }[]
+        stepNumber: number
+      }) => {
+        const prepared = timer.preparing(args.stepNumber)
         // Only the tools the model picked for the request are offered; the set grows but never shrinks, so the cache holds.
         const pending = steers
           .get(msg.runId)
@@ -257,12 +270,18 @@ async function runPass(msg: Extract<ToWorker, { type: 'start' }>) {
           .join('\n')
         const activeTools = await selector?.activeTools(pending || lastUserText(args.messages), !!pending)
         const base = await prepareMessages(args)
-        return activeTools ? { ...base, activeTools: activeTools as never } : base
+        // From 75% of the steps the agent is asked to wrap up; on the last one it may not call tools and must answer.
+        const notice = stepNotice(budget, args.stepNumber)
+        const noticed = notice && {
+          toolChoice: notice.final ? ('none' as const) : undefined,
+          instructions: withInstructions(`${msg.instructions}\n\n${notice.note}`),
+        }
+        prepared()
+        return { ...base, ...(activeTools && { activeTools: activeTools as never }), ...noticed }
       },
-      instructions:
-        cache && msg.instructions ? { role: 'system', content: msg.instructions, providerOptions: ephemeral } : msg.instructions,
+      instructions: withInstructions(msg.instructions),
       tools,
-      ...(msg.maxSteps && { stopWhen: stepCountIs(msg.maxSteps) }),
+      stopWhen: stepCountIs(Math.min(msg.maxSteps ?? MAX_AGENT_STEPS, MAX_AGENT_STEPS)),
       providerOptions: msg.providerOptions as never,
     })
     const result = await agent.stream({ messages: msg.messages, abortSignal: controller.signal })

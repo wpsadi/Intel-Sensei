@@ -1,5 +1,6 @@
-import { type LanguageModelUsage, type Tool, ToolLoopAgent, parsePartialJson } from 'ai'
+import { type LanguageModelUsage, type Tool, ToolLoopAgent, parsePartialJson, stepCountIs } from 'ai'
 
+import { MAX_AGENT_STEPS, stepNotice } from '@/ai/agent-limits'
 import type { ChatProfile } from '@/ai/inference/chat-profile'
 import { FIRECRAWL_INSTRUCTIONS, createFirecrawlMcpTools } from '@/ai/mcp/firecrawl'
 import {
@@ -12,6 +13,7 @@ import {
   memoryPrompt,
 } from '@/ai/memory'
 import { AI_MODELS, languageModel, minimalThinking, thinkingSummary, toolSelectorChoice } from '@/ai/providers'
+import { createStepTimer } from '@/ai/step-timing'
 import { warmForFiles } from '@/ai/sandbox/attachments'
 import { holdSandbox } from '@/ai/sandbox/client'
 import { SANDBOX_INSTRUCTIONS, createSandboxTools } from '@/ai/sandbox/tools'
@@ -155,13 +157,29 @@ export async function chatWithSensei(
   })
   // Start choosing now, so it runs while the messages and files are prepared instead of after them.
   selector.prefetch(messages.findLast((turn) => turn.role === 'user')?.content ?? '')
+  // The time is read once for the request, as its description says. Read again on every step it changes by the second, and
+  // an instruction that differs from the last call's makes the provider reprocess the whole prompt that follows it.
+  let stepsDone = 0
+  const now = currentTimePrompt()
+  const timer = createStepTimer('chat')
+  // Memory and skills are read from the database. They only change when a tool changed them, so each step reuses the last
+  // read unless the step before it ran one of those tools.
+  let memoryCache: string | undefined
+  let skillsCache: string | undefined
   const agent = new ToolLoopAgent({
     model: AI_MODELS.chatModel,
     instructions: SENSEI_SYSTEM_PROMPT,
     tools: selector.enabled ? { ...tools, request_tools: selector.requestTool } : tools,
-    // Memory is read again before every step, so a fact saved or a scratchpad note written in one step is seen by the next.
-    prepareStep: async ({ messages: stepMessages }) => {
+    // No request runs for more than this many steps; the agent is warned at 75% and answers on the last one.
+    stopWhen: stepCountIs(MAX_AGENT_STEPS),
+    onStepFinish: () => timer.finished(stepsDone++),
+    // A fact saved or a scratchpad note written in one step is seen by the next.
+    prepareStep: async ({ messages: stepMessages, steps, stepNumber }) => {
+      const prepared = timer.preparing(stepNumber)
       const steered = (await scope?.takeSteers?.()) ?? []
+      const lastCalls = steps.at(-1)?.toolCalls ?? []
+      const memoryStale = memoryCache === undefined || lastCalls.some((call) => call.toolName === 'memory' || call.toolName === 'scratchpad')
+      const skillsStale = skillsCache === undefined || lastCalls.some((call) => call.toolName === 'create_skill')
       // Tool choice, memory and skills do not depend on each other, so they are read together, not one after another.
       const [activeTools, memory, skills] = await Promise.all([
         selector.activeTools(
@@ -171,11 +189,17 @@ export async function chatWithSensei(
             : (messages.findLast((turn) => turn.role === 'user')?.content ?? lastUserText(stepMessages)),
           steered.length > 0,
         ),
-        profile ? '' : memoryPrompt({ chatId: scope?.chatId, scratchpad }),
-        skillsPrompt(),
+        profile ? '' : memoryStale ? memoryPrompt({ chatId: scope?.chatId, scratchpad }) : memoryCache,
+        skillsStale ? skillsPrompt() : skillsCache,
       ])
+      memoryCache = memory
+      skillsCache = skills
+      const notice = stepNotice({ used: 0, max: MAX_AGENT_STEPS }, stepNumber)
+      prepared()
       return {
         ...(activeTools && { activeTools: activeTools as never }),
+        // On the last step the agent may not call tools, so it ends with an answer.
+        ...(notice?.final && { toolChoice: 'none' as const }),
         // Steering messages join the history here and stay in it for the steps after.
         ...(steered.length && {
           messages: [
@@ -185,20 +209,11 @@ export async function chatWithSensei(
             )),
           ],
         }),
+        // What stays the same comes first and what changes comes last, so the provider's cache covers as much as it can.
         instructions: (profile
-          ? [
-              SENSEI_SYSTEM_PROMPT,
-              currentTimePrompt(),
-              SANDBOX_INSTRUCTIONS,
-              FIRECRAWL_INSTRUCTIONS,
-              SKILLS_INSTRUCTIONS,
-              skills,
-              profile.instructions,
-            ]
+          ? [SENSEI_SYSTEM_PROMPT, SANDBOX_INSTRUCTIONS, FIRECRAWL_INSTRUCTIONS, SKILLS_INSTRUCTIONS, skills, profile.instructions, now]
           : [
               SENSEI_SYSTEM_PROMPT,
-              currentTimePrompt(),
-              memory,
               MEMORY_INSTRUCTIONS,
               SCRATCHPAD_INSTRUCTIONS,
               PLAN_INSTRUCTIONS,
@@ -209,9 +224,12 @@ export async function chatWithSensei(
               EXPORT_INSTRUCTIONS,
               SKILLS_INSTRUCTIONS,
               skills,
+              now,
+              memory,
             ]
         )
           .concat(scope?.onProgress ? [PROGRESS_INSTRUCTIONS] : [])
+          .concat(notice ? [notice.note] : [])
           .filter(Boolean)
           .join('\n\n'),
       }

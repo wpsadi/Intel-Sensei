@@ -10,7 +10,10 @@ export type ToWorker =
       baseURL?: string
       model: string
       instructions: string
+      /** The most steps this run may take. It never goes above `MAX_AGENT_STEPS`; the default is that. */
       maxSteps?: number
+      /** For an agent that works in several runs: steps taken before this run and the most the whole request may take. */
+      stepBudget?: { used: number; max: number }
       /** Passed to the model as `providerOptions`; plain data only. */
       providerOptions?: Record<string, Record<string, unknown>>
       tools: Record<string, ToolSpec>

@@ -4,6 +4,7 @@ import { create } from 'zustand'
 
 import { generateChatTitle, generateFileTitle } from '@/ai/inference/title'
 import { MEMORY_INSTRUCTIONS, createMemoryTool, memoryPrompt, memoryScope } from '@/ai/memory'
+import { MAX_AGENT_STEPS } from '@/ai/agent-limits'
 import { AI_MODELS, type Provider, toolSelectorChoice } from '@/ai/providers'
 import { isModelMedia, warmForFiles } from '@/ai/sandbox/attachments'
 import { holdSandbox, sandboxUnavailable } from '@/ai/sandbox/client'
@@ -30,8 +31,12 @@ import { goalInstructions, modeInstructions } from './skills'
 import { DESCRIPTIONS, SYSTEM_PROMPT, createdIds, impl, schemas, touchedIds } from './tools-impl'
 import { VERDICT_DESCRIPTION, VERIFIER_TOOLS, verdictSchema, verifierInstructions } from './verifier'
 
-/** Tool rounds within one pass. When a pass uses them all it was cut off, so the run goes on in a new pass. */
-const MAX_STEPS = 8
+/**
+ * Steps one request may take: the same limit as every agent. An ordinary run shares it across its passes. A /goal run only
+ * ends when a separate verifier agrees, so each of its passes gets its own. A pass that uses its steps was cut off, so the
+ * run goes on in a new pass.
+ */
+const MAX_STEPS = MAX_AGENT_STEPS
 /** Passes in one run: a safety net so a model that never finishes still stops. */
 const MAX_PASSES = 30
 /** A /goal run may take far more passes: it only ends when the goal is achieved, the user stops it, or it stalls. */
@@ -634,10 +639,15 @@ export async function runAgent(
       let stallRetries = 0
       let idle = 0
       let calls = 0
+      // Tool calls made by the earlier passes of this request. A parallel call counts each time, so the limit is never passed.
+      let used = 0
       for (let pass = 0; pass < (goal ? MAX_GOAL_PASSES : MAX_PASSES); pass++) {
         // Each pass ends with its own summary; the last pass's summary is the reply.
         let passReply = ''
         calls = 0
+        // What this pass may still take, and the budget it is warned against at 75%.
+        const budget = { used: goal ? 0 : used, max: MAX_STEPS }
+        const passLimit = Math.max(1, budget.max - budget.used)
         // Timing for the console: when each call started, and where the current model step began.
         const callStarted = new Map<string, number>()
         let stepMark = performance.now()
@@ -674,7 +684,8 @@ export async function runAgent(
             baseURL: ai.baseURL,
             model: ai.model,
             instructions,
-            maxSteps: MAX_STEPS,
+            maxSteps: passLimit,
+            stepBudget: budget,
             tools,
             // ~110 tools: the model picks the ones the request needs and the rest stay out of every step.
             toolSelect: { model: toolSelectorChoice(), alwaysInclude: TOOLS_ALWAYS, max: 25 },
@@ -806,6 +817,7 @@ export async function runAgent(
         }
         if (streamError ?? result.error) throw new Error(streamError ?? result.error)
         console.info(LOG, `pass ${pass + 1}: ${secs(performance.now() - passStarted)} · ${calls} tool calls`)
+        used += calls
         if (passReply.trim()) reply = passReply.trim()
         if (controller.signal.aborted) throw new Error('aborted')
         messages = result.replaced ? result.messages : [...messages, ...result.messages]
@@ -815,7 +827,12 @@ export async function runAgent(
 
         // Keep going while the to-do list has open items, or the pass was cut off by the step limit.
         const open = todos?.items.filter((i) => i.status !== 'completed') ?? []
-        const cutOff = calls >= MAX_STEPS
+        // An ordinary run that has used all its steps stops here and says what is left.
+        if (!goal && used >= MAX_STEPS) {
+          reply = `${reply || 'Stopped.'}\n\nI reached the limit of ${MAX_STEPS} steps for one request.${open.length ? ` Still to do: ${open.map((i) => i.title).join('; ')}.` : ''} Ask me to continue.`
+          break
+        }
+        const cutOff = calls >= passLimit
         if (((mode === 'edit' || mode === 'full') && open.length) || cutOff) {
           idle = calls ? 0 : idle + 1
           // Two passes in a row that did nothing: the model will not move on, so stop and say so.
