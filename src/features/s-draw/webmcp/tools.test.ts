@@ -532,3 +532,64 @@ describe('selected frame scope and invalid native input', () => {
     expect(updateScene).not.toHaveBeenCalled()
   })
 })
+
+describe('layout findings in create and update results', () => {
+  const create = (extra: Record<string, unknown>) =>
+    call('sdraw_create_elements', {
+      sheetId: 'a',
+      expectedRevision: 1,
+      elements: [{ type: 'rectangle', width: 100, height: 50, ...extra }],
+    }) as Promise<{ layout: string | { issues: number; found: { kind: string; ids: string[] }[]; next: string } }>
+
+  it('says nothing is wrong when new shapes land in free space', async () => {
+    const result = await create({ id: 'free', x: 400, y: 400 })
+    expect(typeof result.layout).toBe('string')
+    expect(result.layout).toMatch(/No overlaps, duplicates or crossings/)
+  })
+
+  it('reports a new shape that runs into what is already on the sheet, without being asked to check', async () => {
+    const result = await create({ id: 'collides', x: 60, y: 20 })
+    expect(result.layout).toMatchObject({ issues: 1, found: [{ kind: 'boxes_overlap' }] })
+    const found = (result.layout as { found: { ids: string[] }[] }).found[0]
+    expect(found.ids).toEqual(expect.arrayContaining(['existing', 'collides']))
+    expect((result.layout as { next: string }).next).toMatch(/Fix these/)
+  })
+
+  it('reports content that is drawn again on top of itself', async () => {
+    const result = await create({ id: 'again', x: 0, y: 0 })
+    expect(result.layout).toMatchObject({ found: [{ kind: 'duplicate_element', ids: ['existing', 'again'] }] })
+  })
+
+  it('reports a move that puts an element on top of another, and ignores problems it did not touch', async () => {
+    elements = [shape('one', { x: 0 }), shape('two', { x: 500 }), shape('old-a', { x: 0, y: 800 }), shape('old-b', { x: 50, y: 820 })]
+    const moved = (await call('sdraw_update_elements', {
+      sheetId: 'a',
+      expectedRevision: (await read()).revision,
+      updates: [{ id: 'two', patch: { x: 40 } }],
+    })) as { layout: { found: { kind: string; ids: string[] }[] } }
+    expect(moved.layout.found).toEqual([{ kind: 'boxes_overlap', ids: expect.arrayContaining(['one', 'two']) }])
+  })
+
+  it('tells the agent a created sheet is now active and what to do next', async () => {
+    // The canvas remounts for the new sheet, as it does in the app.
+    const unsubscribe = useDrawStore.subscribe((state, previous) => {
+      if (state.activeId !== previous.activeId) {
+        elements = []
+        setDrawApi(fixtureApi)
+      }
+    })
+    try {
+      const result = (await call('sdraw_manage_sheets', { action: 'create', name: 'Explanation' })) as {
+        action: string
+        sheetId: string
+        activeSheetId: string
+        note: string
+      }
+      expect(result.action).toBe('create')
+      expect(result.activeSheetId).toBe(result.sheetId)
+      expect(result.note).toMatch(/now the active one.*sdraw status/)
+    } finally {
+      unsubscribe()
+    }
+  })
+})

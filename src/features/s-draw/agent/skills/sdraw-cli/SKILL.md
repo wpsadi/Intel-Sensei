@@ -43,8 +43,12 @@ Create a request file using `write_file` or Python. Use the actual `sheetId` and
 sdraw create --request create.json
 sdraw read --json '{"query":"api"}'
 sdraw apply --request changes.json
-sdraw call sdraw_manage_sheets --json '{"action":"create","name":"Architecture"}'
+sdraw sheet --json '{"action":"create","name":"Architecture"}'
 ```
+
+`sdraw sheet` creates, switches, renames or duplicates a sheet. A created sheet becomes the active one and is empty: run `sdraw status` for its `sheetId` and revision, then draw on it. If you tell the user a drawing will go on a new sheet, create the sheet first; do not draw it on the current one.
+
+Before creating anything, `sdraw read` what is already on the sheet and put new shapes in free space. Never draw content that is already there: edit it with `sdraw apply`. The result of `create` and `apply` lists overlaps, duplicates and crossings among the elements you just changed (`layout`). Fix each one before reporting done.
 
 Create/apply take the native SDraw schemas, not the Obsidian plugin's request envelope. Keep node text in native `label` properties. Build nodes, read their actual dimensions, then connect with bound arrow endpoints and clear routing lanes. Read current IDs before updating. Keep batches small and preserve unrelated elements, connections and human selection. The CLI uses the same revision conflicts, native undo and PGlite persistence as the UI tools. It does not replay app commands when the sandbox resets or reloads. On an uncertain write or revision conflict, inspect the current scene before deciding whether another write is needed.
 

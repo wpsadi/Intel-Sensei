@@ -3,7 +3,15 @@ import type { ExcalidrawElement } from '@excalidraw/excalidraw/element/types'
 type Point = readonly [number, number]
 type Rect = { x: number; y: number; width: number; height: number }
 export interface LayoutIssue {
-  kind: 'label_outside_box' | 'unbound_box_text' | 'arrow_through_content' | 'arrows_overlap' | 'arrows_cross'
+  kind:
+    | 'label_outside_box'
+    | 'unbound_box_text'
+    | 'arrow_through_content'
+    | 'arrows_overlap'
+    | 'arrows_cross'
+    | 'boxes_overlap'
+    | 'text_overlap'
+    | 'duplicate_element'
   ids: string[]
 }
 const boxTypes = new Set(['rectangle', 'diamond', 'ellipse'])
@@ -58,6 +66,18 @@ function segmentThroughRect(a: Point, b: Point, rect: Rect) {
 function overlaps(a: Rect, b: Rect) {
   return a.x < b.x + b.width && b.x < a.x + a.width && a.y < b.y + b.height && b.y < a.y + a.height
 }
+const near = (a: number, b: number) => Math.abs(a - b) <= 1
+const sameRect = (a: Rect, b: Rect) => near(a.x, b.x) && near(a.y, b.y) && near(a.width, b.width) && near(a.height, b.height)
+/** One shape drawn around another is grouping, not a collision. */
+const inside = (inner: Rect, outer: Rect) =>
+  inner.x >= outer.x - 1 &&
+  inner.y >= outer.y - 1 &&
+  inner.x + inner.width <= outer.x + outer.width + 1 &&
+  inner.y + inner.height <= outer.y + outer.height + 1
+const overlapSize = (a: Rect, b: Rect) => ({
+  width: Math.min(a.x + a.width, b.x + b.width) - Math.max(a.x, b.x),
+  height: Math.min(a.y + a.height, b.y + b.height) - Math.max(a.y, b.y),
+})
 
 /** Advisory checks for ordinary axis-aligned diagrams. Never mutate or silently reroute a user's drawing. */
 export function checkDrawLayout(elements: readonly ExcalidrawElement[], maxComparisons = 50_000) {
@@ -98,6 +118,39 @@ export function checkDrawLayout(elements: readonly ExcalidrawElement[], maxCompa
         if (!spend()) break
         if (overlaps(text, box)) add('unbound_box_text', text.id, box.id)
       }
+    }
+  }
+  // Shapes that run into each other, or that are drawn twice in the same place.
+  for (let i = 0; i < boxes.length && complete; i++) {
+    for (let j = i + 1; j < boxes.length; j++) {
+      if (!spend()) break
+      const a = boxes[i],
+        b = boxes[j]
+      if (a.type === b.type && sameRect(a, b)) {
+        add('duplicate_element', a.id, b.id)
+        continue
+      }
+      if (!overlaps(a, b) || inside(a, b) || inside(b, a)) continue
+      // Edges that only touch are not a collision.
+      const { width, height } = overlapSize(a, b)
+      if (width >= 2 && height >= 2) add('boxes_overlap', a.id, b.id)
+    }
+  }
+  // Text on top of other text, or the same words twice in the same place.
+  for (let i = 0; i < texts.length && complete; i++) {
+    for (let j = i + 1; j < texts.length; j++) {
+      if (!spend()) break
+      const a = texts[i],
+        b = texts[j]
+      if (a.type !== 'text' || b.type !== 'text') continue
+      if (a.text && a.text === b.text && sameRect(a, b)) {
+        add('duplicate_element', a.id, b.id)
+        continue
+      }
+      if (!overlaps(a, b)) continue
+      const { width, height } = overlapSize(a, b)
+      const smaller = Math.min(a.width * a.height, b.width * b.height)
+      if (smaller > 0 && (width * height) / smaller > 0.25) add('text_overlap', a.id, b.id)
     }
   }
   for (let i = 0; i < arrows.length && complete; i++) {

@@ -28,6 +28,8 @@ describe('diagram layout checks', () => {
     expect(result.issues).toEqual([
       { kind: 'label_outside_box', ids: ['overflow', 'box'] },
       { kind: 'unbound_box_text', ids: ['unbound', 'box'] },
+      // The stray text also sits right on top of the label.
+      { kind: 'text_overlap', ids: ['fits', 'unbound'] },
     ])
   })
 
@@ -125,5 +127,39 @@ describe('diagram layout checks', () => {
     )
     expect(result.complete).toBe(false)
     expect(result.rotatedElementsSkipped).toBe(1)
+  })
+
+  it('flags shapes that run into each other, but not nesting, touching edges or separate shapes', () => {
+    const result = checkDrawLayout([
+      shape('a', { x: 0, y: 0, width: 100, height: 100 }),
+      shape('collides', { x: 60, y: 60, width: 100, height: 100 }),
+      shape('group', { x: 400, y: 0, width: 300, height: 300 }),
+      shape('inside', { x: 420, y: 20, width: 100, height: 50 }),
+      shape('touching', { x: 700, y: 0, width: 50, height: 50 }),
+      shape('apart', { x: 900, y: 0, width: 50, height: 50 }),
+    ])
+    expect(result.issues).toEqual([{ kind: 'boxes_overlap', ids: ['a', 'collides'] }])
+  })
+
+  it('flags the same shape or text drawn twice in the same place, which is what redrawing leaves behind', () => {
+    const result = checkDrawLayout([
+      shape('first', { x: 10, y: 10 }),
+      shape('again', { x: 10, y: 10 }),
+      shape('title', { type: 'text', text: 'Widgets', x: 300, y: 10, width: 80, height: 20 }),
+      shape('title-again', { type: 'text', text: 'Widgets', x: 300, y: 10, width: 80, height: 20 }),
+    ])
+    expect(result.issues).toEqual([
+      { kind: 'duplicate_element', ids: ['first', 'again'] },
+      { kind: 'duplicate_element', ids: ['title', 'title-again'] },
+    ])
+  })
+
+  it('flags text drawn over other text, but not text that merely sits close', () => {
+    const result = checkDrawLayout([
+      shape('one', { type: 'text', text: 'Alpha', x: 0, y: 0, width: 80, height: 20 }),
+      shape('over', { type: 'text', text: 'Beta', x: 20, y: 5, width: 80, height: 20 }),
+      shape('close', { type: 'text', text: 'Gamma', x: 0, y: 40, width: 80, height: 20 }),
+    ])
+    expect(result.issues).toEqual([{ kind: 'text_overlap', ids: ['one', 'over'] }])
   })
 })

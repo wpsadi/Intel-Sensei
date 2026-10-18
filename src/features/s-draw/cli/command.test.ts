@@ -12,7 +12,7 @@ beforeEach(() => {
   vi.resetAllMocks()
   mocks.fileId = 'a'
   mocks.load.mockResolvedValue(
-    ['sdraw_get_document', 'sdraw_create_elements', 'sdraw_update_elements', 'sdraw_read_elements', 'sdraw_capture_view'].map((name) => ({
+    ['sdraw_get_document', 'sdraw_manage_sheets', 'sdraw_create_elements', 'sdraw_update_elements', 'sdraw_read_elements', 'sdraw_capture_view'].map((name) => ({
       name,
       schema: { type: 'object' },
       description: name,
@@ -48,6 +48,12 @@ describe('SDraw terminal commands', () => {
     const result = await run('sdraw status')
     expect(JSON.parse(result.output)).toEqual({ revision: 7, sheetId: 'sheet-a' })
     expect(mocks.call).toHaveBeenCalledWith({})
+  })
+
+  it('creates, switches or renames a sheet with its own command, and documents it in help', async () => {
+    expect((await run('sdraw help')).output).toContain('sdraw sheet')
+    expect((await run(`sdraw sheet --json '{"action":"create","name":"Explanation"}'`)).code).toBe(0)
+    expect(mocks.call).toHaveBeenCalledExactlyOnceWith({ action: 'create', name: 'Explanation' })
   })
 
   it('passes the exact file request and inspected revision to the native create tool', async () => {

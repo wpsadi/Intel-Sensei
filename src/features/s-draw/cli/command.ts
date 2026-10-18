@@ -10,6 +10,7 @@ export const SDRAW_CLI_HELP = `SDraw CLI (browser-native adapter for the Obsidia
   sdraw doctor                       Check browser drawing-tool readiness
   sdraw schema create                Inspect an exact action's input schema
   sdraw read --json '{"query":"API"}'  Read elements in bounded pages
+  sdraw sheet --json '{"action":"create","name":"Notes"}'  Create, switch, rename or duplicate a sheet; a new sheet becomes active
   sdraw create --request request.json Create native elements at an inspected revision
   sdraw apply --request changes.json  Update elements at an inspected revision
   sdraw check                         Find layout defects
@@ -32,6 +33,7 @@ const actions: Record<string, string> = {
   doctor: 'sdraw_get_document',
   read: 'sdraw_read_elements',
   sheets: 'sdraw_list_sheets',
+  sheet: 'sdraw_manage_sheets',
   create: 'sdraw_create_elements',
   apply: 'sdraw_update_elements',
   check: 'sdraw_check_layout',

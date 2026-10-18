@@ -67,14 +67,28 @@ async function settle(signal?: AbortSignal) {
   await state().flushPersistence()
   if (state().error) throw new Error(state().error!)
 }
-async function commit(elements: readonly ExcalidrawElement[], signal?: AbortSignal) {
+/**
+ * What the change just made looks like against everything already on the sheet: shapes it runs into, text it covers,
+ * and anything that now exists twice. Reported with the result, so the agent does not have to remember to ask.
+ */
+function layoutAfter(touched: ReadonlySet<string>) {
+  const found = checkDrawLayout(api().getSceneElements()).issues.filter((issue) => issue.ids.some((id) => touched.has(id)))
+  if (!found.length)
+    return 'No overlaps, duplicates or crossings among the changed elements. Run sdraw check for the whole sheet and sdraw view to see it.'
+  return {
+    issues: found.length,
+    found: found.slice(0, 5).map((issue) => ({ kind: issue.kind, ids: boundedIds(issue.ids, 200) })),
+    next: 'Fix these before you say you are done: move or resize the elements, or delete a duplicate instead of drawing it again. Read what is already on the sheet first. Then run sdraw check and sdraw view.',
+  }
+}
+async function commit(elements: readonly ExcalidrawElement[], signal?: AbortSignal, touched?: ReadonlySet<string>) {
   signal?.throwIfAborted()
   api().updateScene({
     elements: restoreElements(elements, null, { refreshDimensions: true, repairBindings: true }),
     captureUpdate: CaptureUpdateAction.IMMEDIATELY,
   })
   capture()
-  const result = { sheetId: state().activeId, revision: revision(), layoutCheck: 'sdraw_check_layout' }
+  const result = { sheetId: state().activeId, revision: revision(), ...(touched && { layout: layoutAfter(touched) }) }
   await settle(signal)
   return result
 }
@@ -366,7 +380,7 @@ export async function executeDrawTool(name: Name, input: unknown, signal?: Abort
         if (contextElement.frameId && createdIds.has(contextElement.frameId)) patch.frameId = contextElement.frameId
         return Object.keys(patch).length ? newElementWith(element, patch) : element
       })
-      const result = await commit([...previous, ...created], signal)
+      const result = await commit([...previous, ...created], signal, createdIds)
       return {
         ...result,
         created: created.length,
@@ -390,7 +404,7 @@ export async function executeDrawTool(name: Name, input: unknown, signal?: Abort
           }
           return newElementWith(element, patch)
         })
-      return { ...(await commit(elements, signal)), updated: patches.size }
+      return { ...(await commit(elements, signal, new Set(patches.keys()))), updated: patches.size }
     }
     case 'sdraw_delete_elements': {
       const a = args as z.infer<typeof schemas.sdraw_delete_elements>
@@ -446,7 +460,17 @@ export async function executeDrawTool(name: Name, input: unknown, signal?: Abort
       }
       await waitForDrawApi(state().activeId, signal)
       await settle(signal)
-      return { sheetId: id, action: a.action, activeSheetId: state().activeId }
+      return {
+        sheetId: id,
+        action: a.action,
+        activeSheetId: state().activeId,
+        note:
+          a.action === 'create' || a.action === 'duplicate'
+            ? 'This sheet is now the active one. Run sdraw status for its sheetId and revision, then draw on it.'
+            : a.action === 'switch'
+              ? 'Run sdraw status for this sheet’s current revision before editing it.'
+              : undefined,
+      }
     }
     case 'sdraw_delete_sheet': {
       const a = args as z.infer<typeof schemas.sdraw_delete_sheet>
