@@ -11,8 +11,9 @@ import { Bubble, Message, MessageContent } from '@/components/ui/chat'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { useAskSenseiStore } from '@/features/ask-sensei/ask-sensei.store'
 import { ChatReasoning } from '@/features/ask-sensei/components/chat-reasoning'
-import { createDeepAnswerTool } from '@/ai/tools/deep-answer'
+import { DEEP_ANSWER_INSTRUCTIONS, createDeepAnswerTool } from '@/ai/tools/deep-answer'
 import { READ_CHAT_INSTRUCTIONS, createReadChatTool, historyTail, snapshotOf } from '@/ai/tools/read-chat'
+import { reportLiveProgress } from '@/features/ask-sensei/components/dedicated-live-call'
 import { LiveAurora } from '@/features/ask-sensei/components/live-aurora'
 import { useLiveChatScope, useLiveTranscript } from '@/features/ask-sensei/components/live-transcript'
 import { SentAttachments } from '@/features/ask-sensei/components/use-attachments'
@@ -76,7 +77,10 @@ export function BrowserAgentPanel({ page, profile }: { page: string | null; prof
       selectChat(id)
     }
     callChat.current = id
-    await store.saveCallMessage(id, turn.id, turn.role, turn.text, undefined, turn.attachments ? { attachments: turn.attachments } : undefined)
+    await store.saveCallMessage(id, turn.id, turn.role, turn.text, turn.reasoning, {
+      ...(turn.attachments && { attachments: turn.attachments }),
+      ...(turn.steps && { steps: turn.steps }),
+    })
   })
   const onLiveActive = (active: boolean) => {
     if (active) return
@@ -93,6 +97,8 @@ export function BrowserAgentPanel({ page, profile }: { page: string | null; prof
       ...(chatId && {
         deepAnswer: createDeepAnswerTool({
           chatId,
+          // The deep agent runs in the background, and the voice hears what it is doing as it works.
+          onProgress: (id, progress) => reportLiveProgress(`browser-${chatId}`, id, progress),
           history: () =>
             (useAskSenseiStore.getState().messages[chatId] ?? [])
               .map((message) => ({ role: message.role, content: message.content }))
@@ -109,6 +115,7 @@ export function BrowserAgentPanel({ page, profile }: { page: string | null; prof
     profile?.instructions,
     page &&
       `The user is browsing ${page}. The browser tools read and operate that page. You cannot see it up front: before you say what is on it, or act on it, read it with the browser tools. A question that has nothing to do with the page needs no tools.`,
+    chatId && profile?.tools && DEEP_ANSWER_INSTRUCTIONS,
     READ_CHAT_INSTRUCTIONS,
   ]
     .filter(Boolean)
@@ -212,6 +219,8 @@ export function BrowserAgentPanel({ page, profile }: { page: string | null; prof
           liveHistory={historyTail(snapshotOf(messages))}
           onLiveTranscript={transcript.push}
           onLiveActive={onLiveActive}
+          onLiveTool={transcript.tool}
+          attachKey="browser"
           liveTools={liveTools}
           liveInstructions={liveInstructions}
         />

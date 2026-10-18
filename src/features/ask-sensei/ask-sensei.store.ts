@@ -42,7 +42,7 @@ interface AskSenseiState {
     role: ChatMessage['role'],
     content: string,
     reasoning?: string,
-    extras?: Pick<ChatMessage, 'parts' | 'todos' | 'attachments'>,
+    extras?: Pick<ChatMessage, 'parts' | 'todos' | 'attachments' | 'steps'>,
   ): Promise<void>
   renameChat(id: string, title: string): Promise<void>
   setTodosCollapsed(id: string, collapsed: boolean): Promise<void>

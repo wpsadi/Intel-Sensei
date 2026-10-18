@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest'
 
-import { type TranscriptTurn, createLiveTranscript } from './live-transcript'
+import { type TranscriptTurn, createLiveTranscript, turnExtras } from './live-transcript'
 
 const flush = () => new Promise((resolve) => setTimeout(resolve, 0))
 
@@ -30,11 +30,11 @@ describe('live transcript', () => {
     expect(new Set(saved.map((turn) => turn.id)).size).toBe(1)
   })
 
-  it('ignores thoughts and blank pieces that would cut the other side in two', async () => {
+  it('ignores blank pieces that would cut the other side in two', async () => {
     const write = vi.fn()
     const transcript = createLiveTranscript(write)
-    transcript.push('thought', 'thinking')
     transcript.push('user', '  ')
+    transcript.push('thought', '   ')
     await flush()
     expect(write).not.toHaveBeenCalled()
     transcript.push('assistant', 'Answer')
@@ -42,6 +42,58 @@ describe('live transcript', () => {
     transcript.push('assistant', ' goes on')
     await flush()
     expect(write.mock.calls.at(-1)![0]).toMatchObject({ role: 'assistant', text: 'Answer goes on' })
+  })
+
+  it("keeps the thinking on Sensei's reply, trimmed, even when it comes before the first word", async () => {
+    const saved: TranscriptTurn[] = []
+    const transcript = createLiveTranscript((turn) => void saved.push(turn))
+    transcript.push('user', 'draw a box')
+    await flush()
+    transcript.push('thought', '\nThe user wants ')
+    transcript.push('thought', 'a box.\n')
+    await flush()
+    transcript.push('assistant', 'Drawing it.')
+    await flush()
+    const reply = saved.at(-1)!
+    expect(reply).toMatchObject({ role: 'assistant', text: 'Drawing it.', reasoning: 'The user wants a box.' })
+    // One reply: the thoughts and the words share a message, and the user's turn stays its own.
+    expect(saved.filter((turn) => turn.role === 'assistant').every((turn) => turn.id === reply.id)).toBe(true)
+    expect(saved.find((turn) => turn.role === 'user')!.id).not.toBe(reply.id)
+  })
+
+  it('shows a tool call inside the reply, where it fell in the thinking, and updates it when it ends', async () => {
+    const saved: TranscriptTurn[] = []
+    const transcript = createLiveTranscript((turn) => void saved.push(turn))
+    transcript.push('thought', 'I will run the check. ')
+    await flush()
+    transcript.tool({ id: 'call-1', name: 'terminal', label: 'Ran a command', status: 'running', detail: 'sdraw check' })
+    await flush()
+    transcript.push('thought', 'Then fix it.')
+    transcript.tool({ id: 'call-1', name: 'terminal', label: 'Ran a command', status: 'done', detail: 'no issues' })
+    await flush()
+    const reply = saved.at(-1)!
+    expect(reply.steps).toEqual([
+      expect.objectContaining({ id: 'call-1', status: 'done', detail: 'no issues', at: 'I will run the check. '.length }),
+    ])
+    expect(new Set(saved.map((turn) => turn.id)).size).toBe(1)
+  })
+
+  it('starts a reply for a tool call that comes while the user was the last to speak', async () => {
+    const saved: TranscriptTurn[] = []
+    const transcript = createLiveTranscript((turn) => void saved.push(turn))
+    transcript.push('user', 'check the sheet')
+    await flush()
+    transcript.tool({ id: 'c', name: 'terminal', label: 'Ran a command', status: 'running' })
+    await flush()
+    const reply = saved.at(-1)!
+    expect(reply.role).toBe('assistant')
+    expect(reply.steps).toHaveLength(1)
+    expect(saved.find((turn) => turn.role === 'user')!.id).not.toBe(reply.id)
+  })
+
+  it('exposes only the extras that are present, for saving into a message', () => {
+    expect(turnExtras({ id: 'a', role: 'assistant', text: 'x' })).toEqual({})
+    expect(turnExtras({ id: 'a', role: 'assistant', text: 'x', reasoning: 'why' })).toEqual({ reasoning: 'why' })
   })
 
   it('saves one at a time and skips to the latest text while a save is busy', async () => {

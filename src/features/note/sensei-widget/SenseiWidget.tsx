@@ -25,7 +25,7 @@ import { SNOTE_AGENT_CONTEXT_LIMIT } from '@/constants/ai'
 import { ChatReasoning } from '@/features/ask-sensei/components/chat-reasoning'
 import { ChatSearches } from '@/features/ask-sensei/components/chat-searches'
 import { LiveAurora } from '@/features/ask-sensei/components/live-aurora'
-import { useLiveChatScope, useLiveTranscript } from '@/features/ask-sensei/components/live-transcript'
+import { turnExtras, useLiveChatScope, useLiveTranscript } from '@/features/ask-sensei/components/live-transcript'
 import { SentAttachments } from '@/features/ask-sensei/components/use-attachments'
 import { Markdown } from '@/features/ask-sensei/components/markdown'
 
@@ -78,8 +78,8 @@ export function SenseiWidget() {
     callChat.current = chat.id
     const known = chat.messages.some((message) => message.id === turn.id)
     const messages = known
-      ? chat.messages.map((message) => (message.id === turn.id ? { ...message, content: turn.text } : message))
-      : [...chat.messages, { id: turn.id, role: turn.role, content: turn.text, ...(turn.attachments && { attachments: turn.attachments }) }]
+      ? chat.messages.map((message) => (message.id === turn.id ? { ...message, content: turn.text, ...turnExtras(turn) } : message))
+      : [...chat.messages, { id: turn.id, role: turn.role, content: turn.text, ...(turn.attachments && { attachments: turn.attachments }), ...turnExtras(turn) }]
     const updated = { ...chat, messages, updatedAt: Date.now() }
     voiceChat.current = updated
     // Shown before it is stored, so the words stream onto the screen as they are spoken.
@@ -250,6 +250,8 @@ export function SenseiWidget() {
               liveInstructions={[noteScreenMap(noteTitle), READ_CHAT_INSTRUCTIONS].join('\n\n')}
               onLiveTranscript={transcript.push}
               onLiveActive={onLiveActive}
+              onLiveTool={transcript.tool}
+              attachKey="note"
               attachable
               liveAttachments={() => messages.flatMap((message) => message.attachments ?? [])}
               toolbarStart={

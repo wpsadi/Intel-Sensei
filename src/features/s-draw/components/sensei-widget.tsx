@@ -11,7 +11,7 @@ import { ScrollArea } from '@/components/ui/scroll-area'
 import { UserBubble } from '@/components/user-bubble'
 import { ChatReasoning } from '@/features/ask-sensei/components/chat-reasoning'
 import { LiveAurora } from '@/features/ask-sensei/components/live-aurora'
-import { useLiveChatScope, useLiveTranscript } from '@/features/ask-sensei/components/live-transcript'
+import { turnExtras, useLiveChatScope, useLiveTranscript } from '@/features/ask-sensei/components/live-transcript'
 import { SentAttachments } from '@/features/ask-sensei/components/use-attachments'
 import type { ChatAttachment } from '@/features/note/db/types'
 import { Markdown } from '@/features/ask-sensei/components/markdown'
@@ -153,8 +153,8 @@ export function SenseiWidget({ fileId, chatId, onChatChange, title = 'SDraw', co
     callChat.current = base.id
     const known = base.messages.some((message) => message.id === turn.id)
     const messages = known
-      ? base.messages.map((message) => (message.id === turn.id ? { ...message, content: turn.text } : message))
-      : [...base.messages, { id: turn.id, role: turn.role, content: turn.text, ...(turn.attachments && { attachments: turn.attachments }) }]
+      ? base.messages.map((message) => (message.id === turn.id ? { ...message, content: turn.text, ...turnExtras(turn) } : message))
+      : [...base.messages, { id: turn.id, role: turn.role, content: turn.text, ...(turn.attachments && { attachments: turn.attachments }), ...turnExtras(turn) }]
     const updated = { ...base, messages, updatedAt: Date.now() }
     voiceChat.current = updated
     // Shown before it is stored, so the words stream onto the screen as they are spoken. A finished text reply is
@@ -407,6 +407,8 @@ export function SenseiWidget({ fileId, chatId, onChatChange, title = 'SDraw', co
                 liveInstructions={[DRAW_LIVE_INSTRUCTIONS, READ_CHAT_INSTRUCTIONS].join('\n\n')}
                 onLiveTranscript={transcript.push}
                 onLiveActive={onLiveActive}
+                onLiveTool={transcript.tool}
+                attachKey={`draw-${fileId}`}
                 attachable
                 attachSession={drawSandboxSession(fileId)}
                 liveAttachments={() => messages.flatMap((message) => message.attachments ?? [])}

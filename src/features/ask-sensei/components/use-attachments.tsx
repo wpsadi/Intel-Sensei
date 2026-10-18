@@ -1,4 +1,4 @@
-import { type ClipboardEvent, useState } from 'react'
+import { type ClipboardEvent, useEffect, useRef, useState } from 'react'
 import { toast } from 'sonner'
 
 import { warmForFiles } from '@/ai/sandbox/attachments'
@@ -19,8 +19,41 @@ export const attachmentKind = (type: string) => (type.startsWith('image/') ? 'im
  * The files waiting to be sent with a message. They are saved to Cache Storage straight away, so sending only has to
  * reference them, and the sandbox has them for Sensei to read. There is no viewer for them yet: they show as names.
  */
-export function useAttachments(session?: string) {
-  const [attachments, setAttachments] = useState<ChatAttachment[]>([])
+const PENDING_PREFIX = 'sensei-pending-files:'
+
+/** The files waiting in a widget, kept across closing it or reloading, since the files themselves are already saved. */
+function readPending(key?: string): ChatAttachment[] {
+  if (!key) return []
+  try {
+    const saved = JSON.parse(localStorage.getItem(PENDING_PREFIX + key) ?? '[]') as ChatAttachment[]
+    return Array.isArray(saved) ? saved.filter((file) => file && typeof file.src === 'string' && typeof file.name === 'string') : []
+  } catch {
+    return []
+  }
+}
+
+function writePending(key: string, files: ChatAttachment[]) {
+  try {
+    if (files.length) localStorage.setItem(PENDING_PREFIX + key, JSON.stringify(files))
+    else localStorage.removeItem(PENDING_PREFIX + key)
+  } catch {
+    // Storage may be blocked; the files still work for this visit.
+  }
+}
+
+export function useAttachments(session?: string, persistKey?: string) {
+  const [attachments, setAttachments] = useState<ChatAttachment[]>(() => readPending(persistKey))
+  // Files that were waiting when the widget closed are still waiting when it opens again, and a different key (another
+  // file or chat) brings back its own.
+  const loadedKey = useRef(persistKey)
+  useEffect(() => {
+    if (loadedKey.current === persistKey) return
+    loadedKey.current = persistKey
+    setAttachments(readPending(persistKey))
+  }, [persistKey])
+  useEffect(() => {
+    if (persistKey && loadedKey.current === persistKey) writePending(persistKey, attachments)
+  }, [attachments, persistKey])
 
   const attach = async (files: File[]) => {
     try {

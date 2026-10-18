@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 
-import type { ChatAttachment } from '@/features/note/db/types'
+import type { ChatAttachment, ChatToolStep } from '@/features/note/db/types'
 
 /** One side's words in the call so far, under the id of the chat message that holds them. */
 export interface TranscriptTurn {
@@ -9,7 +9,17 @@ export interface TranscriptTurn {
   text: string
   /** Files attached to a typed message. */
   attachments?: ChatAttachment[]
+  /** Sensei's thinking before and during this reply, when the model sends it. */
+  reasoning?: string
+  /** The tool calls Sensei made in this reply, in order. */
+  steps?: ChatToolStep[]
 }
+
+/** The fields of a turn that are not its words, ready to spread into a saved message: only those that are there. */
+export const turnExtras = (turn: TranscriptTurn) => ({
+  ...(turn.reasoning && { reasoning: turn.reasoning }),
+  ...(turn.steps && { steps: turn.steps }),
+})
 
 /**
  * Turns the call's stream of spoken pieces into messages. Each turn keeps its whole text in memory, so the host only has
@@ -29,7 +39,8 @@ export function createLiveTranscript(write: (turn: TranscriptTurn) => void | Pro
         const turn = latest
         latest = null
         try {
-          await write(turn)
+          // The thinking is kept as it came; it is saved trimmed, and a step's position counts from its trimmed start.
+          await write({ ...turn, ...(turn.reasoning && { reasoning: turn.reasoning.trim() }) })
         } catch (error) {
           console.warn('Could not save the live transcript', error)
         }
@@ -40,22 +51,36 @@ export function createLiveTranscript(write: (turn: TranscriptTurn) => void | Pro
   }
 
   return {
-    /** Adds a piece. `whole` marks a complete message, such as typed text, so it never merges into the turn around it. */
+    /**
+     * Adds a piece. `whole` marks a complete message, such as typed text, so it never merges into the turn around it.
+     * Thinking belongs to Sensei's reply, so it joins the reply that is being written, or starts one.
+     */
     push(kind: 'user' | 'assistant' | 'thought', piece: string, whole = false, attachments?: ChatAttachment[]) {
-      // Thinking is not part of what was said.
-      if (kind === 'thought') return
+      const role = kind === 'thought' ? 'assistant' : kind
       if (whole) current = null
       // Blank transcription, such as the mic hearing silence, must not cut the other side's turn in two.
-      if (!piece.trim() && !attachments?.length && current?.role !== kind) return
+      if (!piece.trim() && !attachments?.length && current?.role !== role) return
+      const turn: TranscriptTurn = current?.role === role ? current : { id: crypto.randomUUID(), role, text: '' }
       current = {
-        id: current?.role === kind ? current.id : crypto.randomUUID(),
-        role: kind,
-        text: `${current?.role === kind ? current.text : ''}${piece}`,
+        ...turn,
+        ...(kind === 'thought' ? { reasoning: `${turn.reasoning ?? ''}${piece}` } : { text: `${turn.text}${piece}` }),
         ...(attachments?.length && { attachments }),
       }
       latest = current
       void flush()
       if (whole) current = null
+    },
+    /** A tool call began or ended. It is part of Sensei's reply, and the call is placed where it fell in the thinking. */
+    tool(step: ChatToolStep) {
+      const turn: TranscriptTurn = current?.role === 'assistant' ? current : { id: crypto.randomUUID(), role: 'assistant', text: '' }
+      const known = turn.steps?.find((item) => item.id === step.id)
+      const placed = { ...step, at: known?.at ?? turn.reasoning?.trimStart().length ?? 0 }
+      current = {
+        ...turn,
+        steps: known ? turn.steps!.map((item) => (item.id === step.id ? placed : item)) : [...(turn.steps ?? []), placed],
+      }
+      latest = current
+      void flush()
     },
     /** Starts the next piece as a new message, for a new chat or a new call. */
     reset() {

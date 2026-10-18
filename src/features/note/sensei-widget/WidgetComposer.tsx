@@ -23,7 +23,7 @@ import { useDedicatedLiveCall } from '@/features/ask-sensei/components/dedicated
 import { useLiveAuroraDrive } from '@/features/ask-sensei/components/live-aurora'
 import { AttachmentChips, useAttachments } from '@/features/ask-sensei/components/use-attachments'
 import { formatElapsed, useVoiceNote } from '@/features/ask-sensei/components/use-voice-note'
-import type { ChatAttachment } from '@/features/note/db/types'
+import type { ChatAttachment, ChatToolStep } from '@/features/note/db/types'
 import { skillSuggestions } from '@/features/skills/suggest'
 import { useInputHistory } from '@/hooks/use-input-history'
 import { cn } from '@/lib/utils'
@@ -55,7 +55,9 @@ export function WidgetComposer({
   onLiveActive,
   attachable,
   attachSession,
+  attachKey,
   liveAttachments,
+  onLiveTool,
 }: {
   onSend: (text: string, attachments: ChatAttachment[]) => void
   streaming: boolean
@@ -85,8 +87,12 @@ export function WidgetComposer({
   attachable?: boolean
   /** The sandbox the files are prepared in. Leave out for the default one. */
   attachSession?: string
+  /** Where files waiting to be sent are remembered, so they are still there after the widget is closed. Leave out to forget them. */
+  attachKey?: string
   /** The files already attached in this chat, for a live call to find in its sandbox. */
   liveAttachments?: () => ChatAttachment[]
+  /** A tool call of the live call began or ended; the chat shows it as a step. */
+  onLiveTool?: (step: ChatToolStep) => void
 }) {
   const [draft, setDraft] = useState('')
   const [caret, setCaret] = useState(0)
@@ -104,7 +110,7 @@ export function WidgetComposer({
     })
   const { mode, seconds, levels, startVoice, finishVoice, cancelVoice } = useVoiceNote(draft, setDraft)
   const inputRef = useRef<HTMLTextAreaElement>(null)
-  const files = useAttachments(attachSession)
+  const files = useAttachments(attachSession, attachKey)
   // Files sent from here during a call are not in the host's chat yet when the sandbox looks for them.
   const sentFiles = useRef<ChatAttachment[]>([])
   const liveFiles = useRef(liveAttachments)
@@ -115,7 +121,15 @@ export function WidgetComposer({
     () => [...new Map([...(liveFiles.current?.() ?? []), ...sentFiles.current].map((file) => [file.src, file])).values()],
     [],
   )
-  const live = useDedicatedLiveCall(liveScope ?? null, liveSession, liveHistory, onLiveTranscript, liveTools, liveInstructions, callFiles)
+  const live = useDedicatedLiveCall(liveScope ?? null, {
+    session: liveSession,
+    history: liveHistory,
+    onTranscript: onLiveTranscript,
+    onTool: onLiveTool,
+    tools: liveTools,
+    instructions: liveInstructions,
+    attachments: callFiles,
+  })
   const inCall = live.state !== 'idle'
   // The panel around this composer glows while the call runs, and follows Sensei's voice.
   useLiveAuroraDrive(inCall, live.level)
@@ -264,9 +278,12 @@ export function WidgetComposer({
             aria-label="Type during the call"
             className="field-sizing-content max-h-36 min-h-11 w-full resize-none bg-transparent px-3 pt-2.5 text-sm outline-none placeholder:text-muted-foreground"
           />
-          <ComposerToolbar className="h-9 justify-end">
-            {attachable && <ComposerAttachButton className={toolbarStart ? undefined : 'mr-auto'} onClick={files.pick} />}
-            {toolbarStart}
+          <ComposerToolbar className="h-9 justify-between">
+            {/* Attach and the page's own controls sit at the bottom left, as in Ask Sensei's composer. */}
+            <div className="flex min-w-0 items-center gap-1">
+              {attachable && <ComposerAttachButton onClick={files.pick} />}
+              {toolbarStart}
+            </div>
             <ComposerActions>
               <Button
                 variant={live.muted ? 'secondary' : 'ghost'}
@@ -350,9 +367,12 @@ export function WidgetComposer({
             data-undo-passthrough
             className="field-sizing-content max-h-36 min-h-11 w-full resize-none bg-transparent px-3 pt-2.5 text-sm outline-none placeholder:text-muted-foreground"
           />
-          <ComposerToolbar className="h-9 justify-end">
-            {attachable && <ComposerAttachButton className={toolbarStart ? undefined : 'mr-auto'} onClick={files.pick} />}
-            {toolbarStart}
+          <ComposerToolbar className="h-9 justify-between">
+            {/* Attach and the page's own controls sit at the bottom left, as in Ask Sensei's composer. */}
+            <div className="flex min-w-0 items-center gap-1">
+              {attachable && <ComposerAttachButton onClick={files.pick} />}
+              {toolbarStart}
+            </div>
             <ComposerActions>
               <ComposerVoiceButton active={false} aria-label="Start voice input" onClick={() => void startVoice()} />
               {/* Call and send share one box; only visibility changes, so the voice button never shifts. */}

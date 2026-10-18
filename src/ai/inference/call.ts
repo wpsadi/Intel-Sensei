@@ -26,12 +26,19 @@ export async function toolDeclarations(tools: Record<string, Tool> = {}, nonBloc
         name,
         description: typeof item.description === 'string' ? item.description : undefined,
         parametersJsonSchema,
-        // A non-blocking tool runs in the background while the model keeps talking.
-        ...(nonBlocking.includes(name) && { behavior: Behavior.NON_BLOCKING }),
+        // The model's default is to carry on talking while a tool runs, which lets it say a task is done before the tool has
+        // answered. So a tool blocks by default: the model waits for the result and speaks from it. Only a tool that is
+        // meant to run in the background (a deep answer) lets the model keep talking.
+        behavior: nonBlocking.includes(name) ? Behavior.NON_BLOCKING : Behavior.BLOCKING,
       }
     }),
   )
 }
+
+/** How the model must use its tools. A voice model is quick to say it did something; this ties what it says to what the tools returned. */
+const TOOL_DISCIPLINE = `Using tools: when the user asks you to do something with their content (read, draw, write, change, search, run), do it with a tool. Never describe or promise the work instead of doing it. Call a tool, wait for its result, and read the result before you speak or call the next one. Say something was done, created or fixed only when a tool result confirms it. If a result is an error or reports a problem, such as overlapping or duplicate elements, read it, fix the cause and try again before you move on. Use the exact names, ids and fields from the tool descriptions and earlier results, and never invent them. Do not repeat a call that already succeeded. If your instructions give steps for a task, follow them in order and do not skip the checks. When a task needs several tool calls, make all of them before you say the outcome, and keep what you say short.`
+
+const THINKING_LEVELS = { low: ThinkingLevel.LOW, medium: ThinkingLevel.MEDIUM, high: ThinkingLevel.HIGH } as const
 
 /** Gemini Live takes 16 kHz mono PCM in and sends 24 kHz mono PCM back. */
 const INPUT_RATE = 16000
@@ -105,6 +112,8 @@ export interface LiveCallOptions {
   instructions?: string
   /** Told when a tool call starts and when it ends, so the chat can show the work. */
   onTool?: (event: CallToolEvent) => void
+  /** How hard the model thinks before it answers or calls a tool. Deeper is slower to start speaking. */
+  thinkingLevel?: 'low' | 'medium' | 'high'
 }
 
 /**
@@ -164,10 +173,13 @@ export class LiveCall {
         speechConfig: { voiceConfig: { prebuiltVoiceConfig: { voiceName: 'Kore' } } },
         // Only the extended-thinking model takes a thinking level, and it needs one in setup. The base
         // gemini-3.8-live rejects thinkingConfig and closes the socket, so it is left out there.
-        ...(LIVE_MODEL.includes('extended-thinking') && { thinkingConfig: { thinkingLevel: ThinkingLevel.MEDIUM, includeThoughts: true } }),
+        ...(LIVE_MODEL.includes('extended-thinking') && {
+          thinkingConfig: { thinkingLevel: THINKING_LEVELS[this.options.thinkingLevel ?? 'medium'], includeThoughts: true },
+        }),
         systemInstruction:
           "You are Sensei, a friendly, general-purpose assistant on a live voice call. Help with the user's request across topics; do not steer the conversation toward studying unless asked. Keep replies short and conversational, because they are spoken aloud. After a tool call, carry on from where you stopped: never say again what you already said. Do not use tools for a plain answer.\n\n" +
           'Call endCall when the user asks to hang up, disconnect or end the call, or clearly says goodbye and is finished. After its result, say one brief, warm goodbye in the language of the conversation. The app will disconnect after your goodbye finishes playing. Do not end the call just because you completed an answer, are waiting on a tool, or the user is quiet.\n\n' +
+          (Object.keys(this.options.tools ?? {}).length ? `${TOOL_DISCIPLINE}\n\n` : '') +
           currentTimePrompt() +
           (this.options.instructions ? `\n\n${this.options.instructions}` : '') +
           ((this.options.history ?? '')

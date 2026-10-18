@@ -69,6 +69,40 @@ describe('shared widget composer', () => {
     expect(screen.queryByText('notes.txt')).toBeNull()
   })
 
+  it('puts attach at the bottom left, in front of the page controls, and the actions at the right', () => {
+    mount({ attachable: true, toolbarStart: <span data-testid="ring">ring</span> })
+    const attach = screen.getByRole('button', { name: 'Add attachment' })
+    const ring = screen.getByTestId('ring')
+    const send = screen.getByRole('button', { name: 'Send message' })
+    expect(attach.compareDocumentPosition(ring) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+    expect(ring.compareDocumentPosition(send) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+    // Attach and the ring share the left group; the send button is not in it.
+    expect(attach.parentElement).toBe(ring.parentElement)
+    expect(attach.parentElement!.contains(send)).toBe(false)
+  })
+
+  it('keeps files that were waiting when the widget was closed, and brings them back when it opens again', async () => {
+    localStorage.clear()
+    const first = mount({ attachable: true, attachKey: 'note' })
+    const file = new File(['hi'], 'notes.txt', { type: 'text/plain' })
+    fireEvent.paste(input(), { clipboardData: { items: [{ kind: 'file', getAsFile: () => file }], getData: () => '' } })
+    await screen.findByText('notes.txt')
+    first.unmount()
+    mount({ attachable: true, attachKey: 'note' })
+    expect(await screen.findByText('notes.txt')).toBeTruthy()
+    // Another widget does not see them, and sending clears them.
+    cleanup()
+    mount({ attachable: true, attachKey: 'draw-file' })
+    expect(screen.queryByText('notes.txt')).toBeNull()
+    cleanup()
+    const reopened = mount({ attachable: true, attachKey: 'note', onSend: vi.fn() })
+    await screen.findByText('notes.txt')
+    fireEvent.keyDown(input(), { key: 'Enter' })
+    reopened.unmount()
+    mount({ attachable: true, attachKey: 'note' })
+    expect(screen.queryByText('notes.txt')).toBeNull()
+  })
+
   it('keeps files in the box while a reply is running, because a message sent then would drop them', async () => {
     const send = vi.fn()
     mount({ onSend: send, attachable: true, streaming: true })

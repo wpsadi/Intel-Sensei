@@ -274,7 +274,8 @@ describe('live tool declarations', () => {
     expect(byName.jsonTool.parametersJsonSchema).toMatchObject({ type: 'object', properties: { query: { type: 'string' } }, required: ['query'] })
     expect(byName.jsonTool.parametersJsonSchema).not.toHaveProperty('$schema')
     expect(byName.jsonTool).toHaveProperty('behavior', 'NON_BLOCKING')
-    expect(byName.zodTool).not.toHaveProperty('behavior')
+    // Every other tool waits: the model's own default is to keep talking while a tool runs and claim the work is done.
+    expect(byName.zodTool).toHaveProperty('behavior', 'BLOCKING')
   })
 })
 

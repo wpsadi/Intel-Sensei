@@ -38,7 +38,7 @@ import { S3D_AGENT_CONTEXT_LIMIT } from '@/constants/ai'
 import { ChatPlanCard, ChatTodoQueue } from '@/features/ask-sensei/components/chat-plan'
 import { ChatReasoning } from '@/features/ask-sensei/components/chat-reasoning'
 import { LiveAurora } from '@/features/ask-sensei/components/live-aurora'
-import { useLiveChatScope, useLiveTranscript } from '@/features/ask-sensei/components/live-transcript'
+import { turnExtras, useLiveChatScope, useLiveTranscript } from '@/features/ask-sensei/components/live-transcript'
 import { Markdown } from '@/features/ask-sensei/components/markdown'
 import { type ComposerSuggestion, WidgetComposer } from '@/features/note/sensei-widget/WidgetComposer'
 
@@ -234,8 +234,8 @@ export function AgentPanel() {
     callChat.current = base.id
     const known = base.messages.some((message) => message.id === turn.id)
     const messages = known
-      ? base.messages.map((message) => (message.id === turn.id ? { ...message, text: turn.text } : message))
-      : [...base.messages, { id: turn.id, role: turn.role, text: turn.text, createdAt: Date.now() }]
+      ? base.messages.map((message) => (message.id === turn.id ? { ...message, text: turn.text, ...turnExtras(turn) } : message))
+      : [...base.messages, { id: turn.id, role: turn.role, text: turn.text, createdAt: Date.now(), ...turnExtras(turn) }]
     const updated = { ...base, messages, updatedAt: Date.now() }
     voiceChat.current = updated
     // Shown before it is stored, so the words stream onto the screen as they are spoken.
@@ -465,6 +465,7 @@ export function AgentPanel() {
           liveInstructions={[S3D_LIVE_INSTRUCTIONS, READ_CHAT_INSTRUCTIONS].join('\n\n')}
           onLiveTranscript={transcript.push}
           onLiveActive={onLiveActive}
+          onLiveTool={transcript.tool}
           streaming={generating}
           onStop={() => chat && stopAgent(chat.id)}
           placeholder={
