@@ -27,7 +27,7 @@ const steers = new Map<string, { id: string; text: string }[]>()
 const pendingTools = new Map<string, { resolve: (v: unknown) => void; reject: (e: Error) => void }>()
 const errorText = (e: unknown) => (e instanceof Error ? e.message : String(e))
 
-function modelFor(msg: Extract<ToWorker, { type: 'start' }>): LanguageModel {
+function modelFor(msg: { provider: 'openai' | 'google' | 'anthropic'; key: string; baseURL?: string; model: string }): LanguageModel {
   if (msg.provider === 'openai') return createOpenAI({ apiKey: msg.key, baseURL: msg.baseURL })(msg.model)
   // Anthropic refuses browser calls unless the request says it is deliberate; the key is the user's own, kept in their browser.
   if (msg.provider === 'anthropic')
@@ -187,16 +187,21 @@ async function runPass(msg: Extract<ToWorker, { type: 'start' }>) {
   )
   const model = modelFor(msg)
   // Dynamic tool selection: the same model picks the tools the request needs, once, before the first step.
+  const { model: selectorChoice, ...selectOptions } = msg.toolSelect ?? {}
   const selector = msg.toolSelect
     ? createToolSelector({
-        model,
+        model: selectorChoice ? modelFor(selectorChoice) : model,
+        // As little thinking as the provider allows: this is a short pick, and the first real step waits for it.
+        providerOptions: (selectorChoice ?? msg).provider === 'google' ? { google: { thinkingConfig: { thinkingLevel: 'minimal' } } } : undefined,
         catalog: catalogOf(msg.tools),
-        ...msg.toolSelect,
+        ...selectOptions,
         signal: controller.signal,
         onUsage: (u) => part({ type: 'spend', ...spendOf(u) }),
       })
     : undefined
   if (selector?.enabled) tools.request_tools = selector.requestTool
+  // Start choosing now, so it runs while the agent is set up instead of after.
+  selector?.prefetch(lastUserText(msg.messages))
   // After a compaction the history is ours, not the SDK's; `latest` tracks it so the main thread gets it back.
   let latest: ModelMessage[] | null = null
   let lastContext = 0

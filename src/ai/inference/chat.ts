@@ -11,7 +11,7 @@ import {
   disposeScratchpad,
   memoryPrompt,
 } from '@/ai/memory'
-import { AI_MODELS, thinkingSummary } from '@/ai/providers'
+import { AI_MODELS, languageModel, minimalThinking, thinkingSummary, toolSelectorChoice } from '@/ai/providers'
 import { warmForFiles } from '@/ai/sandbox/attachments'
 import { holdSandbox } from '@/ai/sandbox/client'
 import { SANDBOX_INSTRUCTIONS, createSandboxTools } from '@/ai/sandbox/tools'
@@ -142,14 +142,19 @@ export async function chatWithSensei(
   const forModel = async (turn: ChatTurn): Promise<ChatTurn> =>
     turn.role === 'user' ? { ...turn, content: withFileMentions(await applySkillCommand(turn.content), fileNames) } : turn
   // Dynamic tool selection: the chat model picks the tools the request needs before the first step.
+  // Choosing tools is a small job: the fast model, with as little thinking as the provider allows.
+  const picker = toolSelectorChoice()
   const selector = createToolSelector({
-    model: AI_MODELS.chatModel,
+    model: languageModel(picker.provider, picker.model, picker.key, picker.baseURL),
+    providerOptions: minimalThinking(picker.provider),
     catalog: catalogOf(tools),
     alwaysInclude: ['memory', 'scratchpad', 'askUser', 'use_skill', 'lookup_capability', ...(scope?.onProgress ? ['reportProgress'] : [])],
     max: 8,
     signal: abortSignal,
-    onUsage: (usage) => void recordSdkUsage({ provider, model }, usage),
+    onUsage: (usage) => void recordSdkUsage({ provider: picker.provider, model: picker.model }, usage),
   })
+  // Start choosing now, so it runs while the messages and files are prepared instead of after them.
+  selector.prefetch(messages.findLast((turn) => turn.role === 'user')?.content ?? '')
   const agent = new ToolLoopAgent({
     model: AI_MODELS.chatModel,
     instructions: SENSEI_SYSTEM_PROMPT,
@@ -157,13 +162,18 @@ export async function chatWithSensei(
     // Memory is read again before every step, so a fact saved or a scratchpad note written in one step is seen by the next.
     prepareStep: async ({ messages: stepMessages }) => {
       const steered = (await scope?.takeSteers?.()) ?? []
-      const activeTools = await selector.activeTools(
-        // The request as typed, not with a skill's whole instructions in front of it.
-        steered.length
-          ? steered.map((turn) => turn.content).join('\n')
-          : (messages.findLast((turn) => turn.role === 'user')?.content ?? lastUserText(stepMessages)),
-        steered.length > 0,
-      )
+      // Tool choice, memory and skills do not depend on each other, so they are read together, not one after another.
+      const [activeTools, memory, skills] = await Promise.all([
+        selector.activeTools(
+          // The request as typed, not with a skill's whole instructions in front of it.
+          steered.length
+            ? steered.map((turn) => turn.content).join('\n')
+            : (messages.findLast((turn) => turn.role === 'user')?.content ?? lastUserText(stepMessages)),
+          steered.length > 0,
+        ),
+        profile ? '' : memoryPrompt({ chatId: scope?.chatId, scratchpad }),
+        skillsPrompt(),
+      ])
       return {
         ...(activeTools && { activeTools: activeTools as never }),
         // Steering messages join the history here and stay in it for the steps after.
@@ -182,13 +192,13 @@ export async function chatWithSensei(
               SANDBOX_INSTRUCTIONS,
               FIRECRAWL_INSTRUCTIONS,
               SKILLS_INSTRUCTIONS,
-              await skillsPrompt(),
+              skills,
               profile.instructions,
             ]
           : [
               SENSEI_SYSTEM_PROMPT,
               currentTimePrompt(),
-              await memoryPrompt({ chatId: scope?.chatId, scratchpad }),
+              memory,
               MEMORY_INSTRUCTIONS,
               SCRATCHPAD_INSTRUCTIONS,
               PLAN_INSTRUCTIONS,
@@ -198,7 +208,7 @@ export async function chatWithSensei(
               FIRECRAWL_INSTRUCTIONS,
               EXPORT_INSTRUCTIONS,
               SKILLS_INSTRUCTIONS,
-              await skillsPrompt(),
+              skills,
             ]
         )
           .concat(scope?.onProgress ? [PROGRESS_INSTRUCTIONS] : [])

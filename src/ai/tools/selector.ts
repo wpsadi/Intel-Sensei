@@ -69,6 +69,8 @@ export function createToolSelector({
   const active = new Set(alwaysInclude.filter((n) => known.has(n)))
   let selected = false
   let failed = false
+  /** The first selection, once started. `prefetch` and the first step share it, so the model is asked only once. */
+  let first: Promise<string[] | null> | null = null
 
   /** Lets the model add tools the selector left out. It takes effect on the next step. */
   const requestTool: Tool = tool({
@@ -94,8 +96,10 @@ export function createToolSelector({
         model,
         abortSignal: signal,
         providerOptions: providerOptions as never,
-        system: `You pick which tools an AI agent needs for a request. Reply with a JSON array of tool names only, no prose. Pick every tool the request could need and no others, at most ${max}. When unsure whether a tool is needed, include it.`,
-        prompt: `Request:\n${request.slice(0, 4000)}\n\nTools:\n${rest.map((t) => `- ${t.name}: ${t.description}`).join('\n')}`,
+        // Keep this selector instruction in the user prompt. OpenAI's Responses adapter maps
+        // `system` to an input item with role `developer`; the selector must be a plain user
+        // request so providers receive no developer message here.
+        prompt: `You pick which tools an AI agent needs for a request. Reply with a JSON array of tool names only, no prose. Pick every tool the request could need and no others, at most ${max}. When unsure whether a tool is needed, include it.\n\nRequest:\n${request.slice(0, 4000)}\n\nTools:\n${rest.map((t) => `- ${t.name}: ${t.description}`).join('\n')}`,
       })
       onUsage?.(usage)
       const list = JSON.parse(text.match(/\[[\s\S]*\]/)?.[0] ?? '[]') as unknown
@@ -119,12 +123,26 @@ export function createToolSelector({
     async activeTools(request: string, extend = false): Promise<string[] | undefined> {
       if (!enabled || failed) return undefined
       if (!selected || extend) {
-        const picked = await pick(request)
+        // The first selection may already be running from `prefetch`; a steering message asks again.
+        const picked = await (selected ? pick(request) : (first ??= pick(request)))
         selected = true
-        if (!picked) failed = true
-        else for (const n of picked) active.add(n)
+        // A failed choice must not shrink the toolbox: this step, and every later one, gets all the tools.
+        if (!picked) {
+          failed = true
+          return undefined
+        }
+        for (const n of picked) active.add(n)
       }
       return [...active, REQUEST_TOOLS]
+    },
+    /**
+     * Starts the first selection now, so it runs while the caller prepares messages and files instead of after them.
+     * The first step picks up the same call. A failure or abort is left for that step to see.
+     */
+    prefetch(request: string) {
+      if (!enabled || selected || first) return
+      first = pick(request)
+      first.catch(() => {})
     },
   }
 }

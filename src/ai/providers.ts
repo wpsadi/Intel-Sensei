@@ -101,6 +101,12 @@ export interface ResolvedModel extends ModelChoice {
 }
 
 /**
+ * The model that chooses an agent's tools before its first step. That is a small job, so it is the fast title model when
+ * one is set, and the chat model otherwise. A slow, deep-thinking chat model here delays the first real step by seconds.
+ */
+export const toolSelectorChoice = (): ResolvedModel => (AI_MODELS.title.key ? AI_MODELS.title : AI_MODELS.chat)
+
+/**
  * The model chosen in Settings → AI models for each job, kept in localStorage. Everything that runs a model reads it
  * from here, so Ask Sensei, S-Note, S3D and S-Design all use the same ones.
  *

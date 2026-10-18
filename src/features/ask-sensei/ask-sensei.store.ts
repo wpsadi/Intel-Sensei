@@ -307,11 +307,12 @@ export const useAskSenseiStore = create<AskSenseiState>()((set, get) => {
       const userMessage: ChatMessage = { id: uid(), chatId: chat.id, role: 'user', content: text, attachments, createdAt: Date.now() }
       await addMessage(userMessage)
       void episodicMemory.append({ id: userMessage.id, chatId: chat.id, role: 'user', content: text })
-      await touchChat(chat.id)
       // The chat keeps the default title until Gemini has named it from the first message.
       if (isFirstMessage) void nameChat(chat.id).catch(() => {})
-      // The reply streams in the background, so the caller can open the chat straight away.
+      // The reply streams in the background, so the caller can open the chat straight away. It starts before the chat is
+      // moved to the top of the list: that is a write to storage the reply does not need.
       void streamReply(chat.id)
+      await touchChat(chat.id)
       return chat.id
     },
 

@@ -4,7 +4,7 @@ import { create } from 'zustand'
 
 import { generateChatTitle, generateFileTitle } from '@/ai/inference/title'
 import { MEMORY_INSTRUCTIONS, createMemoryTool, memoryPrompt, memoryScope } from '@/ai/memory'
-import { AI_MODELS, type Provider } from '@/ai/providers'
+import { AI_MODELS, type Provider, toolSelectorChoice } from '@/ai/providers'
 import { isModelMedia, warmForFiles } from '@/ai/sandbox/attachments'
 import { holdSandbox, sandboxUnavailable } from '@/ai/sandbox/client'
 import { type PendingMessage, demoteSteering, removePending, submitWhileBusy, takeNextPending, useSendQueue } from '@/ai/send-queue'
@@ -677,7 +677,7 @@ export async function runAgent(
             maxSteps: MAX_STEPS,
             tools,
             // ~110 tools: the model picks the ones the request needs and the rest stay out of every step.
-            toolSelect: { alwaysInclude: TOOLS_ALWAYS, max: 25 },
+            toolSelect: { model: toolSelectorChoice(), alwaysInclude: TOOLS_ALWAYS, max: 25 },
             messages,
             providerOptions: agentOptions(ai.provider, 'medium'),
             contextLimit: S3D_AGENT_CONTEXT_LIMIT,

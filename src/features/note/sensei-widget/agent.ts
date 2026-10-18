@@ -4,7 +4,7 @@ import { create } from 'zustand'
 import { generateChatTitle } from '@/ai/inference/title'
 import { FIRECRAWL_INSTRUCTIONS, createFirecrawlMcpTools } from '@/ai/mcp/firecrawl'
 import { MEMORY_INSTRUCTIONS, createMemoryTool, memoryPrompt, memoryScope } from '@/ai/memory'
-import { AI_MODELS, type ResolvedModel, thinkingSummary } from '@/ai/providers'
+import { AI_MODELS, type ResolvedModel, thinkingSummary, toolSelectorChoice } from '@/ai/providers'
 import { holdSandbox } from '@/ai/sandbox/client'
 import { SANDBOX_INSTRUCTIONS, createSandboxTools } from '@/ai/sandbox/tools'
 import { type PendingMessage, demoteSteering, removePending, submitWhileBusy, takeNextPending, useSendQueue } from '@/ai/send-queue'
@@ -403,6 +403,7 @@ async function runSensei({
       tools,
       // Notes, blocks, databases, files and web: the model picks the tools the request needs.
       toolSelect: {
+        model: toolSelectorChoice(),
         alwaysInclude: [
           'webSearch',
           'search_notes',

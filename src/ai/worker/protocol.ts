@@ -15,7 +15,13 @@ export type ToWorker =
       providerOptions?: Record<string, Record<string, unknown>>
       tools: Record<string, ToolSpec>
       /** Offer only the tools the model picks for the request (dynamic tool selection), instead of all of them. */
-      toolSelect?: { alwaysInclude?: string[]; max?: number; minTools?: number }
+      toolSelect?: {
+        alwaysInclude?: string[]
+        max?: number
+        minTools?: number
+        /** The model that makes the choice, when it is not the one the agent uses: a fast one is better for this small job. */
+        model?: { provider: 'openai' | 'google' | 'anthropic'; key: string; baseURL?: string; model: string }
+      }
       messages: ModelMessage[]
       /** Context window in tokens. When a step would come near it, older messages are summarized (compaction). */
       contextLimit?: number
