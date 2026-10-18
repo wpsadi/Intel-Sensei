@@ -4,7 +4,7 @@ import { describe, expect, it } from 'vitest'
 import { thinkingSummary } from '@/ai/providers'
 
 describe('OpenAI chat continuation', () => {
-  it('persists reasoning responses so tool-loop continuations can reference them', async () => {
+  it('does not store responses, and asks for encrypted reasoning so tool-loop continuations carry it themselves', async () => {
     let request: Record<string, unknown> = {}
     const provider = createOpenAI({
       apiKey: 'test-key',
@@ -28,8 +28,8 @@ describe('OpenAI chat continuation', () => {
       providerOptions: thinkingSummary('openai') as Parameters<typeof model.doGenerate>[0]['providerOptions'],
     })
     expect(request.reasoning).toBeUndefined()
-    expect(request.store).toBe(true)
-    expect(request.include).toBeUndefined()
+    expect(request.store).toBe(false)
+    expect(request.include).toContain('reasoning.encrypted_content')
     expect(request.input).toEqual([
       { role: 'user', content: [{ type: 'input_text', text: 'Continue' }] },
     ])
