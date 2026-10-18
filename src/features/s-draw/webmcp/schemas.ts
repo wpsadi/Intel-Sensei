@@ -1,5 +1,7 @@
 import { z } from 'zod'
 
+import { looseRecord } from '@/ai/utils/loose-record'
+
 const id = z.string().min(1).max(100)
 const revision = z.number().int().nonnegative().describe('Revision returned by get_document; reread after a human edit')
 const bounds = z.object({
@@ -137,7 +139,7 @@ export const schemas = {
     sheetId: id,
     expectedRevision: revision,
     updates: z
-      .array(z.object({ id, patch: z.record(z.string(), z.unknown()) }))
+      .array(z.object({ id, patch: looseRecord(z.unknown()) }))
       .min(1)
       .max(20),
   }),

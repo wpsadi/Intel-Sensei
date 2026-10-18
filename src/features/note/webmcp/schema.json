@@ -295,9 +295,7 @@
           "where": {
             "description": "Column name → text the cell must contain, e.g. {\"Status\":\"Done\"}",
             "type": "object",
-            "propertyNames": {
-              "type": "string"
-            },
+            "properties": {},
             "additionalProperties": {
               "type": "string"
             }
@@ -341,9 +339,7 @@
                 },
                 "values": {
                   "type": "object",
-                  "propertyNames": {
-                    "type": "string"
-                  },
+                  "properties": {},
                   "additionalProperties": {
                     "anyOf": [
                       {
@@ -551,7 +547,7 @@
                   "description": "Block kind as in the \"/\" menu"
                 },
                 "text": {
-                  "description": "Text of the block; note title for page/link-page; name for mentions; LaTeX for equations; Markdown for markdown",
+                  "description": "Text of the block; note title for page/link-page; name for mentions; LaTeX for equations; Markdown for markdown. In a plain text or heading block, Markdown with headings, lists, tables or several paragraphs is turned into real blocks",
                   "type": "string"
                 },
                 "items": {
@@ -574,9 +570,7 @@
                 "attrs": {
                   "description": "Block settings, e.g. {\"language\":\"ts\"}, {\"src\":url}, {\"url\":url}, {\"icon\":\"🔥\"}",
                   "type": "object",
-                  "propertyNames": {
-                    "type": "string"
-                  },
+                  "properties": {},
                   "additionalProperties": {}
                 }
               },
@@ -604,7 +598,7 @@
             "description": "Block address from list_blocks, e.g. \"3\" or \"3.1\" for the 2nd child of block 3"
           },
           "text": {
-            "description": "Text of the block; note title for page/link-page; name for mentions; LaTeX for equations; Markdown for markdown",
+            "description": "Text of the block; note title for page/link-page; name for mentions; LaTeX for equations; Markdown for markdown. In a plain text or heading block, Markdown with headings, lists, tables or several paragraphs is turned into real blocks",
             "type": "string"
           },
           "items": {
@@ -627,9 +621,7 @@
           "attrs": {
             "description": "Block settings, e.g. {\"language\":\"ts\"}, {\"src\":url}, {\"url\":url}, {\"icon\":\"🔥\"}",
             "type": "object",
-            "propertyNames": {
-              "type": "string"
-            },
+            "properties": {},
             "additionalProperties": {}
           },
           "convert_to": {

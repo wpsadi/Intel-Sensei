@@ -747,9 +747,7 @@
                 },
                 "patch": {
                   "type": "object",
-                  "propertyNames": {
-                    "type": "string"
-                  },
+                  "properties": {},
                   "additionalProperties": {}
                 }
               },

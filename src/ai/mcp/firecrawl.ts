@@ -5,6 +5,7 @@ import { tool } from 'ai'
 import { z } from 'zod'
 
 import { FIRECRAWL_KEY } from '@/ai/utils/firecrawl-key'
+import { looseRecord } from '@/ai/utils/loose-record'
 
 import {
   FIRECRAWL_KEY_URL,
@@ -125,7 +126,7 @@ export function createFirecrawlMcpTools() {
     firecrawl_mcp_call: tool({
       description:
         'Call an exact Firecrawl MCP tool discovered with firecrawl_mcp_tools. Match its listed input schema. Public web access is separate from the user’s logged-in browser. Narrow result limits to avoid truncation.',
-      inputSchema: z.object({ name: z.string().min(1).max(200), arguments: z.record(z.string(), z.unknown()) }),
+      inputSchema: z.object({ name: z.string().min(1).max(200), arguments: looseRecord(z.unknown()) }),
       execute: async ({ name, arguments: args }, { abortSignal }) => {
         const result = await callFirecrawlMcp(name, args, abortSignal)
         const text = JSON.stringify(result)

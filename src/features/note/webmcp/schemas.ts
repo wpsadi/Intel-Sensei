@@ -1,5 +1,7 @@
 import { z } from 'zod'
 
+import { looseRecord } from '@/ai/utils/loose-record'
+
 /* Zod is the single source of each tool's input: `inputSchema` is generated from it and `execute` parses with it. */
 
 const note = z.string().min(1).describe('Note title as the user said it, or its id from search_notes')
@@ -70,7 +72,7 @@ export const deleteNotesForever = z.object({
 
 export const queryDatabase = z.object({
   database: note.describe('Database title or id'),
-  where: z.record(z.string(), z.string()).optional().describe('Column name → text the cell must contain, e.g. {"Status":"Done"}'),
+  where: looseRecord(z.string()).optional().describe('Column name → text the cell must contain, e.g. {"Status":"Done"}'),
   page,
 })
 
@@ -80,7 +82,7 @@ export const updateDatabaseRows = z.object({
     .array(
       z.object({
         row: z.string().optional().describe('Existing row by name or id. Omit to add a new row'),
-        values: z.record(z.string(), cellValue).describe('Column name → value. Use "Name" for the row title'),
+        values: looseRecord(cellValue).describe('Column name → value. Use "Name" for the row title'),
       }),
     )
     .min(1)
@@ -184,8 +186,7 @@ const blockContent = {
     ),
   items: z.array(z.string()).optional().describe('List items ("[x] " prefix = checked), toggle lines, column texts or tab titles'),
   rows: z.array(z.array(z.string())).optional().describe('Table cells row by row; the first row is the header'),
-  attrs: z
-    .record(z.string(), z.unknown())
+  attrs: looseRecord(z.unknown())
     .optional()
     .describe('Block settings, e.g. {"language":"ts"}, {"src":url}, {"url":url}, {"icon":"🔥"}'),
 }

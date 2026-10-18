@@ -17,6 +17,11 @@ describe('S-Note live tools', () => {
     }
   })
 
+  it('sends no JSON Schema keyword OpenAI rejects (propertyNames) in any note tool', async () => {
+    const declared = await toolDeclarations(createNoteLiveTools())
+    for (const item of declared) expect(JSON.stringify(item.parametersJsonSchema), item.name).not.toContain('propertyNames')
+  })
+
   it('describes what is open and how to read it, without carrying any note content', () => {
     const map = noteScreenMap('Trip plan')
     expect(map).toContain('"Trip plan"')
