@@ -17,6 +17,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { AI_MODELS } from '@/ai/providers'
 import { warmForFiles } from '@/ai/sandbox/attachments'
 import { warmSandbox } from '@/ai/sandbox/client'
+import { READ_CHAT_INSTRUCTIONS, createReadChatTool, historyTail } from '@/ai/tools/read-chat'
 import senseiLogo from '@/assets/sensei.svg'
 import { ContextRing } from '@/components/context-ring'
 import { QueuedMessages } from '@/components/queued-messages'
@@ -36,7 +37,6 @@ import { UserBubble } from '@/components/user-bubble'
 import { S3D_AGENT_CONTEXT_LIMIT } from '@/constants/ai'
 import { ChatPlanCard, ChatTodoQueue } from '@/features/ask-sensei/components/chat-plan'
 import { ChatReasoning } from '@/features/ask-sensei/components/chat-reasoning'
-import { READ_CHAT_INSTRUCTIONS, createReadChatTool, historyTail } from '@/ai/tools/read-chat'
 import { LiveAurora } from '@/features/ask-sensei/components/live-aurora'
 import { useLiveChatScope, useLiveTranscript } from '@/features/ask-sensei/components/live-transcript'
 import { Markdown } from '@/features/ask-sensei/components/markdown'
@@ -51,8 +51,8 @@ import { ApprovalDock } from './approval-dock'
 import { QuestionsDock } from './ask-questions'
 import { useAsking } from './ask-questions-store'
 import { GoalBanner, VerificationCards } from './goal-ui'
-import { type AgentMode, MODES, clearApprovals, loadApprovals, useAgentMode, useApprovals } from './modes'
 import { S3D_LIVE_INSTRUCTIONS, createS3dLiveTools } from './live-tools'
+import { type AgentMode, MODES, clearApprovals, loadApprovals, useAgentMode, useApprovals } from './modes'
 import { compactChat, runAgent, stopAgent, useAgentRun } from './runner'
 import { WorkedFor, WorkingNow } from './worked-for'
 
@@ -218,23 +218,31 @@ export function AgentPanel() {
   const liveScope = useLiveChatScope(viewedId)
   // The chat the running call belongs to. A call started on a new chat makes one on its first words, and keeps it.
   const callChat = useRef<string | null>(null)
+  const voiceChat = useRef<AgentChat | null>(null)
   const transcript = useLiveTranscript(async (turn) => {
-    let id = callChat.current ?? viewedId
-    let base = id ? await chatsRepo.get(id) : undefined
+    let base = voiceChat.current
     if (!base) {
-      id ??= crypto.randomUUID()
-      base = { id, docId, title: turn.text.slice(0, 40) || 'Voice call', messages: [], updatedAt: Date.now() }
-      liveScope.adopt(id)
-      setViewed(id)
+      let id = callChat.current ?? viewedId
+      base = (id ? await chatsRepo.get(id) : undefined) ?? null
+      if (!base) {
+        id ??= crypto.randomUUID()
+        base = { id, docId, title: turn.text.slice(0, 40) || 'Voice call', messages: [], updatedAt: Date.now() }
+        liveScope.adopt(id)
+        setViewed(id)
+      }
     }
     callChat.current = base.id
     const known = base.messages.some((message) => message.id === turn.id)
     const messages = known
       ? base.messages.map((message) => (message.id === turn.id ? { ...message, text: turn.text } : message))
       : [...base.messages, { id: turn.id, role: turn.role, text: turn.text, createdAt: Date.now() }]
-    await chatsRepo.put({ ...base, messages, updatedAt: Date.now() })
-    // The chat list reloads on every save, which is how the new words reach the screen.
-    useAgentRun.setState((state) => ({ saved: state.saved + 1 }))
+    const updated = { ...base, messages, updatedAt: Date.now() }
+    voiceChat.current = updated
+    // Shown before it is stored, so the words stream onto the screen as they are spoken.
+    setChats((list) =>
+      list.some((item) => item.id === updated.id) ? list.map((item) => (item.id === updated.id ? updated : item)) : [...list, updated],
+    )
+    await chatsRepo.put(updated)
   })
   // The design is read with tools and this chat with readChat, when a question needs them; none of it is loaded up front.
   const liveTools = useMemo(
@@ -251,6 +259,7 @@ export function AgentPanel() {
   const onLiveActive = (active: boolean) => {
     if (active) return
     callChat.current = null
+    voiceChat.current = null
     liveScope.release()
     transcript.reset()
   }

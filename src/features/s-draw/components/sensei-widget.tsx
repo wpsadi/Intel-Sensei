@@ -1,8 +1,8 @@
 import { HistoryIcon, PlusIcon, TerminalIcon, Trash2Icon, XIcon } from 'lucide-react'
 import { type HTMLAttributes, useEffect, useMemo, useRef, useState } from 'react'
 
-import senseiLogo from '@/assets/sensei.svg'
 import { READ_CHAT_INSTRUCTIONS, createReadChatTool, historyTail } from '@/ai/tools/read-chat'
+import senseiLogo from '@/assets/sensei.svg'
 import { ContextRing } from '@/components/context-ring'
 import { QueuedMessages } from '@/components/queued-messages'
 import { TypingDots } from '@/components/typing-dots'
@@ -17,7 +17,15 @@ import { TerminalPanel } from '@/features/ask-sensei/terminal/terminal-panel'
 import { WidgetComposer } from '@/features/note/sensei-widget/WidgetComposer'
 import { skillSuggestions } from '@/features/skills/suggest'
 
-import { DRAW_CONTEXT_LIMIT, DRAW_LIVE_INSTRUCTIONS, disposeDrawSensei, drawSandboxSession, sendDrawSensei, stopDrawSensei, useDrawRuns } from '../agent/agent'
+import {
+  DRAW_CONTEXT_LIMIT,
+  DRAW_LIVE_INSTRUCTIONS,
+  disposeDrawSensei,
+  drawSandboxSession,
+  sendDrawSensei,
+  stopDrawSensei,
+  useDrawRuns,
+} from '../agent/agent'
 import { drawChats } from '../agent/chats'
 import { DEFAULT_DRAW_SKILLS } from '../agent/default-skills'
 import { createDrawSkillTools } from '../agent/skills'
@@ -127,23 +135,33 @@ export function SenseiWidget({ fileId, chatId, onChatChange, title = 'SDraw', co
   useEffect(() => {
     chatIdRef.current = chatId
   })
+  const voiceChat = useRef<IDrawChat | null>(null)
   const transcript = useLiveTranscript(async (turn) => {
-    let id = callChat.current ?? chatId
-    let base = id ? await drawChats.get(fileId, id) : undefined
+    let base = voiceChat.current
     if (!base) {
-      id ??= crypto.randomUUID()
-      base = { id, fileId, title: turn.text.slice(0, 40) || 'Voice call', messages: [], updatedAt: Date.now() }
-      liveScope.adopt(id)
-      onChatChange(id)
+      let id = callChat.current ?? chatId
+      base = (id ? await drawChats.get(fileId, id) : undefined) ?? null
+      if (!base) {
+        id ??= crypto.randomUUID()
+        base = { id, fileId, title: turn.text.slice(0, 40) || 'Voice call', messages: [], updatedAt: Date.now() }
+        liveScope.adopt(id)
+        onChatChange(id)
+      }
     }
     callChat.current = base.id
     const known = base.messages.some((message) => message.id === turn.id)
     const messages = known
       ? base.messages.map((message) => (message.id === turn.id ? { ...message, content: turn.text } : message))
       : [...base.messages, { id: turn.id, role: turn.role, content: turn.text }]
-    await drawChats.put({ ...base, messages, updatedAt: Date.now() })
-    // The chat list reloads on every save, which is how the new words reach the screen.
-    useDrawRuns.setState((state) => ({ ...state, saved: state.saved + 1 }))
+    const updated = { ...base, messages, updatedAt: Date.now() }
+    voiceChat.current = updated
+    // Shown before it is stored, so the words stream onto the screen as they are spoken. A finished text reply is
+    // kept in `recent` and wins over the saved list, so it is updated too.
+    setChats((list) =>
+      list.some((item) => item.id === updated.id) ? list.map((item) => (item.id === updated.id ? updated : item)) : [...list, updated],
+    )
+    useDrawRuns.setState((state) => (state.recent[updated.id] ? { ...state, recent: { ...state.recent, [updated.id]: updated } } : state))
+    await drawChats.put(updated)
   })
   // The drawing is read through the terminal's sdraw commands and this chat with readChat, when a question needs them.
   const liveTools = useMemo(
@@ -160,6 +178,7 @@ export function SenseiWidget({ fileId, chatId, onChatChange, title = 'SDraw', co
   const onLiveActive = (active: boolean) => {
     if (active) return
     callChat.current = null
+    voiceChat.current = null
     liveScope.release()
     transcript.reset()
   }

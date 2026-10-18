@@ -4,6 +4,7 @@ import { matchPath, useLocation, useNavigate } from 'react-router-dom'
 
 import { AI_MODELS } from '@/ai/providers'
 import { warmSandbox } from '@/ai/sandbox/client'
+import { READ_CHAT_INSTRUCTIONS, createReadChatTool, historyTail } from '@/ai/tools/read-chat'
 import senseiLogo from '@/assets/sensei.svg'
 import { ContextRing } from '@/components/context-ring'
 import { QueuedMessages } from '@/components/queued-messages'
@@ -20,7 +21,6 @@ import {
 } from '@/components/ui/dropdown-menu'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { UserBubble } from '@/components/user-bubble'
-import { READ_CHAT_INSTRUCTIONS, createReadChatTool, historyTail } from '@/ai/tools/read-chat'
 import { SNOTE_AGENT_CONTEXT_LIMIT } from '@/constants/ai'
 import { ChatReasoning } from '@/features/ask-sensei/components/chat-reasoning'
 import { ChatSearches } from '@/features/ask-sensei/components/chat-searches'
@@ -61,23 +61,31 @@ export function SenseiWidget() {
   const liveScope = useLiveChatScope(viewedId)
   // The chat the running call belongs to. A call started on a new chat makes one on its first words, and keeps it.
   const callChat = useRef<string | null>(null)
+  const voiceChat = useRef<WidgetChat | null>(null)
   const transcript = useLiveTranscript(async (turn) => {
-    let id = callChat.current ?? viewedId
-    let chat = id ? await widgetChatsRepo.get(id) : undefined
+    let chat = voiceChat.current
     if (!chat) {
-      id ??= crypto.randomUUID()
-      chat = { id, title: turn.text.slice(0, 40) || 'Voice call', messages: [], updatedAt: Date.now() }
-      liveScope.adopt(id)
-      useSenseiRuns.setState({ viewedId: id })
+      let id = callChat.current ?? viewedId
+      chat = (id ? await widgetChatsRepo.get(id) : undefined) ?? null
+      if (!chat) {
+        id ??= crypto.randomUUID()
+        chat = { id, title: turn.text.slice(0, 40) || 'Voice call', messages: [], updatedAt: Date.now() }
+        liveScope.adopt(id)
+        useSenseiRuns.setState({ viewedId: id })
+      }
     }
     callChat.current = chat.id
     const known = chat.messages.some((message) => message.id === turn.id)
     const messages = known
       ? chat.messages.map((message) => (message.id === turn.id ? { ...message, content: turn.text } : message))
       : [...chat.messages, { id: turn.id, role: turn.role, content: turn.text }]
-    await widgetChatsRepo.put({ ...chat, messages, updatedAt: Date.now() })
-    // The chat list reloads on every save, which is how the new words reach the screen.
-    useSenseiRuns.setState((state) => ({ saved: state.saved + 1 }))
+    const updated = { ...chat, messages, updatedAt: Date.now() }
+    voiceChat.current = updated
+    // Shown before it is stored, so the words stream onto the screen as they are spoken.
+    setChats((list) =>
+      list.some((item) => item.id === updated.id) ? list.map((item) => (item.id === updated.id ? updated : item)) : [...list, updated],
+    )
+    await widgetChatsRepo.put(updated)
   })
   // The call reads notes and this chat with tools when a question needs them; none of it is loaded up front.
   const liveTools = useMemo(
@@ -94,6 +102,7 @@ export function SenseiWidget() {
   const onLiveActive = (active: boolean) => {
     if (active) return
     callChat.current = null
+    voiceChat.current = null
     liveScope.release()
     transcript.reset()
   }
