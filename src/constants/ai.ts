@@ -34,11 +34,10 @@ export const TITLE_MODELS = {
 /** Reads Sensei's replies aloud. */
 export const TTS_MODEL = 'gemini-3.8-flash-tts'
 /**
- * The model for live voice calls. The extended-thinking variant reasons before it answers or calls a tool, which the base
- * `gemini-3.8-live` cannot do (it rejects `thinkingConfig`), and it sends its thinking so the chat can show it. Tasks that
- * need exact tool use, such as drawing, need that reasoning.
+ * The model for live voice calls. It does not think out loud: the extended-thinking variant
+ * (`gemini-3.8-live-extended-thinking`) does, but this one rejects `thinkingConfig`, so none is sent to it.
  */
-export const LIVE_MODEL = 'gemini-3.8-live-extended-thinking'
+export const LIVE_MODEL = 'gemini-3.8-live'
 /**
  * The default model of each provider for a job. Settings → AI models lists every compatible model from models.dev and
  * starts on these; they are also the list when models.dev cannot be reached. A provider missing from a job cannot do it
