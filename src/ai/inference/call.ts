@@ -7,13 +7,31 @@ import {
   type Session,
   ThinkingLevel,
 } from '@google/genai'
-import type { Tool } from 'ai'
-import { z } from 'zod'
+import { type Tool, asSchema } from 'ai'
 
 import type { AgentProgress } from '@/ai/tools/progress'
 import { currentTimePrompt } from '@/ai/utils/current-time'
 import { GEMINI_KEY } from '@/ai/utils/gemini-key'
 import { LIVE_MODEL } from '@/constants/ai'
+
+/**
+ * Each tool's own description and input schema become the Live API's function declaration. `asSchema` takes zod and
+ * plain JSON Schema alike, so tools written either way work in a call.
+ */
+export async function toolDeclarations(tools: Record<string, Tool> = {}, nonBlocking: string[] = []) {
+  return Promise.all(
+    Object.entries(tools).map(async ([name, item]) => {
+      const { $schema: _schema, ...parametersJsonSchema } = (await asSchema(item.inputSchema).jsonSchema) as Record<string, unknown>
+      return {
+        name,
+        description: typeof item.description === 'string' ? item.description : undefined,
+        parametersJsonSchema,
+        // A non-blocking tool runs in the background while the model keeps talking.
+        ...(nonBlocking.includes(name) && { behavior: Behavior.NON_BLOCKING }),
+      }
+    }),
+  )
+}
 
 /** Gemini Live takes 16 kHz mono PCM in and sends 24 kHz mono PCM back. */
 const INPUT_RATE = 16000
@@ -133,6 +151,8 @@ export class LiveCall {
     this.voiceOut.connect(this.voiceAnalyser)
     this.voiceAnalyser.connect(this.outputContext.destination)
 
+    const declarations = await toolDeclarations(this.options.tools, this.options.nonBlocking)
+
     const ai = new GoogleGenAI({ apiKey: key })
     this.session = await ai.live.connect({
       model: LIVE_MODEL,
@@ -161,17 +181,7 @@ export class LiveCall {
                 parametersJsonSchema: { type: 'object', properties: {} },
                 behavior: Behavior.BLOCKING,
               },
-              // Each tool's own description and zod input schema become the Live API's function declaration.
-              ...Object.entries(this.options.tools ?? {}).map(([name, item]) => {
-                const { $schema: _schema, ...parametersJsonSchema } = z.toJSONSchema(item.inputSchema as z.ZodType)
-                return {
-                  name,
-                  description: typeof item.description === 'string' ? item.description : undefined,
-                  parametersJsonSchema,
-                  // A non-blocking tool runs in the background while the model keeps talking.
-                  ...(this.options.nonBlocking?.includes(name) && { behavior: Behavior.NON_BLOCKING }),
-                }
-              }),
+              ...declarations,
             ],
           },
         ],

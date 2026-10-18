@@ -1,4 +1,5 @@
-import { X } from 'lucide-react'
+import { AudioLines, Mic, MicOff, PhoneOff, X } from 'lucide-react'
+import type { Tool } from 'ai'
 import { type KeyboardEvent, type ReactNode, useEffect, useRef, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
 
@@ -16,7 +17,8 @@ import { type ComposerSuggestion, triggerAt } from '@/components/assistant-ui/el
 import { mono } from '@/components/assistant-ui/elements/surfaces'
 import { Button } from '@/components/ui/button'
 import { ScrollArea } from '@/components/ui/scroll-area'
-import { DedicatedLiveCall } from '@/features/ask-sensei/components/dedicated-live-call'
+import { useDedicatedLiveCall } from '@/features/ask-sensei/components/dedicated-live-call'
+import { useLiveAuroraDrive } from '@/features/ask-sensei/components/live-aurora'
 import { formatElapsed, useVoiceNote } from '@/features/ask-sensei/components/use-voice-note'
 import { skillSuggestions } from '@/features/skills/suggest'
 import { useInputHistory } from '@/hooks/use-input-history'
@@ -44,6 +46,9 @@ export function WidgetComposer({
   liveSession,
   liveHistory,
   onLiveTranscript,
+  liveTools,
+  liveInstructions,
+  onLiveActive,
 }: {
   onSend: (text: string) => void
   streaming: boolean
@@ -63,7 +68,12 @@ export function WidgetComposer({
   liveScope?: string | null
   liveSession?: string
   liveHistory?: string
-  onLiveTranscript?: (role: 'user' | 'assistant' | 'thought', text: string) => void
+  /** Receives what is said in the call. `whole` marks a complete message, such as typed text. */
+  onLiveTranscript?: (role: 'user' | 'assistant' | 'thought', text: string, whole?: boolean) => void
+  liveTools?: Record<string, Tool>
+  liveInstructions?: string
+  /** Tells the widget when a call starts or ends. */
+  onLiveActive?: (active: boolean) => void
 }) {
   const [draft, setDraft] = useState('')
   const [caret, setCaret] = useState(0)
@@ -81,6 +91,15 @@ export function WidgetComposer({
     })
   const { mode, seconds, levels, startVoice, finishVoice, cancelVoice } = useVoiceNote(draft, setDraft)
   const inputRef = useRef<HTMLTextAreaElement>(null)
+  const live = useDedicatedLiveCall(liveScope ?? null, liveSession, liveHistory, onLiveTranscript, liveTools, liveInstructions)
+  const inCall = live.state !== 'idle'
+  // The panel around this composer glows while the call runs, and follows Sensei's voice.
+  useLiveAuroraDrive(inCall, live.level)
+  useEffect(() => {
+    onLiveActive?.(inCall)
+    // The host's handler changes every render; the call starting or ending is the event.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [inCall])
 
   useEffect(() => {
     if (autoFocus && mode === 'text') inputRef.current?.focus()
@@ -88,6 +107,14 @@ export function WidgetComposer({
 
   const send = () => {
     const text = draft.trim()
+    if (inCall) {
+      // During a call, typing talks to the call instead of starting a text reply.
+      if (!text || live.state !== 'live') return
+      live.sendText(text)
+      setDraft('')
+      recall.reset()
+      return
+    }
     if (!text || disabled) return
     onSend(text)
     setDraft('')
@@ -179,6 +206,57 @@ export function WidgetComposer({
   }
 
   const hasText = draft.trim().length > 0
+
+  if (inCall) {
+    return (
+      <Composer className="max-w-none">
+        <ComposerBar>
+          <textarea
+            ref={inputRef}
+            rows={1}
+            value={draft}
+            onChange={(event) => {
+              setDraft(event.target.value)
+              recall.reset()
+            }}
+            onKeyDown={(event) => {
+              if (event.nativeEvent.isComposing || recall.onKeyDown(event)) return
+              if (event.key === 'Enter' && !event.shiftKey) {
+                event.preventDefault()
+                send()
+              }
+            }}
+            placeholder={live.state === 'connecting' ? 'Connecting…' : 'Talk, or type to Sensei'}
+            aria-label="Type during the call"
+            className="field-sizing-content max-h-36 min-h-11 w-full resize-none bg-transparent px-3 pt-2.5 text-sm outline-none placeholder:text-muted-foreground"
+          />
+          <ComposerToolbar className="h-9 justify-end">
+            {toolbarStart}
+            <ComposerActions>
+              <Button
+                variant={live.muted ? 'secondary' : 'ghost'}
+                size="icon-sm"
+                className="rounded-full"
+                aria-label={live.muted ? 'Unmute microphone' : 'Mute microphone'}
+                aria-pressed={live.muted}
+                disabled={live.state !== 'live'}
+                onClick={live.toggleMute}
+              >
+                {live.muted ? <MicOff /> : <Mic />}
+              </Button>
+              <Button variant="destructive" size="icon-sm" className="rounded-full" aria-label="End call" onClick={live.end}>
+                <PhoneOff />
+              </Button>
+            </ComposerActions>
+          </ComposerToolbar>
+        </ComposerBar>
+      </Composer>
+    )
+  }
+
+  // A widget without a live scope has no call to start, so its send button stays on its own.
+  const canCall = !!liveScope
+  const sending = hasText || streaming
   return (
     <div className="relative">
       {open && (
@@ -237,15 +315,32 @@ export function WidgetComposer({
           />
           <ComposerToolbar className="h-9 justify-end">
             {toolbarStart}
-            <DedicatedLiveCall scope={liveScope ?? null} session={liveSession} history={liveHistory} onTranscript={onLiveTranscript} />
             <ComposerActions>
               <ComposerVoiceButton active={false} aria-label="Start voice input" onClick={() => void startVoice()} />
-              <ComposerSend
-                streaming={streaming && !hasText}
-                idle={!hasText && !streaming}
-                onClick={streaming && !hasText ? onStop : send}
-                disabled={(!hasText || !!disabled) && !streaming}
-              />
+              {/* Call and send share one box; only visibility changes, so the voice button never shifts. */}
+              <div className="relative size-8">
+                {canCall && (
+                  <Button
+                    variant="secondary"
+                    size="icon-sm"
+                    className={cn('absolute inset-0 rounded-full', sending && 'invisible')}
+                    aria-label="Start live call"
+                    title="Start Gemini Live call"
+                    onClick={() => void live.start()}
+                    tabIndex={sending ? -1 : undefined}
+                  >
+                    <AudioLines />
+                  </Button>
+                )}
+                <ComposerSend
+                  className={cn('absolute inset-0', canCall && !sending && 'invisible')}
+                  streaming={streaming && !hasText}
+                  idle={!canCall && !hasText && !streaming}
+                  onClick={streaming && !hasText ? onStop : send}
+                  disabled={(!hasText || !!disabled) && !streaming}
+                  tabIndex={canCall && !sending ? -1 : undefined}
+                />
+              </div>
             </ComposerActions>
           </ComposerToolbar>
         </ComposerBar>

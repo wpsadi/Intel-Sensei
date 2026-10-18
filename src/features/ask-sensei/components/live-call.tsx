@@ -18,6 +18,7 @@ import { SKILLS_INSTRUCTIONS, createSkillTools, skillsPrompt } from '@/ai/skills
 import { DEEP_ANSWER_INSTRUCTIONS, createDeepAnswerTool } from '@/ai/tools/deep-answer'
 import { GENERAL_INSTRUCTIONS, createGeneralTools } from '@/ai/tools/general'
 import { PLAN_INSTRUCTIONS, createPlanTools } from '@/ai/tools/plan'
+import { READ_CHAT_INSTRUCTIONS, createReadChatTool, historyTail, snapshotOf } from '@/ai/tools/read-chat'
 import { createSearchTool, upsertSearch } from '@/ai/tools/search'
 import { TODO_INSTRUCTIONS, createTodoTools } from '@/ai/tools/todo'
 import { currentTodos, messageText } from '@/ai/utils/messages'
@@ -187,11 +188,10 @@ export function useLiveCall(chatId: string | null, onChatOpened: (id: string) =>
     if (chat !== chatId) onChatOpened(chat)
     chatRef.current = chat
     turnRef.current = null
-    const history = (useAskSenseiStore.getState().messages[chat] ?? [])
-      .map((message) => ({ role: message.role, text: messageText(message) }))
-      .filter((turn) => turn.text)
-      .map((turn) => `${turn.role === 'user' ? 'User' : 'Sensei'}: ${turn.text}`)
-      .join('\n')
+    // Only the last few turns go in up front; the model reads anything older, in full, with readChat when asked about it.
+    const history = historyTail(
+      (useAskSenseiStore.getState().messages[chat] ?? []).map((message) => ({ role: message.role, text: messageText(message) })),
+    )
 
     const pad = createScratchpad(chat, uid())
     padRef.current = pad
@@ -226,6 +226,9 @@ export function useLiveCall(chatId: string | null, onChatOpened: (id: string) =>
                 ? [...turn.parts.slice(0, -1), { type: 'searches', searches: upsertSearch(last.searches, search) }]
                 : [...turn.parts, { type: 'searches', searches: [search] }]
           }),
+        ),
+        readChat: createReadChatTool(() =>
+          snapshotOf((useAskSenseiStore.getState().messages[chat] ?? []).map((message) => ({ ...message, content: messageText(message) }))),
         ),
         memory: createMemoryTool({ chatId: chat }),
         scratchpad: createScratchpadTool(pad),
@@ -281,6 +284,7 @@ export function useLiveCall(chatId: string | null, onChatOpened: (id: string) =>
         PLAN_INSTRUCTIONS,
         TODO_INSTRUCTIONS,
         DEEP_ANSWER_INSTRUCTIONS,
+        READ_CHAT_INSTRUCTIONS,
       ]
         .filter(Boolean)
         .join('\n\n'),

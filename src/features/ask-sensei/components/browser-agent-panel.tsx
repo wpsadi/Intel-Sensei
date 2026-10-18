@@ -11,6 +11,10 @@ import { Bubble, Message, MessageContent } from '@/components/ui/chat'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { useAskSenseiStore } from '@/features/ask-sensei/ask-sensei.store'
 import { ChatReasoning } from '@/features/ask-sensei/components/chat-reasoning'
+import { createDeepAnswerTool } from '@/ai/tools/deep-answer'
+import { READ_CHAT_INSTRUCTIONS, createReadChatTool, historyTail, snapshotOf } from '@/ai/tools/read-chat'
+import { LiveAurora } from '@/features/ask-sensei/components/live-aurora'
+import { useLiveChatScope, useLiveTranscript } from '@/features/ask-sensei/components/live-transcript'
 import { Markdown } from '@/features/ask-sensei/components/markdown'
 import { WidgetComposer } from '@/features/note/sensei-widget/WidgetComposer'
 import { WorkedFor } from '@/features/s-3d/agent/worked-for'
@@ -27,7 +31,6 @@ export function BrowserAgentPanel({ page, profile }: { page: string | null; prof
   const [searchParams, setSearchParams] = useSearchParams()
   const chatId = searchParams.get('chatId')
   const endRef = React.useRef<HTMLDivElement>(null)
-  const liveIds = React.useRef({ user: '', assistant: '' })
   const messages = chatId ? (messagesByChat[chatId] ?? []) : []
   const streamingId = chatId ? streamingByChat[chatId] : undefined
   const streaming = !!streamingId
@@ -56,19 +59,61 @@ export function BrowserAgentPanel({ page, profile }: { page: string | null; prof
     const id = await sendMessage(chatId, text, undefined, profile)
     if (id) selectChat(id)
   }
-  const onLiveTranscript = React.useCallback(
-    (role: 'user' | 'assistant' | 'thought', text: string) => {
-      if (!chatId || role === 'thought') return
-      const messageId = liveIds.current[role] || crypto.randomUUID()
-      liveIds.current[role] = messageId
-      const current = useAskSenseiStore.getState().messages[chatId]?.find((message) => message.id === messageId)?.content ?? ''
-      void useAskSenseiStore.getState().saveCallMessage(chatId, messageId, role, current + text)
-    },
-    [chatId],
-  )
+  const liveScope = useLiveChatScope(chatId)
+  // The chat the running call belongs to. A call started with no chat makes one on its first words, and keeps it.
+  const callChat = React.useRef<string | null>(null)
+  const chatIdRef = React.useRef(chatId)
+  chatIdRef.current = chatId
+  const activeChat = () => callChat.current ?? chatIdRef.current
+  const transcript = useLiveTranscript(async (turn) => {
+    const store = useAskSenseiStore.getState()
+    let id = activeChat()
+    if (!id) {
+      id = (await store.createChat()).id
+      liveScope.adopt(id)
+      selectChat(id)
+    }
+    callChat.current = id
+    await store.saveCallMessage(id, turn.id, turn.role, turn.text)
+  })
+  const onLiveActive = (active: boolean) => {
+    if (active) return
+    callChat.current = null
+    liveScope.release()
+    transcript.reset()
+  }
+  const liveTools = React.useMemo(() => {
+    if (!profile?.tools) return profile?.tools
+    return {
+      ...profile.tools,
+      // The call starts with only the last few turns; this reads the rest, in full, when asked about it.
+      readChat: createReadChatTool(() => snapshotOf(useAskSenseiStore.getState().messages[activeChat() ?? ''] ?? [])),
+      ...(chatId && {
+        deepAnswer: createDeepAnswerTool({
+          chatId,
+          history: () =>
+            (useAskSenseiStore.getState().messages[chatId] ?? [])
+              .map((message) => ({ role: message.role, content: message.content }))
+              .filter((message) => message.content),
+          onAnswer: (id, text) => void useAskSenseiStore.getState().saveCallMessage(chatId, id, 'assistant', text),
+        }),
+      }),
+    }
+    // `activeChat` only reads refs, so it never goes stale.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [chatId, profile?.tools])
+  // A map, not the page: what is open and how to read it. The page itself is read with the tools only when a question needs it.
+  const liveInstructions = [
+    profile?.instructions,
+    page &&
+      `The user is browsing ${page}. The browser tools read and operate that page. You cannot see it up front: before you say what is on it, or act on it, read it with the browser tools. A question that has nothing to do with the page needs no tools.`,
+    READ_CHAT_INSTRUCTIONS,
+  ]
+    .filter(Boolean)
+    .join('\n\n')
 
   return (
-    <section className="flex h-full min-h-0 flex-col text-sm">
+    <LiveAurora as="section" className="flex h-full min-h-0 flex-col text-sm">
       <header className="flex shrink-0 items-center gap-2 border-b px-3 py-2">
         <div className="flex size-7 items-center justify-center rounded-full bg-primary/10">
           <img src={senseiLogo} alt="" className="size-5 brightness-0 dark:invert" />
@@ -156,12 +201,15 @@ export function BrowserAgentPanel({ page, profile }: { page: string | null; prof
           placeholder="Ask Sensei about this page…"
           chatId={chatId}
           history={messages.filter((message) => message.role === 'user').map((message) => message.content)}
-          liveScope={`${page ?? 'browser'}:${chatId ?? 'new'}`}
+          liveScope={`${page ?? 'browser'}:${liveScope.chat}`}
           liveSession={`browser-${chatId ?? 'widget'}`}
-          liveHistory={messages.map((message) => `${message.role === 'user' ? 'User' : 'Sensei'}: ${message.content}`).join('\n')}
-          onLiveTranscript={onLiveTranscript}
+          liveHistory={historyTail(snapshotOf(messages))}
+          onLiveTranscript={transcript.push}
+          onLiveActive={onLiveActive}
+          liveTools={liveTools}
+          liveInstructions={liveInstructions}
         />
       </div>
-    </section>
+    </LiveAurora>
   )
 }

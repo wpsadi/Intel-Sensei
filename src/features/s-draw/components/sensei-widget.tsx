@@ -1,7 +1,8 @@
 import { HistoryIcon, PlusIcon, TerminalIcon, Trash2Icon, XIcon } from 'lucide-react'
-import { type HTMLAttributes, useEffect, useRef, useState } from 'react'
+import { type HTMLAttributes, useEffect, useMemo, useRef, useState } from 'react'
 
 import senseiLogo from '@/assets/sensei.svg'
+import { READ_CHAT_INSTRUCTIONS, createReadChatTool, historyTail } from '@/ai/tools/read-chat'
 import { ContextRing } from '@/components/context-ring'
 import { QueuedMessages } from '@/components/queued-messages'
 import { TypingDots } from '@/components/typing-dots'
@@ -9,14 +10,17 @@ import { Button } from '@/components/ui/button'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { UserBubble } from '@/components/user-bubble'
 import { ChatReasoning } from '@/features/ask-sensei/components/chat-reasoning'
+import { LiveAurora } from '@/features/ask-sensei/components/live-aurora'
+import { useLiveChatScope, useLiveTranscript } from '@/features/ask-sensei/components/live-transcript'
 import { Markdown } from '@/features/ask-sensei/components/markdown'
 import { TerminalPanel } from '@/features/ask-sensei/terminal/terminal-panel'
 import { WidgetComposer } from '@/features/note/sensei-widget/WidgetComposer'
 import { skillSuggestions } from '@/features/skills/suggest'
 
-import { DRAW_CONTEXT_LIMIT, disposeDrawSensei, drawSandboxSession, sendDrawSensei, stopDrawSensei, useDrawRuns } from '../agent/agent'
+import { DRAW_CONTEXT_LIMIT, DRAW_LIVE_INSTRUCTIONS, disposeDrawSensei, drawSandboxSession, sendDrawSensei, stopDrawSensei, useDrawRuns } from '../agent/agent'
 import { drawChats } from '../agent/chats'
 import { DEFAULT_DRAW_SKILLS } from '../agent/default-skills'
+import { createDrawSkillTools } from '../agent/skills'
 import { DRAW_WEBMCP_HELP, hasDrawWebMCP } from '../agent/webmcp'
 import { useDrawStore } from '../s-draw.store'
 import type { IDrawChat } from '../s-draw.types'
@@ -116,36 +120,48 @@ export function SenseiWidget({ fileId, chatId, onChatChange, title = 'SDraw', co
   const missingChat = !!chatId && historyLoaded && !chat
   const busy = !!chat && !!live[chat.id]
   const messages = chat?.messages ?? []
-  const liveTranscript = useRef<{ role: 'user' | 'assistant' | null; id: string }>({ role: null, id: '' })
-  const voiceChatId = useRef<string | null>(chatId)
-  const voiceChat = useRef<IDrawChat | null>(chat)
+  const liveScope = useLiveChatScope(chatId)
+  // The chat the running call belongs to. A call started on a new chat makes one on its first words, and keeps it.
+  const callChat = useRef<string | null>(null)
+  const chatIdRef = useRef(chatId)
   useEffect(() => {
-    liveTranscript.current = { role: null, id: '' }
-    voiceChatId.current = chatId
-    voiceChat.current = chat
-  }, [chatId])
-  const onLiveTranscript = (role: 'user' | 'assistant' | 'thought', text: string) => {
-    if (role === 'thought') return
-    const idForTranscript = voiceChatId.current ?? crypto.randomUUID()
-    if (!voiceChatId.current) {
-      voiceChatId.current = idForTranscript
-      onChatChange(idForTranscript)
+    chatIdRef.current = chatId
+  })
+  const transcript = useLiveTranscript(async (turn) => {
+    let id = callChat.current ?? chatId
+    let base = id ? await drawChats.get(fileId, id) : undefined
+    if (!base) {
+      id ??= crypto.randomUUID()
+      base = { id, fileId, title: turn.text.slice(0, 40) || 'Voice call', messages: [], updatedAt: Date.now() }
+      liveScope.adopt(id)
+      onChatChange(id)
     }
-    if (liveTranscript.current.role !== role) liveTranscript.current = { role, id: crypto.randomUUID() }
-    const id = liveTranscript.current.id
-    const apply = (saved: IDrawChat | undefined) => {
-      const base = voiceChat.current ?? saved ?? { id: idForTranscript, fileId, title: 'Voice call', messages: [], updatedAt: Date.now() }
-      const existing = base.messages.find((message) => message.id === id)
-      const next = existing
-        ? base.messages.map((message) => (message.id === id ? { ...message, content: `${message.content}${text}` } : message))
-        : [...base.messages, { id, role, content: text }]
-      const updated = { ...base, messages: next, updatedAt: Date.now() }
-      voiceChat.current = updated
-      void drawChats.put(updated)
-      useDrawRuns.setState((state) => ({ ...state, saved: state.saved + 1 }))
-    }
-    if (voiceChat.current) apply(voiceChat.current)
-    else void drawChats.get(fileId, idForTranscript).then(apply)
+    callChat.current = base.id
+    const known = base.messages.some((message) => message.id === turn.id)
+    const messages = known
+      ? base.messages.map((message) => (message.id === turn.id ? { ...message, content: turn.text } : message))
+      : [...base.messages, { id: turn.id, role: turn.role, content: turn.text }]
+    await drawChats.put({ ...base, messages, updatedAt: Date.now() })
+    // The chat list reloads on every save, which is how the new words reach the screen.
+    useDrawRuns.setState((state) => ({ ...state, saved: state.saved + 1 }))
+  })
+  // The drawing is read through the terminal's sdraw commands and this chat with readChat, when a question needs them.
+  const liveTools = useMemo(
+    () => ({
+      ...createDrawSkillTools(),
+      readChat: createReadChatTool(async () => {
+        const id = callChat.current ?? chatIdRef.current
+        const saved = id ? await drawChats.get(fileId, id) : undefined
+        return (saved?.messages ?? []).map((message) => ({ role: message.role, text: message.content }))
+      }),
+    }),
+    [fileId],
+  )
+  const onLiveActive = (active: boolean) => {
+    if (active) return
+    callChat.current = null
+    liveScope.release()
+    transcript.reset()
   }
   const supported = hasDrawWebMCP()
   const send = (text: string) => {
@@ -205,7 +221,8 @@ export function SenseiWidget({ fileId, chatId, onChatChange, title = 'SDraw', co
       )}
       <div className="fixed right-4 bottom-4 z-50 flex flex-col items-end gap-3">
         {open && (
-          <section
+          <LiveAurora
+            as="section"
             aria-label="SDraw Sensei"
             className="flex h-[min(600px,calc(100svh-6rem))] w-[min(400px,calc(100vw-2rem))] flex-col overflow-hidden rounded-2xl border bg-background shadow-2xl"
           >
@@ -361,10 +378,13 @@ export function SenseiWidget({ fileId, chatId, onChatChange, title = 'SDraw', co
                 disabled={!supported || (!!chatId && !chat)}
                 onStop={() => chat && stopDrawSensei(chat.id)}
                 autoFocus
-                liveScope={`${fileId}:${chatId ?? 'new'}`}
+                liveScope={`${fileId}:${liveScope.chat}`}
                 liveSession={drawSandboxSession(fileId)}
-                liveHistory={messages.map((message) => `${message.role === 'user' ? 'User' : 'Sensei'}: ${message.content}`).join('\n')}
-                onLiveTranscript={onLiveTranscript}
+                liveHistory={historyTail(messages.map((message) => ({ role: message.role, text: message.content })))}
+                liveTools={liveTools}
+                liveInstructions={[DRAW_LIVE_INSTRUCTIONS, READ_CHAT_INSTRUCTIONS].join('\n\n')}
+                onLiveTranscript={transcript.push}
+                onLiveActive={onLiveActive}
                 toolbarStart={
                   <ContextRing
                     used={
@@ -375,7 +395,7 @@ export function SenseiWidget({ fileId, chatId, onChatChange, title = 'SDraw', co
                 }
               />
             </div>
-          </section>
+          </LiveAurora>
         )}
         <button
           type="button"

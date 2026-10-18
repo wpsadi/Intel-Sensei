@@ -1,5 +1,5 @@
 import { HistoryIcon, PlusIcon, Trash2Icon, XIcon } from 'lucide-react'
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { matchPath, useLocation, useNavigate } from 'react-router-dom'
 
 import { AI_MODELS } from '@/ai/providers'
@@ -20,16 +20,19 @@ import {
 } from '@/components/ui/dropdown-menu'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { UserBubble } from '@/components/user-bubble'
+import { READ_CHAT_INSTRUCTIONS, createReadChatTool, historyTail } from '@/ai/tools/read-chat'
 import { SNOTE_AGENT_CONTEXT_LIMIT } from '@/constants/ai'
 import { ChatReasoning } from '@/features/ask-sensei/components/chat-reasoning'
 import { ChatSearches } from '@/features/ask-sensei/components/chat-searches'
+import { LiveAurora } from '@/features/ask-sensei/components/live-aurora'
+import { useLiveChatScope, useLiveTranscript } from '@/features/ask-sensei/components/live-transcript'
 import { Markdown } from '@/features/ask-sensei/components/markdown'
 
 import { widgetChatsRepo } from '../db/repo'
 import type { WidgetChat } from '../db/types'
 import { pageTitle } from '../editor/nodes/page-utils'
 import { useNoteStore } from '../note.store'
-import { compactSenseiChat, sendSensei, setNoteContext, stopSensei, useSenseiRuns } from './agent'
+import { compactSenseiChat, createNoteLiveTools, noteScreenMap, sendSensei, setNoteContext, stopSensei, useSenseiRuns } from './agent'
 import { WidgetComposer } from './WidgetComposer'
 
 const SUGGESTIONS = ['Summarize this note', 'How many blocks are on this page?', 'Add a to-do list of next steps']
@@ -55,28 +58,44 @@ export function SenseiWidget() {
   const endRef = useRef<HTMLDivElement>(null)
   const chat = (viewedId && live[viewedId]) || (chats.find((c) => c.id === viewedId) ?? null)
   const messages = chat?.messages ?? []
-  const liveTranscript = useRef<{ role: 'user' | 'assistant' | null; id: string }>({ role: null, id: '' })
-  useEffect(() => {
-    liveTranscript.current = { role: null, id: '' }
-  }, [viewedId])
-  const onLiveTranscript = (role: 'user' | 'assistant' | 'thought', text: string) => {
-    if (!viewedId || role === 'thought') return
-    const messageRole = role
-    if (liveTranscript.current.role !== messageRole) liveTranscript.current = { role: messageRole, id: crypto.randomUUID() }
-    const id = liveTranscript.current.id
-    void widgetChatsRepo.get(viewedId).then((saved) => {
-      if (!saved) return
-      const existing = saved.messages.find((message) => message.id === id)
-      const next = existing
-        ? saved.messages.map((message) => (message.id === id ? { ...message, content: `${message.content}${text}` } : message))
-        : [...saved.messages, { id, role: messageRole, content: text }]
-      const updated = { ...saved, messages: next, updatedAt: Date.now() }
-      void widgetChatsRepo.put(updated)
-      useSenseiRuns.setState((state) => {
-        const liveChat = state.live[viewedId]
-        return liveChat ? { live: { ...state.live, [viewedId]: updated }, saved: state.saved + 1 } : state
-      })
-    })
+  const liveScope = useLiveChatScope(viewedId)
+  // The chat the running call belongs to. A call started on a new chat makes one on its first words, and keeps it.
+  const callChat = useRef<string | null>(null)
+  const transcript = useLiveTranscript(async (turn) => {
+    let id = callChat.current ?? viewedId
+    let chat = id ? await widgetChatsRepo.get(id) : undefined
+    if (!chat) {
+      id ??= crypto.randomUUID()
+      chat = { id, title: turn.text.slice(0, 40) || 'Voice call', messages: [], updatedAt: Date.now() }
+      liveScope.adopt(id)
+      useSenseiRuns.setState({ viewedId: id })
+    }
+    callChat.current = chat.id
+    const known = chat.messages.some((message) => message.id === turn.id)
+    const messages = known
+      ? chat.messages.map((message) => (message.id === turn.id ? { ...message, content: turn.text } : message))
+      : [...chat.messages, { id: turn.id, role: turn.role, content: turn.text }]
+    await widgetChatsRepo.put({ ...chat, messages, updatedAt: Date.now() })
+    // The chat list reloads on every save, which is how the new words reach the screen.
+    useSenseiRuns.setState((state) => ({ saved: state.saved + 1 }))
+  })
+  // The call reads notes and this chat with tools when a question needs them; none of it is loaded up front.
+  const liveTools = useMemo(
+    () => ({
+      ...createNoteLiveTools(),
+      readChat: createReadChatTool(async () => {
+        const id = callChat.current ?? useSenseiRuns.getState().viewedId
+        const chat = id ? await widgetChatsRepo.get(id) : undefined
+        return (chat?.messages ?? []).map((message) => ({ role: message.role, text: message.content }))
+      }),
+    }),
+    [],
+  )
+  const onLiveActive = (active: boolean) => {
+    if (active) return
+    callChat.current = null
+    liveScope.release()
+    transcript.reset()
   }
   const usage = [...messages].reverse().find((m) => m.contextTokens)
   const busy = !!chat && !!live[chat.id]
@@ -99,7 +118,10 @@ export function SenseiWidget() {
   return (
     <div className="fixed right-4 bottom-4 z-50 flex flex-col items-end gap-3">
       {open && (
-        <section className="flex h-[min(600px,calc(100svh-6rem))] w-[min(400px,calc(100vw-2rem))] flex-col overflow-hidden rounded-2xl border bg-background shadow-2xl">
+        <LiveAurora
+          as="section"
+          className="flex h-[min(600px,calc(100svh-6rem))] w-[min(400px,calc(100vw-2rem))] flex-col overflow-hidden rounded-2xl border bg-background shadow-2xl"
+        >
           <header className="flex items-center gap-2 border-b px-3 py-2">
             <span className="flex size-8 items-center justify-center rounded-full border bg-background">
               <img src={senseiLogo} alt="" className="size-5 brightness-0 dark:invert" />
@@ -210,10 +232,13 @@ export function SenseiWidget() {
               streaming={busy}
               onStop={() => chat && stopSensei(chat.id)}
               autoFocus={open}
-              liveScope={`${currentPageId ?? 'note'}:${viewedId ?? 'new'}`}
+              liveScope={`${currentPageId ?? 'note'}:${liveScope.chat}`}
               liveSession={`note-${currentPageId ?? 'widget'}`}
-              liveHistory={messages.map((message) => `${message.role === 'user' ? 'User' : 'Sensei'}: ${message.content}`).join('\n')}
-              onLiveTranscript={onLiveTranscript}
+              liveHistory={historyTail(messages.map((message) => ({ role: message.role, text: message.content })))}
+              liveTools={liveTools}
+              liveInstructions={[noteScreenMap(noteTitle), READ_CHAT_INSTRUCTIONS].join('\n\n')}
+              onLiveTranscript={transcript.push}
+              onLiveActive={onLiveActive}
               toolbarStart={
                 <div className="mr-auto">
                   <ContextRing
@@ -232,7 +257,7 @@ export function SenseiWidget() {
               }
             />
           </div>
-        </section>
+        </LiveAurora>
       )}
 
       <button

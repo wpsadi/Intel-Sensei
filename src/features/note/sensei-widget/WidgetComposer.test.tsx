@@ -37,6 +37,21 @@ const mount = (props: Partial<Parameters<typeof WidgetComposer>[0]> = {}) =>
   )
 
 describe('shared widget composer', () => {
+  it('shows the call button in the send slot when empty and swaps to send once there is text', () => {
+    mount({ liveScope: 'scope' })
+    const call = screen.getByRole('button', { name: 'Start live call' })
+    expect(call.className).not.toContain('invisible')
+    expect(screen.getByRole('button', { name: 'Send message' }).className).toContain('invisible')
+    fireEvent.change(input(), { target: { value: 'hello' } })
+    expect(screen.getByRole('button', { name: 'Start live call' }).className).toContain('invisible')
+    expect(screen.getByRole('button', { name: 'Send message' }).className).not.toContain('invisible')
+  })
+
+  it('has no call button when the widget has no live scope', () => {
+    mount()
+    expect(screen.queryByRole('button', { name: 'Start live call' })).toBeNull()
+  })
+
   it('offers installed skills on slash without custom suggestions, and Enter picks before sending', () => {
     const send = vi.fn()
     mount({ onSend: send })

@@ -36,6 +36,9 @@ import { UserBubble } from '@/components/user-bubble'
 import { S3D_AGENT_CONTEXT_LIMIT } from '@/constants/ai'
 import { ChatPlanCard, ChatTodoQueue } from '@/features/ask-sensei/components/chat-plan'
 import { ChatReasoning } from '@/features/ask-sensei/components/chat-reasoning'
+import { READ_CHAT_INSTRUCTIONS, createReadChatTool, historyTail } from '@/ai/tools/read-chat'
+import { LiveAurora } from '@/features/ask-sensei/components/live-aurora'
+import { useLiveChatScope, useLiveTranscript } from '@/features/ask-sensei/components/live-transcript'
 import { Markdown } from '@/features/ask-sensei/components/markdown'
 import { type ComposerSuggestion, WidgetComposer } from '@/features/note/sensei-widget/WidgetComposer'
 
@@ -49,6 +52,7 @@ import { QuestionsDock } from './ask-questions'
 import { useAsking } from './ask-questions-store'
 import { GoalBanner, VerificationCards } from './goal-ui'
 import { type AgentMode, MODES, clearApprovals, loadApprovals, useAgentMode, useApprovals } from './modes'
+import { S3D_LIVE_INSTRUCTIONS, createS3dLiveTools } from './live-tools'
 import { compactChat, runAgent, stopAgent, useAgentRun } from './runner'
 import { WorkedFor, WorkingNow } from './worked-for'
 
@@ -211,27 +215,44 @@ export function AgentPanel() {
   const selNames = selection.map((id) => nodes[id]?.name).filter(Boolean)
   const last = chat?.messages.at(-1)
   const generating = !!chat && !!live[chat.id]
-  const liveTranscript = useRef<{ role: 'user' | 'assistant' | null; id: string }>({ role: null, id: '' })
-  useEffect(() => {
-    liveTranscript.current = { role: null, id: '' }
-  }, [chat?.id])
-  const onLiveTranscript = (role: 'user' | 'assistant' | 'thought', text: string) => {
-    if (!chat?.id || role === 'thought') return
-    if (liveTranscript.current.role !== role) liveTranscript.current = { role, id: crypto.randomUUID() }
-    const id = liveTranscript.current.id
-    void chatsRepo.get(chat.id).then((saved) => {
-      if (!saved) return
-      const existing = saved.messages.find((message) => message.id === id)
-      const next = existing
-        ? saved.messages.map((message) => (message.id === id ? { ...message, text: `${message.text}${text}` } : message))
-        : [...saved.messages, { id, role, text, createdAt: Date.now() }]
-      const updated = { ...saved, messages: next, updatedAt: Date.now() }
-      void chatsRepo.put(updated)
-      useAgentRun.setState((state) => {
-        const liveChat = state.live[chat.id]
-        return liveChat ? { live: { ...state.live, [chat.id]: updated }, saved: state.saved + 1 } : state
-      })
-    })
+  const liveScope = useLiveChatScope(viewedId)
+  // The chat the running call belongs to. A call started on a new chat makes one on its first words, and keeps it.
+  const callChat = useRef<string | null>(null)
+  const transcript = useLiveTranscript(async (turn) => {
+    let id = callChat.current ?? viewedId
+    let base = id ? await chatsRepo.get(id) : undefined
+    if (!base) {
+      id ??= crypto.randomUUID()
+      base = { id, docId, title: turn.text.slice(0, 40) || 'Voice call', messages: [], updatedAt: Date.now() }
+      liveScope.adopt(id)
+      setViewed(id)
+    }
+    callChat.current = base.id
+    const known = base.messages.some((message) => message.id === turn.id)
+    const messages = known
+      ? base.messages.map((message) => (message.id === turn.id ? { ...message, text: turn.text } : message))
+      : [...base.messages, { id: turn.id, role: turn.role, text: turn.text, createdAt: Date.now() }]
+    await chatsRepo.put({ ...base, messages, updatedAt: Date.now() })
+    // The chat list reloads on every save, which is how the new words reach the screen.
+    useAgentRun.setState((state) => ({ saved: state.saved + 1 }))
+  })
+  // The design is read with tools and this chat with readChat, when a question needs them; none of it is loaded up front.
+  const liveTools = useMemo(
+    () => ({
+      ...createS3dLiveTools(),
+      readChat: createReadChatTool(async () => {
+        const id = callChat.current ?? useAgentRun.getState().viewedId
+        const saved = id ? await chatsRepo.get(id) : undefined
+        return (saved?.messages ?? []).map((message) => ({ role: message.role, text: message.text }))
+      }),
+    }),
+    [],
+  )
+  const onLiveActive = (active: boolean) => {
+    if (active) return
+    callChat.current = null
+    liveScope.release()
+    transcript.reset()
   }
   const asking = useAsking(chat?.id ?? null)
   const todos = [...(chat?.messages ?? [])].reverse().find((m) => m.todos)?.todos
@@ -260,7 +281,7 @@ export function AgentPanel() {
   }
 
   return (
-    <section className="flex h-full min-h-0 flex-col text-sm">
+    <LiveAurora as="section" className="flex h-full min-h-0 flex-col text-sm">
       <header className="flex items-center justify-end gap-1 border-b px-2 py-1">
         <Button variant="ghost" size="icon-xs" title="New chat" onClick={() => setViewed(null)}>
           <PlusIcon />
@@ -428,10 +449,13 @@ export function AgentPanel() {
           history={history}
           chatId={chat?.id}
           historyScope={docId}
-          liveScope={`${docId}:${viewedId ?? 'new'}`}
+          liveScope={`${docId}:${liveScope.chat}`}
           liveSession={`s3d-${docId}`}
-          liveHistory={chat?.messages.map((message) => `${message.role === 'user' ? 'User' : 'Sensei'}: ${message.text}`).join('\n')}
-          onLiveTranscript={onLiveTranscript}
+          liveHistory={historyTail((chat?.messages ?? []).map((message) => ({ role: message.role, text: message.text })))}
+          liveTools={liveTools}
+          liveInstructions={[S3D_LIVE_INSTRUCTIONS, READ_CHAT_INSTRUCTIONS].join('\n\n')}
+          onLiveTranscript={transcript.push}
+          onLiveActive={onLiveActive}
           streaming={generating}
           onStop={() => chat && stopAgent(chat.id)}
           placeholder={
@@ -487,6 +511,6 @@ export function AgentPanel() {
           }
         />
       </div>
-    </section>
+    </LiveAurora>
   )
 }

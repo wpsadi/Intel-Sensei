@@ -6,6 +6,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 const mocks = vi.hoisted(() => ({ dispose: vi.fn(), all: vi.fn().mockResolvedValue([]) }))
 vi.mock('../agent/agent', () => ({
   DRAW_CONTEXT_LIMIT: 200_000,
+  DRAW_LIVE_INSTRUCTIONS: '',
   drawSandboxSession: (fileId: string) => `sdraw-${fileId}`,
   disposeDrawSensei: mocks.dispose,
   sendDrawSensei: vi.fn(),

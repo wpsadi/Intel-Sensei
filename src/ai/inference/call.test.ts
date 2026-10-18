@@ -1,9 +1,9 @@
 import type { LiveServerMessage, Session } from '@google/genai'
-import { type Tool, tool } from 'ai'
+import { type Tool, jsonSchema, tool } from 'ai'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { z } from 'zod'
 
-import { LiveCall } from './call'
+import { LiveCall, toolDeclarations } from './call'
 
 vi.mock('@/ai/utils/gemini-key', () => ({ GEMINI_KEY: { value: '' } }))
 
@@ -253,5 +253,27 @@ describe('ending a call from the model', () => {
       ]),
     )
     await call.stop()
+  })
+})
+
+describe('live tool declarations', () => {
+  it('accepts zod and plain JSON Schema tools, and marks background tools', async () => {
+    const declared = await toolDeclarations(
+      {
+        zodTool: tool({ description: 'zod', inputSchema: z.object({ sceneId: z.string() }), execute: async () => 'ok' }) as Tool,
+        jsonTool: tool({
+          description: 'json',
+          inputSchema: jsonSchema({ type: 'object', properties: { query: { type: 'string' } }, required: ['query'] }),
+          execute: async () => 'ok',
+        }) as Tool,
+      },
+      ['jsonTool'],
+    )
+    const byName = Object.fromEntries(declared.map((item) => [item.name, item]))
+    expect(byName.zodTool.parametersJsonSchema).toMatchObject({ type: 'object', properties: { sceneId: { type: 'string' } } })
+    expect(byName.jsonTool.parametersJsonSchema).toMatchObject({ type: 'object', properties: { query: { type: 'string' } }, required: ['query'] })
+    expect(byName.jsonTool.parametersJsonSchema).not.toHaveProperty('$schema')
+    expect(byName.jsonTool).toHaveProperty('behavior', 'NON_BLOCKING')
+    expect(byName.zodTool).not.toHaveProperty('behavior')
   })
 })
