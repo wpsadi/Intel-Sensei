@@ -2,6 +2,9 @@
 import { PGlite } from '@electric-sql/pglite'
 import { vector } from '@electric-sql/pglite-pgvector'
 import { worker } from '@electric-sql/pglite/worker'
+import { installRuntimeAssetCache } from '@/lib/runtime-asset-cache'
+
+installRuntimeAssetCache()
 
 /**
  * The one PGlite database, kept in this worker so every tab shares it: tabs elect a leader that owns the storage and

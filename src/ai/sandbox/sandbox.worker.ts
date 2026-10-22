@@ -11,6 +11,9 @@ import {
   writeSkills,
   writeTextFile,
 } from './engine'
+import { installRuntimeAssetCache } from '@/lib/runtime-asset-cache'
+
+installRuntimeAssetCache()
 
 /** What the page asks for. `id` pairs a request with its reply. */
 export type SandboxRequest = { id: number } & (
