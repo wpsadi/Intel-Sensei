@@ -184,7 +184,10 @@ function python() {
   ready ??= (async () => {
     // The Pyodide loader is fetched from the pinned CDN path; a bundler cannot resolve it at build time.
     const { loadPyodide } = await import(/* @vite-ignore */ `${PYODIDE_INDEX_URL}pyodide.mjs`)
-    const py = (await loadPyodide({ indexURL: PYODIDE_INDEX_URL })) as PyodideLike
+    // Pyodide's default stdin handler calls window.prompt, which is unavailable
+    // in this dedicated worker. Treat stdin as closed so input() raises EOFError
+    // instead of failing with a browser ReferenceError.
+    const py = (await loadPyodide({ indexURL: PYODIDE_INDEX_URL, stdin: () => '' })) as PyodideLike
     await prepare(py)
     // The usual modules load in the background, so the first script that needs them does not wait for a download.
     void preload(py)
