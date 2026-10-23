@@ -41,7 +41,9 @@ jobs:
           cache: "npm"
 
       - name: Install dependencies
-        run: npm ci
+        # The browser build does not use native Node runtimes. In particular,
+        # onnxruntime-node's postinstall downloads a GPU runtime from NuGet.
+        run: npm ci --ignore-scripts
 
       # Vite outputs to `dist/`
       - name: Build project
