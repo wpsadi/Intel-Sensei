@@ -25,14 +25,18 @@ export async function fetchRuntimeAsset(input: RequestInfo | URL, init?: Request
   if (cached) {
     const cachedAt = Number(cached.headers.get(CACHED_AT_HEADER))
     if (Number.isFinite(cachedAt) && Date.now() - cachedAt < CACHE_TTL_MS) return cached
-    await cache.delete(request)
+    void cache.delete(request).catch(() => undefined)
   }
 
   const response = await networkFetch(request)
   if (response.ok && (response.type === 'basic' || response.type === 'cors')) {
     const headers = new Headers(response.headers)
     headers.set(CACHED_AT_HEADER, String(Date.now()))
-    await cache.put(request, new Response(response.clone().body, { status: response.status, statusText: response.statusText, headers }))
+    // Runtime startup must not depend on Cache Storage quota or write speed.
+    // In particular, wheel downloads can be large and cache writes may fail.
+    void cache
+      .put(request, new Response(response.clone().body, { status: response.status, statusText: response.statusText, headers }))
+      .catch(() => undefined)
   }
   return response
 }
